@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Reportes{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Reportes</h1><p>Resultados del {{ desde|f }} al {{ hasta|f }}</p></div>
+  <a class="btn dark" href="{{ url_for('reportes_excel', desde=desde, hasta=hasta) }}">⇩ Excel</a></div>
+<form class="filters card">
+  <div class="field"><label>Desde</label><input class="input" type="date" name="desde" value="{{ desde }}"></div>
+  <div class="field"><label>Hasta</label><input class="input" type="date" name="hasta" value="{{ hasta }}"></div>
+  <button class="btn dark">Ver</button>
+</form>
+<div class="kpis">
+  <div class="kpi hl"><div class="lbl">Ganancia neta</div><div class="val {{ 'pos' if r.neta >= 0 else 'neg' }}">{{ r.neta|pesos }}</div><div class="sub">después de gastos y nómina</div></div>
+  <div class="kpi"><div class="lbl">Ventas netas</div><div class="val">{{ r.ventas_netas|pesos }}</div><div class="sub">{{ r.num_ventas }} ventas · ticket {{ r.ticket_promedio|pesos }}</div></div>
+  <div class="kpi"><div class="lbl">Utilidad bruta</div><div class="val">{{ r.utilidad_bruta|pesos }}</div><div class="sub">margen {{ r.margen|round(1) }} %</div></div>
+  <div class="kpi"><div class="lbl">Ventas por la tienda web</div><div class="val">{{ tienda|pesos }}</div><div class="sub">{{ ((tienda / r.ventas_netas * 100) if r.ventas_netas else 0)|round(1) }} % del total</div></div>
+</div>
+<div class="grid g-main">
+  <div>
+    <div class="card"><div class="chart-box"><canvas id="graf"></canvas></div></div>
+    <div class="card">
+      <h2 style="margin-bottom:8px">Más vendidos</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Repuesto</th><th class="num">Und.</th><th class="num">Ventas</th><th class="num">Costo</th><th class="num">Utilidad</th><th class="num">Margen</th></tr></thead>
+        <tbody>{% for t in top %}<tr><td><a href="{{ url_for('producto_detalle', pid=t.id) }}">{{ t.nombre }}</a><br><small class="mono">{{ t.codigo }}</small></td><td class="num">{{ t.cantidad|cant }}</td><td class="num">{{ t.ventas|pesos }}</td><td class="num">{{ t.costo|pesos }}</td><td class="num">{{ t.utilidad|pesos }}</td><td class="num">{{ ((t.utilidad / t.ventas * 100) if t.ventas else 0)|round|int }} %</td></tr>
+        {% else %}<tr><td colspan="6" class="empty">Sin ventas.</td></tr>{% endfor %}</tbody>
+      </table></div>
+    </div>
+    <div class="card">
+      <h2 style="margin-bottom:4px">Plata quieta</h2>
+      <p class="muted" style="margin-top:0">Repuestos con stock que no se venden hace 90 días o más (ordenados por valor).</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Repuesto</th><th class="num">Stock</th><th class="num">Valor</th></tr></thead>
+        <tbody>{% for p in quietos %}<tr><td><a href="{{ url_for('producto_detalle', pid=p.id) }}">{{ p.nombre }}</a></td><td class="num">{{ p.stock|cant }}</td><td class="num">{{ p.valor_inventario|pesos }}</td></tr>
+        {% else %}<tr><td colspan="3" class="empty">Nada quieto. 👍</td></tr>{% endfor %}</tbody>
+      </table></div>
+    </div>
+  </div>
+  <div>
+    <div class="card">
+      <h2 style="margin-bottom:10px">Estado de resultados</h2>
+      <div class="sum-row"><span>Ventas brutas</span><b>{{ r.bruto|pesos }}</b></div>
+      {% if r.devoluciones %}<div class="sum-row"><span>− Devoluciones</span><b>{{ r.devoluciones|pesos }}</b></div>{% endif %}
+      {% if r.iva %}<div class="sum-row"><span>− IVA</span><b>{{ r.iva|pesos }}</b></div>{% endif %}
+      <div class="sum-row"><span>= Ventas sin IVA</span><b>{{ r.sin_iva|pesos }}</b></div>
+      <div class="sum-row"><span>− Costo de lo vendido</span><b>{{ r.costo|pesos }}</b></div>
+      <div class="sum-row" style="border-top:1px solid var(--line)"><span>= Utilidad bruta</span><b>{{ r.utilidad_bruta|pesos }}</b></div>
+      <div class="sum-row"><span>− Gastos</span><b>{{ r.gastos|pesos }}</b></div>
+      <div class="sum-row"><span>− Nómina</span><b>{{ r.nomina|pesos }}</b></div>
+      {% if r.perdidas %}<div class="sum-row"><span>− Pérdidas de inventario</span><b>{{ r.perdidas|pesos }}</b></div>{% endif %}
+      <div class="sum-row big"><span>Ganancia neta</span><span class="{{ 'pos' if r.neta >= 0 else 'neg' }}">{{ r.neta|pesos }}</span></div>
+      <p class="hint">El costo de cada venta es el costo promedio del repuesto en el momento de venderlo.</p>
+    </div>
+    <div class="card">
+      <h2 style="margin-bottom:8px">Dinero recibido por medio</h2>
+      {% for m, v in r.por_medio %}<div class="sum-row"><span>{{ m }}</span><b>{{ v|pesos }}</b></div>{% else %}<p class="muted">Sin cobros.</p>{% endfor %}
+      {% if r.credito %}<div class="sum-row"><span>Vendido a crédito (pendiente)</span><b class="neg">{{ r.credito|pesos }}</b></div>{% endif %}
+    </div>
+    <div class="card">
+      <h2 style="margin-bottom:8px">Por vendedor</h2>
+      {% for nombre, d in por_vendedor %}<div class="sum-row"><span>{{ nombre }} <small class="muted">· {{ d[0] }} ventas</small></span><b>{{ d[1]|pesos }}</b></div>{% else %}<p class="muted">Sin ventas.</p>{% endfor %}
+    </div>
+    <div class="card">
+      <h2 style="margin-bottom:8px">Gastos por categoría</h2>
+      {% for c, v in r.gastos_cat %}<div class="sum-row"><span>{{ c }}</span><b>{{ v|pesos }}</b></div>{% else %}<p class="muted">Sin gastos.</p>{% endfor %}
+    </div>
+    <div class="card">
+      <h2 style="margin-bottom:8px">Inventario por categoría</h2>
+      {% for c, v in por_cat if v %}<div class="sum-row"><span>{{ c }}</span><b>{{ v|pesos }}</b></div>{% endfor %}
+      <div class="sum-row big"><span>Total</span><span>{{ valor_inv|pesos }}</span></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/chart.umd.js') }}"></script>
+<script>
+  const serie = {{ serie|tojson }};
+  new Chart(document.getElementById('graf'), {
+    data: { labels: serie.map(s => s[0]), datasets: [
+      { type: 'bar', label: 'Ventas', data: serie.map(s => s[1]), backgroundColor: '#121418', borderRadius: 4 },
+      { type: 'line', label: 'Utilidad bruta', data: serie.map(s => s[2]), borderColor: '#e3262f', backgroundColor: '#e3262f', tension: .3, pointRadius: 2 }] },
+    options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom' }, tooltip: { callbacks: { label: c => c.dataset.label + ': ' + COP(c.raw) } } },
+      scales: { y: { ticks: { callback: v => COP(v) } }, x: { grid: { display: false } } } } });
+</script>
+{% endblock %}

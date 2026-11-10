@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Proveedor{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ p.nombre if p.id else 'Nuevo proveedor' }}</h1></div></div>
+<form method="post" class="card" style="max-width:640px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="field"><label>Nombre *</label><input class="input" name="nombre" value="{{ p.nombre or '' }}" required></div>
+  <div class="form-row">
+    <div class="field"><label>NIT</label><input class="input" name="nit" value="{{ p.nit or '' }}"></div>
+    <div class="field"><label>Teléfono</label><input class="input" name="telefono" value="{{ p.telefono or '' }}"></div>
+  </div>
+  <div class="form-row">
+    <div class="field"><label>Contacto / vendedor</label><input class="input" name="contacto" value="{{ p.contacto or '' }}"></div>
+    <div class="field"><label>Ciudad</label><input class="input" name="ciudad" value="{{ p.ciudad or '' }}"></div>
+  </div>
+  <div class="field"><label>Notas</label><input class="input" name="notas" value="{{ p.notas or '' }}" placeholder="Ej. despacha martes y viernes, crédito 30 días"></div>
+  {% if p.id %}<label class="check" style="margin-bottom:12px"><input type="checkbox" name="archivar" value="1"> Archivar este proveedor</label>{% endif %}
+  <button class="btn">Guardar</button> <a class="btn sec" href="{{ url_for('proveedores') }}">Cancelar</a>
+</form>
+{% endblock %}

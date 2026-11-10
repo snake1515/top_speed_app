@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Liquidar nómina{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Liquidar nómina</h1><p>Elige el empleado y el periodo; el cálculo se actualiza al pulsar «Calcular».</p></div><a class="btn sec" href="{{ url_for('nominas') }}">← Nómina</a></div>
+<form method="get" class="card" id="f-calc">
+  <div class="form-row">
+    <div class="field"><label>Empleado</label><select class="input" name="empleado_id" required><option value="">—</option>{% for e in empleados %}<option value="{{ e.id }}" {{ 'selected' if emp and emp.id == e.id }}>{{ e.nombre }} · {{ e.tipo_nombre }}</option>{% endfor %}</select></div>
+    <div class="field"><label>Desde</label><input class="input" type="date" name="desde" value="{{ desde }}"></div>
+    <div class="field"><label>Hasta</label><input class="input" type="date" name="hasta" value="{{ hasta }}"></div>
+    <div class="field"><label>Días trabajados</label><input class="input" name="dias" value="{{ dias }}" inputmode="numeric"></div>
+  </div>
+  <div class="form-row">
+    <div class="field"><label>Horas extra ($)</label><input class="input" name="horas_extra" value="{{ valores.horas_extra|round|int if valores.horas_extra else '' }}" inputmode="numeric"></div>
+    <div class="field"><label>Bonificaciones ($)</label><input class="input" name="bonificaciones" value="{{ valores.bonificaciones|round|int if valores.bonificaciones else '' }}" inputmode="numeric"></div>
+    <div class="field"><label>Otras deducciones ($)</label><input class="input" name="otras_deducciones" value="{{ valores.otras_deducciones|round|int if valores.otras_deducciones else '' }}" inputmode="numeric"></div>
+  </div>
+  <div class="actions">
+    <label class="check"><input type="checkbox" name="seguridad_social" value="1" {{ 'checked' if ss }}> Seguridad social (salud y pensión)</label>
+    <label class="check"><input type="checkbox" name="prestaciones" value="1" {{ 'checked' if pr }}> Provisión de prestaciones</label>
+    <input type="hidden" name="_c" value="1">
+    <button class="btn dark">Calcular</button>
+  </div>
+</form>
+{% if calc %}
+<div class="grid g2" style="margin-top:16px">
+  <div class="card">
+    <h2 style="margin-bottom:10px">{{ emp.nombre }}</h2>
+    {% if calc.basico %}<div class="sum-row"><span>Sueldo ({{ calc.dias }} días)</span><b>{{ calc.basico|pesos }}</b></div>{% endif %}
+    {% if emp.tipo_pago != 'fijo' %}<div class="sum-row"><span>Comisión {{ emp.comision_pct|cant }} % sobre {{ calc.ventas_base|pesos }} vendidos</span><b>{{ calc.comisiones|pesos }}</b></div>{% endif %}
+    {% if calc.aux_transporte %}<div class="sum-row"><span>Auxilio de transporte</span><b>{{ calc.aux_transporte|pesos }}</b></div>{% endif %}
+    {% if calc.horas_extra %}<div class="sum-row"><span>Horas extra</span><b>{{ calc.horas_extra|pesos }}</b></div>{% endif %}
+    {% if calc.bonificaciones %}<div class="sum-row"><span>Bonificaciones</span><b>{{ calc.bonificaciones|pesos }}</b></div>{% endif %}
+    <div class="sum-row" style="border-top:1px solid var(--line)"><span>Devengado</span><b>{{ calc.devengado|pesos }}</b></div>
+    {% if calc.deduccion_salud %}<div class="sum-row"><span>− Salud 4 %</span><b>{{ calc.deduccion_salud|pesos }}</b></div><div class="sum-row"><span>− Pensión 4 %</span><b>{{ calc.deduccion_pension|pesos }}</b></div>{% endif %}
+    {% if calc.otras_deducciones %}<div class="sum-row"><span>− Otras deducciones</span><b>{{ calc.otras_deducciones|pesos }}</b></div>{% endif %}
+    <div class="sum-row big"><span>Neto a pagar</span><span>{{ calc.neto|pesos }}</span></div>
+    <div class="sum-row"><span>Aportes del empleador</span><b>{{ calc.aportes|pesos }}</b></div>
+    <div class="sum-row"><span>Provisión prestaciones</span><b>{{ calc.provisiones|pesos }}</b></div>
+    <div class="sum-row"><span>Costo total para la empresa</span><b>{{ calc.costo_empresa|pesos }}</b></div>
+  </div>
+  <form class="card" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    {% for k in ['horas_extra', 'bonificaciones', 'otras_deducciones'] %}<input type="hidden" name="{{ k }}" value="{{ f.get(k, '') if f.get(k) is not none else '' }}">{% endfor %}
+    <input type="hidden" name="empleado_id" value="{{ emp.id }}"><input type="hidden" name="desde" value="{{ desde }}"><input type="hidden" name="hasta" value="{{ hasta }}"><input type="hidden" name="dias" value="{{ dias }}">
+    {% if ss %}<input type="hidden" name="seguridad_social" value="1">{% endif %}{% if pr %}<input type="hidden" name="prestaciones" value="1">{% endif %}
+    <h2 style="margin-bottom:10px">Registrar el pago</h2>
+    {% if calc.otras_deducciones %}<div class="field"><label>Concepto de las otras deducciones</label><input class="input" name="deducciones_detalle" required placeholder="Anticipo, préstamo…"></div>{% endif %}
+    <div class="form-row" style="grid-template-columns:1fr 1fr">
+      <div class="field"><label>Fecha de pago</label><input class="input" type="date" name="fecha_pago" value="{{ hoy }}"></div>
+      <div class="field"><label>Medio</label><select class="input" name="medio_id">{% for m in medios %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}</select></div>
+    </div>
+    <label class="check"><input type="checkbox" name="desde_caja" value="1" {{ 'disabled' if not turno }}> El neto sale de la caja abierta</label>
+    <div class="field" style="margin-top:10px"><input class="input" name="nota" placeholder="Nota (opcional)"></div>
+    <button class="btn lg" style="width:100%">Registrar nómina</button>
+    <p class="hint">Cálculo de ayuda con porcentajes de ley 2026; valida la planilla PILA con tu contador.</p>
+  </form>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Importar repuestos{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Importar repuestos desde Excel</h1><p>Para cargar tu catálogo de una vez: códigos, precios, stock inicial y costo.</p></div><a class="btn sec" href="{{ url_for('productos') }}">← Repuestos</a></div>
+<div class="grid g2">
+  <div class="card">
+    <h2 style="margin-bottom:10px">1. Descarga la plantilla</h2>
+    <p>Llena una fila por repuesto. Las columnas en rojo son obligatorias. Pasa el mouse por cada título para ver la ayuda.</p>
+    <a class="btn dark" href="{{ url_for('productos_plantilla') }}">⇩ Descargar plantilla</a>
+    <ul class="muted" style="margin-top:14px;padding-left:18px">
+      <li>Si el código ya existe, se actualizan nombre, precios y datos (el stock no se toca: para eso usa compras o ajustes).</li>
+      <li>El stock inicial con su costo entra al kardex como «Inventario inicial» y fija el costo promedio.</li>
+      <li>Las categorías nuevas se crean solas.</li>
+    </ul>
+  </div>
+  <form class="card" method="post" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h2 style="margin-bottom:10px">2. Sube el archivo</h2>
+    <input class="input" type="file" name="archivo" accept=".xlsx" required>
+    <p class="hint">Se revisa todo antes de guardar: si una fila tiene error no se importa nada y te digo cuál corregir.</p>
+    <button class="btn">Importar</button>
+  </form>
+</div>
+{% if errores %}
+<div class="card" style="margin-top:16px">
+  <h2 class="neg" style="margin-bottom:8px">No se importó nada. Corrige esto:</h2>
+  <ul>{% for e in errores %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+{% endblock %}

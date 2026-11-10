@@ -1,0 +1,13 @@
+{% set disp = [(p.stock or 0) - reservado.get(p.id, 0), 0]|max %}
+{% set img = url_for('img_producto', pid=p.id, v=p.imagen_v) if p.imagen_v else url_for('static', filename='sin-foto.svg') %}
+<article class="s-card {{ 'agotado' if disp <= 0 }}">
+  <a class="img" href="{{ url_for('tienda_producto', pid=p.id) }}"><img src="{{ img }}" alt="{{ p.nombre }}" loading="lazy">
+    {% if disp <= 0 %}<span class="tag badge dark">Agotado</span>{% elif disp <= 2 %}<span class="tag badge warn">Últimas {{ disp|cant }}</span>{% elif p.destacado %}<span class="tag badge red">Destacado</span>{% endif %}</a>
+  <div class="bd">
+    <a class="nm" href="{{ url_for('tienda_producto', pid=p.id) }}">{{ p.nombre }}</a>
+    <div class="mt">{{ p.marca or '' }}{% if p.compatibilidad %}{{ ' · ' if p.marca }}🏍 {{ p.compatibilidad|truncate(48) }}{% endif %}</div>
+    <div class="pr">{{ p.precio_detal|pesos }}</div>
+    {% if disp > 0 %}<button class="btn sm" type="button" data-add='{{ {"id": p.id, "nombre": p.nombre, "codigo": p.codigo, "precio": p.precio_detal, "img": img, "disp": disp}|tojson|forceescape }}'>Agregar</button>
+    {% else %}<a class="btn sm sec" href="https://wa.me/{{ ('57' ~ cfg.whatsapp) if cfg.whatsapp and cfg.whatsapp|length == 10 else (cfg.whatsapp or '') }}?text={{ ('Hola, ¿cuándo les llega ' ~ p.nombre ~ ' (' ~ p.codigo ~ ')?')|urlencode }}" target="_blank" rel="noopener">Preguntar</a>{% endif %}
+  </div>
+</article>

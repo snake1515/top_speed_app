@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Nuevo ajuste{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Ajuste de inventario</h1><p>Las salidas se valoran al costo promedio; las entradas usan el costo que escribas (o el promedio si lo dejas vacío).</p></div><a class="btn sec" href="{{ url_for('ajustes') }}">← Ajustes</a></div>
+<form method="post" id="f-aj">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="grid g-main">
+    <div class="card">{% include "_picker.html" %}</div>
+    <div class="card">
+      <div class="field"><label>Motivo</label><select class="input" name="motivo" id="motivo" required><option value="">— Elige —</option>
+        <optgroup label="Entradas (suman)">{% for k, (l, s) in motivos.items() if s == 'entrada' %}<option value="{{ k }}">{{ l }}</option>{% endfor %}</optgroup>
+        <optgroup label="Salidas (restan)">{% for k, (l, s) in motivos.items() if s == 'salida' %}<option value="{{ k }}">{{ l }}</option>{% endfor %}</optgroup></select></div>
+      <div class="field"><textarea class="input" name="nota" rows="3" placeholder="Explica el ajuste (quién contó, qué pasó…)"></textarea></div>
+      <p class="hint" id="h-costo"></p>
+      <button class="btn lg" style="width:100%">Registrar ajuste</button>
+    </div>
+  </div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+  const SAL = {{ motivos|dictsort|selectattr('1.1', 'equalto', 'salida')|map(attribute='0')|list|tojson }};
+  document.getElementById('motivo').addEventListener('change', e => {
+    const s = SAL.includes(e.target.value);
+    document.querySelectorAll('.pk-costo').forEach(i => i.readOnly = s);
+    document.getElementById('pk-th-costo').textContent = s ? 'Costo (promedio)' : 'Costo unitario';
+    document.getElementById('h-costo').textContent = s ? 'Es una salida: se valora al costo promedio actual.' : '';
+  });
+  document.getElementById('f-aj').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') e.preventDefault(); });
+</script>
+{% endblock %}

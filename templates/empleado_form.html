@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Empleado{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ e.nombre if e.id else 'Nuevo empleado' }}</h1></div></div>
+<form method="post" class="card" style="max-width:720px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="field"><label>Nombre *</label><input class="input" name="nombre" value="{{ e.nombre or '' }}" required></div>
+  <div class="form-row">
+    <div class="field"><label>Documento</label><input class="input" name="documento" value="{{ e.documento or '' }}"></div>
+    <div class="field"><label>Cargo</label><input class="input" name="cargo" value="{{ e.cargo or '' }}" placeholder="Vendedor, bodeguero, domiciliario…"></div>
+    <div class="field"><label>Teléfono</label><input class="input" name="telefono" value="{{ e.telefono or '' }}"></div>
+  </div>
+  <div class="form-row">
+    <div class="field"><label>Forma de pago</label><select class="input" name="tipo_pago" id="tp">{% for k, v in tipos.items() %}<option value="{{ k }}" {{ 'selected' if e.tipo_pago == k }}>{{ v }}</option>{% endfor %}</select></div>
+    <div class="field" id="f-sal"><label>Sueldo mensual</label><input class="input" name="salario" value="{{ (e.salario or 0)|round|int }}" inputmode="numeric"></div>
+    <div class="field" id="f-com"><label>Comisión % sobre ventas</label><input class="input" name="comision_pct" value="{{ e.comision_pct|cant }}"><div class="hint">Sobre ventas netas sin IVA.</div></div>
+  </div>
+  <div class="form-row">
+    <div class="field"><label>Usuario del POS (para comisiones)</label><select class="input" name="usuario_id"><option value="">—</option>{% for u in usuarios %}<option value="{{ u.id }}" {{ 'selected' if e.usuario_id == u.id }}>{{ u.nombre }} ({{ u.usuario }})</option>{% endfor %}</select></div>
+    <div class="field"><label>Fecha de ingreso</label><input class="input" type="date" name="fecha_ingreso" value="{{ e.fecha_ingreso or '' }}"></div>
+  </div>
+  <label class="check"><input type="checkbox" name="aux_transporte" value="1" {{ 'checked' if e.aux_transporte }}> Recibe auxilio de transporte (si gana hasta 2 SMMLV)</label>
+  {% if e.id %}<label class="check" style="margin-top:8px"><input type="checkbox" name="activo" value="1" {{ 'checked' if e.activo }}> Activo</label>{% endif %}
+  <div style="margin-top:14px"><button class="btn">Guardar</button> <a class="btn sec" href="{{ url_for('empleados') }}">Cancelar</a></div>
+</form>
+{% endblock %}
+{% block scripts %}<script>
+  const tp = document.getElementById('tp');
+  function v() { document.getElementById('f-sal').style.display = tp.value === 'comision' ? 'none' : ''; document.getElementById('f-com').style.display = tp.value === 'fijo' ? 'none' : ''; }
+  tp.addEventListener('change', v); v();
+</script>{% endblock %}

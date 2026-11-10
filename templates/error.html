@@ -1,0 +1,9 @@
+{% if current_user.is_authenticated %}{% extends "base.html" %}{% else %}{% extends "tienda_base.html" %}{% endif %}
+{% block title %}{{ titulo }}{% endblock %}
+{% block content %}
+<div class="card" style="max-width:520px;margin:40px auto;text-align:center">
+  <h1>{{ titulo }}</h1>
+  <p class="muted">{{ msg }}</p>
+  <a class="btn" href="{{ url_for('inicio_usuario') if current_user.is_authenticated else url_for('tienda') }}">Volver al inicio</a>
+</div>
+{% endblock %}

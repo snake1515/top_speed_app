@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Pedido {{ p.folio }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Pedido web {{ p.folio }}</h1><p>{{ p.fecha|fh }}</p></div>
+  <div class="actions">
+    <a class="btn sec" href="{{ wa }}" target="_blank">Escribir al cliente</a>
+    {% if p.estado == 'pendiente' %}<a class="btn lg" href="{{ url_for('pos', pedido=p.id) }}">Confirmar y cobrar</a>{% endif %}
+  </div>
+</div>
+{% if p.estado == 'pendiente' and vencido %}<div class="flash warn">La reserva venció ({{ cfg.reserva_horas }} h): estas unidades ya no están apartadas. Aún puedes cobrarlo si hay stock.</div>{% endif %}
+{% if p.estado == 'confirmado' and venta %}<div class="flash ok">Confirmado y cobrado en la venta <a href="{{ url_for('venta_detalle', vid=venta.id) }}">{{ venta.folio }}</a>.</div>{% endif %}
+{% if p.estado == 'cancelado' %}<div class="flash err">Cancelado. {{ p.gestion_nota or '' }}</div>{% endif %}
+<div class="grid g-main">
+  <div class="card"><div class="table-wrap"><table>
+    <thead><tr><th>Repuesto</th><th class="num">Cant.</th><th class="num">Precio</th><th class="num">Total</th><th class="num">Stock hoy</th></tr></thead>
+    <tbody>{% for i in p.items %}<tr><td><a href="{{ url_for('producto_detalle', pid=i.producto_id) }}">{{ i.nombre }}</a><br><small class="mono">{{ i.codigo }}</small>{% if i.producto.ubicacion %} · 📍{{ i.producto.ubicacion }}{% endif %}</td>
+      <td class="num">{{ i.cantidad|cant }}</td><td class="num">{{ i.precio|pesos }}</td><td class="num">{{ (i.cantidad * i.precio)|pesos }}</td>
+      <td class="num {{ 'neg' if i.producto.stock < i.cantidad }}">{{ i.producto.stock|cant }}</td></tr>{% endfor %}</tbody>
+    <tfoot><tr><td colspan="3">Total</td><td class="num">{{ p.total|pesos }}</td><td></td></tr></tfoot>
+  </table></div></div>
+  <div>
+    <div class="card">
+      <h2 style="margin-bottom:10px">Cliente y entrega</h2>
+      <dl class="dl">
+        <dt>Nombre</dt><dd>{{ p.nombre }}</dd>
+        <dt>WhatsApp</dt><dd>{{ p.telefono }}</dd>
+        {% if p.documento %}<dt>CC / NIT</dt><dd>{{ p.documento }}</dd>{% endif %}
+        {% if p.email %}<dt>Correo</dt><dd>{{ p.email }}</dd>{% endif %}
+        <dt>Entrega</dt><dd>{{ {'recoger':'Recoge en el local','domicilio':'Domicilio','envio':'Envío nacional'}[p.entrega] }}</dd>
+        {% if p.direccion %}<dt>Dirección</dt><dd>{{ p.direccion }}{% if p.ciudad %}, {{ p.ciudad }}{% endif %}</dd>{% endif %}
+        {% if p.medio_preferido %}<dt>Pagará con</dt><dd>{{ p.medio_preferido }}</dd>{% endif %}
+      </dl>
+      {% if p.nota %}<p class="note">{{ p.nota }}</p>{% endif %}
+    </div>
+    {% if p.estado == 'pendiente' %}
+    <details class="card"><summary class="neg">Cancelar pedido</summary>
+      <form method="post" action="{{ url_for('pedido_cancelar', pid=p.id) }}" style="margin-top:10px" data-confirm="¿Cancelar el pedido? Se liberan las unidades apartadas.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="field"><input class="input" name="motivo" placeholder="Motivo (ej. el cliente no respondió)"></div>
+        <button class="btn danger">Cancelar pedido</button></form></details>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

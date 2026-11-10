@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% block title %}Caja{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Caja y cuadre</h1><p>Apertura con base, entradas y salidas de dinero, y cierre con arqueo.</p></div>
+  <a class="btn sec" href="{{ url_for('turnos') }}">Historial de cierres</a>
+</div>
+{% if not t %}
+<div class="grid g2">
+  <form class="card" method="post" action="{{ url_for('caja_abrir') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h2 style="margin-bottom:10px">Abrir caja</h2>
+    <div class="field"><label>Base en efectivo</label><input class="input" name="base" inputmode="numeric" placeholder="ej. 100.000" value="{{ (ultimo.efectivo_contado|round|int) if ultimo and ultimo.efectivo_contado else '' }}" required>
+      <div class="hint">El dinero con el que arranca la caja para dar cambio.{% if ultimo %} El último cierre dejó {{ ultimo.efectivo_contado|pesos }} contados.{% endif %}</div></div>
+    <div class="field"><input class="input" name="nota" placeholder="Nota (opcional)"></div>
+    <button class="btn ok lg">Abrir caja</button>
+  </form>
+  {% if ultimo %}
+  <div class="card">
+    <h2 style="margin-bottom:10px">Último cierre · caja #{{ ultimo.numero }}</h2>
+    <div class="sum-row"><span>Cerró</span><b>{{ ultimo.cerrado_por.nombre if ultimo.cerrado_por else '' }} · {{ ultimo.cierre|fh }}</b></div>
+    <div class="sum-row"><span>Efectivo esperado</span><b>{{ ultimo.efectivo_esperado|pesos }}</b></div>
+    <div class="sum-row"><span>Efectivo contado</span><b>{{ ultimo.efectivo_contado|pesos }}</b></div>
+    <div class="sum-row"><span>Diferencia</span><b class="{{ 'neg' if ultimo.diferencia < 0 else ('pos' if ultimo.diferencia > 0 else '') }}">{{ ultimo.diferencia|pesos }}</b></div>
+    <a href="{{ url_for('turno_detalle', tid=ultimo.id) }}">Ver detalle</a>
+  </div>
+  {% endif %}
+</div>
+{% else %}
+<div class="kpis">
+  <div class="kpi hl"><div class="lbl">Efectivo que debe haber</div><div class="val">{{ r.efectivo_esperado|pesos }}</div><div class="sub">base {{ t.base|pesos }} + entradas − salidas</div></div>
+  <div class="kpi"><div class="lbl">Ventas del turno</div><div class="val">{{ r.ventas_total|pesos }}</div><div class="sub">{{ r.num_ventas }} venta(s){% if r.ventas_credito %} · {{ r.ventas_credito|pesos }} a crédito{% endif %}</div></div>
+  <div class="kpi"><div class="lbl">Entradas</div><div class="val pos">{{ r.ingresos|pesos }}</div><div class="sub">todos los medios</div></div>
+  <div class="kpi"><div class="lbl">Salidas</div><div class="val neg">{{ r.egresos|pesos }}</div><div class="sub">gastos, pagos, devoluciones</div></div>
+</div>
+<div class="grid g-main">
+  <div>
+    <div class="card">
+      <div class="card-head"><h2>Caja #{{ t.numero }} · por medio de pago</h2><span class="muted">abrió {{ t.usuario.nombre }} · {{ t.apertura|fh }}</span></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Medio</th><th class="num">Entradas</th><th class="num">Salidas</th><th class="num">Neto</th></tr></thead>
+        <tbody>
+          <tr><td>Base inicial (efectivo)</td><td class="num">{{ t.base|pesos }}</td><td></td><td class="num">{{ t.base|pesos }}</td></tr>
+          {% for d in r.medios %}<tr><td><b>{{ d.medio.nombre }}</b> <span class="badge">{{ TIPOS_MEDIO[d.medio.tipo] }}</span></td><td class="num">{{ d.ingresos|pesos }}</td><td class="num">{{ d.egresos|pesos }}</td><td class="num"><b>{{ d.neto|pesos }}</b></td></tr>{% endfor %}
+        </tbody>
+      </table></div>
+      <p class="hint">Las transferencias se verifican en la app del banco o Nequi; el efectivo se cuenta al cerrar.</p>
+    </div>
+    <div class="card">
+      <h2 style="margin-bottom:8px">Movimientos del turno</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Hora</th><th>Concepto</th><th>Medio</th><th class="num">Valor</th><th></th></tr></thead>
+        <tbody>{% for m in r.movs|sort(attribute='fecha', reverse=true) %}
+          <tr><td>{{ m.fecha.strftime('%I:%M %p') }}</td><td>{{ m.concepto }}<br><small class="muted">{{ m.usuario.nombre if m.usuario else '' }}</small></td><td>{{ m.medio.nombre }}</td>
+            <td class="num {{ 'pos' if m.tipo == 'ingreso' else 'neg' }}">{{ '+' if m.tipo == 'ingreso' else '−' }}{{ m.valor|pesos }}</td>
+            <td>{% if m.origen == 'manual' and current_user.puede('admin') %}<form method="post" action="{{ url_for('caja_mov_anular', mid=m.id) }}" data-confirm="¿Anular este movimiento?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn ghost sm">✕</button></form>{% endif %}</td></tr>
+        {% else %}<tr><td colspan="5" class="empty">Sin movimientos todavía.</td></tr>{% endfor %}</tbody>
+      </table></div>
+    </div>
+  </div>
+  <div>
+    <form class="card" method="post" action="{{ url_for('caja_movimiento') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <h2 style="margin-bottom:10px">Entrada o salida de dinero</h2>
+      <div class="form-row" style="grid-template-columns:1fr 1fr">
+        <label class="check"><input type="radio" name="tipo" value="egreso" checked> Salida</label>
+        <label class="check"><input type="radio" name="tipo" value="ingreso"> Entrada</label>
+      </div>
+      <div class="field" style="margin-top:8px"><input class="input" name="concepto" placeholder="Concepto: domicilio, almuerzo, base extra…" required></div>
+      <div class="form-row" style="grid-template-columns:1fr 1fr">
+        <div class="field"><input class="input" name="valor" placeholder="Valor" inputmode="numeric" required></div>
+        <div class="field"><select class="input" name="medio_id">{% for m in medios %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}</select></div>
+      </div>
+      <button class="btn dark">Registrar</button>
+      <p class="hint">Para gastos del negocio (arriendo, servicios) usa <a href="{{ url_for('gastos') }}">Gastos</a> y marca «sale de la caja», así cuentan en la ganancia.</p>
+    </form>
+
+    <form class="card" method="post" action="{{ url_for('caja_cerrar') }}" id="f-cierre" data-confirm="¿Cerrar la caja? Después no se puede reabrir.">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <h2 style="margin-bottom:6px">Cerrar caja (arqueo)</h2>
+      <p class="muted" style="margin-top:0">Cuenta los billetes y monedas que hay en el cajón.</p>
+      <table class="lines">
+        {% for d in denominaciones %}
+        <tr><td style="width:45%">{{ d|pesos }}</td><td><input class="input den" name="d_{{ d }}" data-v="{{ d }}" inputmode="numeric" placeholder="0" style="text-align:right"></td><td class="num" style="width:110px" id="s_{{ d }}"></td></tr>
+        {% endfor %}
+      </table>
+      <div class="sum-row big"><span>Contado</span><span id="contado">$ 0</span></div>
+      <div class="sum-row"><span>Debe haber</span><b>{{ r.efectivo_esperado|pesos }}</b></div>
+      <div class="sum-row"><span>Diferencia</span><b id="dif">$ 0</b></div>
+      <div class="field" style="margin-top:8px"><textarea class="input" name="nota" rows="2" placeholder="Observaciones (obligatorio si hay sobrante o faltante)"></textarea></div>
+      <button class="btn lg" style="width:100%">Cerrar caja</button>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if t %}
+<script>
+  const esperado = {{ r.efectivo_esperado }};
+  function contar() {
+    let tot = 0;
+    document.querySelectorAll('.den').forEach(i => { const s = Math.max(Math.round(num(i.value)), 0) * Number(i.dataset.v); tot += s; document.getElementById('s_' + i.dataset.v).textContent = s ? COP(s) : ''; });
+    document.getElementById('contado').textContent = COP(tot);
+    const d = tot - esperado, el = document.getElementById('dif');
+    el.textContent = (d > 0 ? '+' : '') + COP(d); el.className = d < 0 ? 'neg' : (d > 0 ? 'pos' : '');
+  }
+  document.querySelectorAll('.den').forEach(i => i.addEventListener('input', contar));
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Configuración{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Configuración</h1></div></div>
+<div class="tabs"><a href="#negocio">Negocio</a><a href="#medios">Medios de pago</a><a href="#ventas">Ventas y precios</a><a href="#tienda">Tienda online</a><a href="#categorias">Categorías</a><a href="#nomina">Nómina</a></div>
+<div class="grid g2">
+  <form class="card" method="post" enctype="multipart/form-data" id="negocio">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="seccion" value="negocio">
+    <h2 style="margin-bottom:12px">Datos del negocio</h2>
+    <div class="form-row"><div class="field"><label>Nombre</label><input class="input" name="nombre" value="{{ cfg.nombre }}"></div><div class="field"><label>Eslogan</label><input class="input" name="eslogan" value="{{ cfg.eslogan or '' }}"></div></div>
+    <div class="form-row"><div class="field"><label>NIT</label><input class="input" name="nit" value="{{ cfg.nit or '' }}"></div><div class="field"><label>Teléfono</label><input class="input" name="telefono" value="{{ cfg.telefono or '' }}"></div></div>
+    <div class="form-row"><div class="field"><label>Dirección</label><input class="input" name="direccion" value="{{ cfg.direccion or '' }}"></div><div class="field"><label>Ciudad</label><input class="input" name="ciudad" value="{{ cfg.ciudad or '' }}"></div></div>
+    <div class="form-row"><div class="field"><label>WhatsApp del negocio</label><input class="input" name="whatsapp" value="{{ cfg.whatsapp or '' }}" placeholder="3001234567"><div class="hint">A este número llegan los pedidos de la tienda.</div></div><div class="field"><label>Correo</label><input class="input" name="email" value="{{ cfg.email or '' }}"></div></div>
+    <div class="field"><label>Mensaje al pie del recibo</label><input class="input" name="mensaje_recibo" value="{{ cfg.mensaje_recibo or '' }}"></div>
+    <div class="form-row">
+      <div class="field"><label>Impresora de tickets</label><select class="input" name="ancho_ticket"><option value="80" {{ 'selected' if cfg.ancho_ticket == 80 }}>80 mm</option><option value="58" {{ 'selected' if cfg.ancho_ticket == 58 }}>58 mm</option></select></div>
+      <div class="field"><label>Logo</label><input class="input" type="file" name="logo" accept="image/*">{% if cfg.logo_v %}<label class="check" style="margin-top:6px"><input type="checkbox" name="quitar_logo" value="1"> Quitar logo</label>{% endif %}</div>
+    </div>
+    <button class="btn">Guardar</button>
+  </form>
+
+  <div class="card" id="medios">
+    <h2 style="margin-bottom:4px">Medios de pago</h2>
+    <p class="muted" style="margin-top:0">Cada medio se cuadra por separado al cerrar la caja. El «Detalle» (número de Nequi, cuenta) se muestra en la tienda online.</p>
+    {% for m in medios %}
+    <form method="post" class="form-row" style="grid-template-columns:1.1fr .9fr 1.3fr 50px auto auto;align-items:center;gap:6px;margin-bottom:6px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="seccion" value="medio"><input type="hidden" name="id" value="{{ m.id }}">
+      <input class="input" name="nombre" value="{{ m.nombre }}">
+      {% if m.es_efectivo %}<span class="badge">Efectivo</span>{% else %}<select class="input" name="tipo">{% for k, v in TIPOS_MEDIO.items() if k != 'efectivo' %}<option value="{{ k }}" {{ 'selected' if m.tipo == k }}>{{ v }}</option>{% endfor %}</select>{% endif %}
+      <input class="input" name="detalle" value="{{ m.detalle or '' }}" placeholder="Nº cuenta / celular">
+      <input class="input" name="orden" value="{{ m.orden }}" title="Orden">
+      {% if m.es_efectivo %}<span></span>{% else %}<label class="check" title="Activo"><input type="checkbox" name="activo" value="1" {{ 'checked' if m.activo }}></label>{% endif %}
+      <button class="btn sm sec">✓</button>
+    </form>
+    {% endfor %}
+    <form method="post" class="form-row" style="grid-template-columns:1.1fr .9fr 1.3fr auto;gap:6px;margin-top:12px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="seccion" value="medio"><input type="hidden" name="activo" value="1"><input type="hidden" name="orden" value="20">
+      <input class="input" name="nombre" placeholder="Nuevo medio, ej. Bre-B">
+      <select class="input" name="tipo">{% for k, v in TIPOS_MEDIO.items() if k != 'efectivo' %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select>
+      <input class="input" name="detalle" placeholder="Nº cuenta / llave">
+      <button class="btn sm">＋ Agregar</button>
+    </form>
+  </div>
+
+  <form class="card" method="post" id="ventas">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="seccion" value="ventas">
+    <h2 style="margin-bottom:12px">Ventas y precios</h2>
+    <label class="check"><input type="checkbox" name="cobra_iva" value="1" {{ 'checked' if cfg.cobra_iva }}> Soy responsable de IVA (los precios incluyen IVA y se discrimina en el recibo)</label>
+    <div class="field" style="margin-top:8px"><label>IVA por defecto %</label><input class="input" name="iva_defecto" value="{{ cfg.iva_defecto|cant }}" style="max-width:120px"></div>
+    <label class="check"><input type="checkbox" name="permitir_sin_stock" value="1" {{ 'checked' if cfg.permitir_sin_stock }}> Permitir vender sin stock (queda en negativo)</label>
+    <h3 style="margin:14px 0 6px">Márgenes sugeridos sobre el costo</h3>
+    <div class="form-row c4">
+      <div class="field"><label>Detal %</label><input class="input" name="margen_detal" value="{{ cfg.margen_detal|cant }}"></div>
+      <div class="field"><label>Mayor %</label><input class="input" name="margen_mayor" value="{{ cfg.margen_mayor|cant }}"></div>
+      <div class="field"><label>Taller %</label><input class="input" name="margen_taller" value="{{ cfg.margen_taller|cant }}"></div>
+    </div>
+    <p class="hint">Solo sugieren el precio en la ficha del repuesto; tú decides el precio final.</p>
+    <button class="btn">Guardar</button>
+  </form>
+
+  <form class="card" method="post" id="tienda">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="seccion" value="tienda">
+    <h2 style="margin-bottom:12px">Tienda online</h2>
+    <label class="check"><input type="checkbox" name="tienda_activa" value="1" {{ 'checked' if cfg.tienda_activa }}> Tienda abierta al público</label>
+    <label class="check" style="margin-top:6px"><input type="checkbox" name="tienda_muestra_agotados" value="1" {{ 'checked' if cfg.tienda_muestra_agotados }}> Mostrar repuestos agotados (como «Agotado»)</label>
+    <div class="field" style="margin-top:10px"><label>Mensaje de bienvenida</label><input class="input" name="tienda_mensaje" value="{{ cfg.tienda_mensaje or '' }}"></div>
+    <div class="field"><label>Información de envíos</label><textarea class="input" name="tienda_envio" rows="2">{{ cfg.tienda_envio or '' }}</textarea></div>
+    <div class="field"><label>Horas que se aparta el stock de un pedido</label><input class="input" name="reserva_horas" value="{{ cfg.reserva_horas }}" style="max-width:120px"></div>
+    <p class="hint">Dirección pública de la tienda: <a href="{{ url_for('tienda', _external=True) }}" target="_blank">{{ url_for('tienda', _external=True) }}</a></p>
+    <button class="btn">Guardar</button>
+  </form>
+
+  <div class="card" id="categorias">
+    <h2 style="margin-bottom:12px">Categorías de repuestos</h2>
+    {% for c in categorias %}
+    <div style="display:flex;gap:6px;margin-bottom:6px">
+      <form method="post" action="{{ url_for('categorias') }}" style="display:flex;gap:6px;flex:1"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="accion" value="renombrar"><input type="hidden" name="id" value="{{ c.id }}">
+        <input class="input" name="nombre" value="{{ c.nombre }}" style="padding:6px 9px"><span class="badge" style="align-self:center">{{ conteo_cat.get(c.id, 0) }}</span><button class="btn sm sec">✓</button></form>
+      {% if not conteo_cat.get(c.id) %}<form method="post" action="{{ url_for('categorias') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="accion" value="borrar"><input type="hidden" name="id" value="{{ c.id }}"><button class="btn sm ghost">✕</button></form>{% endif %}
+    </div>
+    {% endfor %}
+    <form method="post" action="{{ url_for('categorias') }}" style="display:flex;gap:6px;margin-top:10px"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="accion" value="crear">
+      <input class="input" name="nombre" placeholder="Nueva categoría"><button class="btn sm">＋</button></form>
+  </div>
+
+  <form class="card" method="post" id="nomina">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="seccion" value="nomina">
+    <h2 style="margin-bottom:12px">Parámetros de nómina</h2>
+    <div class="form-row">
+      <div class="field"><label>Salario mínimo (SMMLV)</label><input class="input" name="smmlv" value="{{ cfg.smmlv|round|int }}"></div>
+      <div class="field"><label>Auxilio de transporte</label><input class="input" name="aux_transporte" value="{{ cfg.aux_transporte|round|int }}"></div>
+      <div class="field"><label>ARL %</label><input class="input" name="nom_arl_pct" value="{{ cfg.nom_arl_pct }}"></div>
+    </div>
+    <label class="check"><input type="checkbox" name="nom_salud_empleador" value="1" {{ 'checked' if cfg.nom_salud_empleador }}> Pago salud del empleador (8,5 %)</label>
+    <p class="hint">Revisa estos valores cada enero con tu contador.</p>
+    <button class="btn">Guardar</button>
+  </form>
+</div>
+{% endblock %}

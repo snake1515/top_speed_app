@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Cotización {{ c.folio }}{% endblock %}
+{% block content %}
+<div class="page-head no-print">
+  <div><h1>Cotización {{ c.folio }}</h1><p>{{ c.fecha|fh }} · válida hasta {{ vence|f }}</p></div>
+  <div class="actions">
+    {% if c.estado == 'abierta' %}<a class="btn" href="{{ url_for('pos', cotizacion=c.id) }}">Convertir en venta</a>{% endif %}
+    <button class="btn sec" onclick="window.print()">🖨 Imprimir / PDF</button>
+    <a class="btn sec" href="{{ wa }}" target="_blank">WhatsApp</a>
+    {% if c.estado == 'abierta' %}<form method="post" action="{{ url_for('cotizacion_descartar', cid=c.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn danger">Descartar</button></form>{% endif %}
+  </div>
+</div>
+{% if c.estado == 'vendida' %}<div class="flash ok no-print">Esta cotización ya se vendió{% if c.venta_id %}: <a href="{{ url_for('venta_detalle', vid=c.venta_id) }}">ver venta</a>{% endif %}.</div>{% endif %}
+<div class="card" style="max-width:820px">
+  <div style="display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:16px">
+    <div style="display:flex;gap:12px;align-items:center"><img src="{{ url_for('logo', v=cfg.logo_v) }}" style="width:64px;height:64px;object-fit:cover;border-radius:10px" alt="">
+      <div><h2>{{ cfg.nombre }}</h2><small>{% if cfg.nit %}NIT {{ cfg.nit }} · {% endif %}{{ cfg.direccion or '' }} {{ cfg.ciudad or '' }}<br>{{ cfg.telefono or cfg.whatsapp or '' }}</small></div></div>
+    <div style="text-align:right"><h2>Cotización {{ c.folio }}</h2><small>{{ c.fecha|f }} · válida {{ c.vigencia_dias }} días</small></div>
+  </div>
+  <p><b>Cliente:</b> {{ c.cliente_nombre or 'Cliente' }} {{ c.cliente_tel or '' }}</p>
+  <table>
+    <thead><tr><th>Código</th><th>Repuesto</th><th class="num">Cant.</th><th class="num">Precio</th><th class="num">Total</th></tr></thead>
+    <tbody>{% for i in c.items %}<tr><td class="mono">{{ i.codigo }}</td><td>{{ i.nombre }}</td><td class="num">{{ i.cantidad|cant }}</td><td class="num">{{ i.precio|pesos }}</td><td class="num">{{ (i.cantidad * i.precio)|pesos }}</td></tr>{% endfor %}</tbody>
+  </table>
+  <div style="max-width:300px;margin-left:auto;margin-top:10px">
+    {% if c.descuento %}<div class="sum-row"><span>Descuento</span><b>-{{ c.descuento|pesos }}</b></div>{% endif %}
+    <div class="sum-row big"><span>Total</span><span>{{ c.total|pesos }}</span></div>
+  </div>
+  <p class="muted" style="margin-top:20px">Precios sujetos a disponibilidad de inventario. {{ cfg.mensaje_recibo or '' }}</p>
+</div>
+{% endblock %}

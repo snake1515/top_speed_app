@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Usuarios{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Usuarios</h1><p><b>Administrador</b>: todo. <b>Cajero / vendedor</b>: POS, caja, ventas, clientes y pedidos (no ve costos). <b>Bodega</b>: repuestos, compras, proveedores, ajustes y kardex.</p></div><a class="btn" href="{{ url_for('usuario_form') }}">＋ Usuario</a></div>
+<div class="card"><div class="table-wrap"><table>
+  <thead><tr><th>Nombre</th><th>Usuario</th><th>Rol</th><th>Último ingreso</th><th></th></tr></thead>
+  <tbody>{% for u in usuarios %}<tr class="{{ 'anulada' if not u.activo }}"><td><b>{{ u.nombre }}</b></td><td class="mono">{{ u.usuario }}</td><td>{{ u.rol_nombre }}</td><td>{{ u.ultimo_ingreso|fh }}</td><td><a class="btn sm sec" href="{{ url_for('usuario_form', uid=u.id) }}">Editar</a></td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

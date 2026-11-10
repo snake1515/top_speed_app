@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}{{ c.nombre }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{{ c.nombre }}</h1><p>{{ c.documento or '' }} · {{ c.telefono or '' }} · precio {{ c.lista_nombre|lower }}{% if c.notas %} · {{ c.notas }}{% endif %}</p></div>
+  <div class="actions"><a class="btn sec" href="{{ url_for('cliente_form', cid=c.id) }}">Editar</a>
+    {% if current_user.puede('admin') %}<form method="post" action="{{ url_for('cliente_archivar', cid=c.id) }}" data-confirm="¿Archivar este cliente?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn danger">Archivar</button></form>{% endif %}</div>
+</div>
+<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+  <div class="kpi hl"><div class="lbl">Debe</div><div class="val">{{ saldo|pesos }}</div><div class="sub">{% if c.cupo %}cupo {{ c.cupo|pesos }} · disponible {{ (c.cupo - saldo)|pesos }}{% else %}sin límite de cupo{% endif %}</div></div>
+  <div class="kpi"><div class="lbl">Total comprado</div><div class="val">{{ total_comprado|pesos }}</div></div>
+  <div class="kpi"><div class="lbl">Plazo</div><div class="val">{{ c.plazo_dias }} días</div></div>
+</div>
+<div class="card"><div class="table-wrap"><table>
+  <thead><tr><th>Venta</th><th>Fecha</th><th class="num">Total</th><th class="num">Saldo</th><th>Estado</th><th></th></tr></thead>
+  <tbody>{% for v in ventas %}<tr class="{{ 'anulada' if v.anulada }}"><td><a href="{{ url_for('venta_detalle', vid=v.id) }}">{{ v.folio }}</a></td><td>{{ v.fecha|f }}</td><td class="num">{{ v.neto|pesos }}</td>
+    <td class="num">{{ v.saldo|pesos if v.saldo else '' }}</td><td>{{ v.estado|capitalize }}</td>
+    <td>{% if v.saldo and turno %}<form method="post" action="{{ url_for('venta_abono', vid=v.id) }}" style="display:flex;gap:4px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="volver" value="{{ url_for('cliente_detalle', cid=c.id) }}">
+      <input class="input" name="valor" value="{{ v.saldo|round|int }}" style="width:110px;padding:4px 8px" inputmode="numeric">
+      <select class="input" name="medio_id" style="width:120px;padding:4px 8px">{% for m in medios %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}</select>
+      <button class="btn sm ok">Abonar</button></form>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="6" class="empty">Sin compras todavía.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

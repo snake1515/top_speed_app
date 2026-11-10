@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Compras{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Compras</h1><p>{% if request.args.f == 'porpagar' %}Compras con saldo pendiente con el proveedor{% else %}{{ compras|length }} compra(s) · {{ total|pesos }}{% endif %} · por pagar {{ por_pagar|pesos }}</p></div>
+  <a class="btn" href="{{ url_for('compra_nueva') }}">⇣ Nueva compra</a></div>
+<div class="tabs"><a href="{{ url_for('compras') }}" class="{{ 'on' if request.args.f != 'porpagar' }}">Por fecha</a><a href="{{ url_for('compras', f='porpagar') }}" class="{{ 'on' if request.args.f == 'porpagar' }}">Por pagar ({{ por_pagar|pesos }})</a></div>
+{% if request.args.f != 'porpagar' %}
+<form class="filters card"><div class="field"><label>Desde</label><input class="input" type="date" name="desde" value="{{ desde }}"></div><div class="field"><label>Hasta</label><input class="input" type="date" name="hasta" value="{{ hasta }}"></div><button class="btn dark">Filtrar</button></form>
+{% endif %}
+<div class="card"><div class="table-wrap"><table>
+  <thead><tr><th>Nº</th><th>Fecha</th><th>Proveedor</th><th>Factura</th><th class="num">Total</th><th class="num">Saldo</th><th>Vence</th></tr></thead>
+  <tbody>{% for c in compras %}<tr class="clic {{ 'anulada' if c.anulada }}" onclick="location.href='{{ url_for('compra_detalle', cid=c.id) }}'">
+    <td><a href="{{ url_for('compra_detalle', cid=c.id) }}"><b>C-{{ '%05d'|format(c.numero) }}</b></a></td><td>{{ c.fecha|f }}</td><td>{{ c.proveedor.nombre if c.proveedor else '—' }}</td><td>{{ c.factura or '' }}</td>
+    <td class="num">{{ c.total|pesos }}</td><td class="num">{% if c.saldo %}<b class="neg">{{ c.saldo|pesos }}</b>{% endif %}</td><td>{{ c.vence|f if c.saldo else '' }}</td></tr>
+  {% else %}<tr><td colspan="7" class="empty">Sin compras.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

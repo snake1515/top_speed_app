@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ingresar · {{ cfg.nombre }}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=STATIC_V) }}">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}">
+  <style>
+    body { min-height: 100vh; display: grid; grid-template-columns: 1.1fr 1fr; background: var(--nav); }
+    .hero { position: relative; overflow: hidden; color: #fff; padding: 48px; display: flex; flex-direction: column; justify-content: flex-end; }
+    .hero::before, .hero::after { content: ""; position: absolute; left: -10%; right: -10%; height: 70px; transform: skewY(-12deg); }
+    .hero::before { top: 32%; background: var(--accent); }
+    .hero::after { top: calc(32% + 90px); height: 26px; background: var(--amber); }
+    .hero h1 { font-size: 3.4rem; position: relative; line-height: .95; }
+    .hero p { color: var(--nav-ink); position: relative; max-width: 380px; }
+    .box { background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 30px; }
+    .box form { width: 100%; max-width: 360px; }
+    @media (max-width: 800px) { body { grid-template-columns: 1fr; } .hero { min-height: 220px; padding: 26px; } .hero h1 { font-size: 2.3rem; } }
+  </style>
+</head>
+<body>
+  <div class="hero">
+    <h1>{{ cfg.nombre }}</h1>
+    <p>Punto de venta, caja, inventario y tienda online para repuestos de moto.</p>
+  </div>
+  <div class="box">
+    <form method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <img src="{{ url_for('logo', v=cfg.logo_v) }}" alt="" style="width:64px;height:64px;border-radius:12px;object-fit:cover;margin-bottom:12px">
+      <h2 style="margin-bottom:16px">Ingresar</h2>
+      {% with msgs = get_flashed_messages(with_categories=true) %}{% for cat, m in msgs %}<div class="flash {{ cat }}">{{ m }}</div>{% endfor %}{% endwith %}
+      {% if sin_usuarios %}<div class="flash warn">Aún no hay usuarios. En Render agrega la variable <b>ADMIN_PASSWORD</b> (y si quieres <b>ADMIN_USER</b>) y reinicia el servicio para crear el administrador.</div>{% endif %}
+      <div class="field"><label>Usuario</label><input class="input" name="usuario" autocomplete="username" autofocus required></div>
+      <div class="field"><label>Clave</label><input class="input" type="password" name="clave" autocomplete="current-password" required></div>
+      <label class="check" style="margin-bottom:16px"><input type="checkbox" name="recordar" value="1"> Recordarme en este equipo</label>
+      <button class="btn lg" style="width:100%">Entrar</button>
+      <p class="muted" style="text-align:center;margin-top:18px"><a href="{{ url_for('tienda') }}">← Ir a la tienda online</a></p>
+    </form>
+  </div>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Empleados{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Empleados</h1><p>Sueldo fijo, comisión sobre ventas o ambos.</p></div><div class="actions"><a class="btn sec" href="{{ url_for('nomina_nueva') }}">Liquidar nómina</a><a class="btn" href="{{ url_for('empleado_form') }}">＋ Empleado</a></div></div>
+<div class="card"><div class="table-wrap"><table>
+  <thead><tr><th>Nombre</th><th>Cargo</th><th>Pago</th><th class="num">Sueldo</th><th class="num">Comisión</th><th>Usuario POS</th><th></th></tr></thead>
+  <tbody>{% for e in empleados %}<tr class="{{ 'anulada' if not e.activo }}"><td><b>{{ e.nombre }}</b><br><small class="muted">{{ e.documento or '' }} {{ e.telefono or '' }}</small></td><td>{{ e.cargo or '' }}</td><td>{{ e.tipo_nombre }}</td>
+    <td class="num">{{ e.salario|pesos if e.tipo_pago != 'comision' else '—' }}</td><td class="num">{{ e.comision_pct|cant ~ ' %' if e.tipo_pago != 'fijo' else '—' }}</td><td>{{ e.usuario.usuario if e.usuario else '' }}</td>
+    <td><a class="btn sm sec" href="{{ url_for('empleado_form', eid=e.id) }}">Editar</a> <a class="btn sm" href="{{ url_for('nomina_nueva', empleado_id=e.id) }}">Nómina</a></td></tr>
+  {% else %}<tr><td colspan="7" class="empty">Sin empleados.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

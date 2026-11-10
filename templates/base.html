@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ cfg.nombre }}{% endblock %} · {{ cfg.nombre }}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=STATIC_V) }}">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}">
+  <meta name="csrf" content="{{ csrf_token() }}">
+  {% block head %}{% endblock %}
+</head>
+<body>
+{% set ep = request.endpoint or '' %}
+<input type="checkbox" id="menu-toggle">
+<label for="menu-toggle" class="overlay" aria-hidden="true"></label>
+<header class="topbar">
+  <div class="brand"><img class="brand-logo" src="{{ url_for('logo', v=cfg.logo_v) }}" alt=""><div><b>{{ cfg.nombre }}</b></div></div>
+  <label for="menu-toggle" aria-label="Abrir menú">☰</label>
+</header>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="brand"><img class="brand-logo" src="{{ url_for('logo', v=cfg.logo_v) }}" alt=""><div><b>{{ cfg.nombre }}</b><small>{{ cfg.eslogan or 'Repuestos de moto' }}</small></div></div>
+    <div class="speed-stripe"></div>
+    <nav class="nav">
+      {% if current_user.puede('cajero') %}
+      <a href="{{ url_for('pos') }}" class="pos-link">▶ Vender (POS)</a>
+      <div class="caja-pill {{ '' if TURNO else 'off' }}"><span class="dot"></span>{% if TURNO %}Caja #{{ TURNO.numero }} abierta{% else %}Caja cerrada{% endif %}</div>
+      {% endif %}
+      {% if current_user.puede('admin') %}
+      <div class="nav-sep">Negocio</div>
+      <a href="{{ url_for('panel') }}" class="{{ 'on' if ep == 'panel' }}"><span class="ico">◧</span>Resumen</a>
+      <a href="{{ url_for('reportes') }}" class="{{ 'on' if ep.startswith('reportes') }}"><span class="ico">▤</span>Reportes</a>
+      {% endif %}
+      {% if current_user.puede('cajero') %}
+      <div class="nav-sep">Ventas</div>
+      <a href="{{ url_for('caja') }}" class="{{ 'on' if ep in ('caja', 'turnos', 'turno_detalle') }}"><span class="ico">⊟</span>Caja y cuadre</a>
+      <a href="{{ url_for('ventas') }}" class="{{ 'on' if ep in ('ventas', 'venta_detalle') }}"><span class="ico">$</span>Ventas</a>
+      <a href="{{ url_for('pedidos') }}" class="{{ 'on' if ep.startswith('pedido') }}"><span class="ico">🛒</span>Pedidos web{% if PEDIDOS_PEND %}<span class="cnt">{{ PEDIDOS_PEND }}</span>{% endif %}</a>
+      <a href="{{ url_for('cotizaciones') }}" class="{{ 'on' if ep.startswith('cotizacion') }}"><span class="ico">✎</span>Cotizaciones</a>
+      <a href="{{ url_for('cartera') }}" class="{{ 'on' if ep == 'cartera' }}"><span class="ico">⏳</span>Cartera (crédito)</a>
+      <a href="{{ url_for('clientes') }}" class="{{ 'on' if ep.startswith('cliente') }}"><span class="ico">☺</span>Clientes</a>
+      {% endif %}
+      {% if current_user.puede('cajero', 'bodega') %}
+      <div class="nav-sep">Inventario</div>
+      <a href="{{ url_for('productos') }}" class="{{ 'on' if ep.startswith('producto') }}"><span class="ico">⚙</span>Repuestos</a>
+      {% endif %}
+      {% if current_user.puede('bodega') %}
+      <a href="{{ url_for('compras') }}" class="{{ 'on' if ep.startswith('compra') }}"><span class="ico">⇣</span>Compras</a>
+      <a href="{{ url_for('proveedores') }}" class="{{ 'on' if ep.startswith('proveedor') }}"><span class="ico">⛟</span>Proveedores</a>
+      <a href="{{ url_for('ajustes') }}" class="{{ 'on' if ep.startswith('ajuste') }}"><span class="ico">±</span>Ajustes</a>
+      <a href="{{ url_for('kardex') }}" class="{{ 'on' if ep == 'kardex' }}"><span class="ico">≡</span>Kardex</a>
+      {% endif %}
+      {% if current_user.puede('admin') %}
+      <div class="nav-sep">Administración</div>
+      <a href="{{ url_for('empleados') }}" class="{{ 'on' if ep.startswith('empleado') }}"><span class="ico">♟</span>Empleados</a>
+      <a href="{{ url_for('nominas') }}" class="{{ 'on' if ep.startswith('nomina') }}"><span class="ico">✉</span>Nómina</a>
+      <a href="{{ url_for('gastos') }}" class="{{ 'on' if ep.startswith('gasto') }}"><span class="ico">↯</span>Gastos</a>
+      <a href="{{ url_for('usuarios') }}" class="{{ 'on' if ep.startswith('usuario') }}"><span class="ico">⚿</span>Usuarios</a>
+      <a href="{{ url_for('configuracion') }}" class="{{ 'on' if ep == 'configuracion' }}"><span class="ico">⚒</span>Configuración</a>
+      <a href="{{ url_for('tienda') }}" target="_blank"><span class="ico">↗</span>Ver tienda online</a>
+      {% endif %}
+    </nav>
+    <div class="me">
+      <b>{{ current_user.nombre }}</b>
+      <span>{{ current_user.rol_nombre }}</span><br>
+      <a href="{{ url_for('cuenta') }}">Mi clave</a> · <a href="{{ url_for('logout') }}">Salir</a>
+    </div>
+  </aside>
+  <main class="main">
+    {% with msgs = get_flashed_messages(with_categories=true) %}
+      {% for cat, m in msgs %}<div class="flash {{ cat }}">{{ m }}</div>{% endfor %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+<script>
+  const CSRF = document.querySelector('meta[name=csrf]').content;
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const COP = v => (v < -0.5 ? '-$ ' : '$ ') + Math.round(Math.abs(v || 0)).toLocaleString('es-CO');
+  const NUM = (v, d = 2) => (v || 0).toLocaleString('es-CO', { maximumFractionDigits: d });
+  // "1.500" -> 1500 · "12,5" -> 12.5
+  const num = t => { let s = String(t ?? '').replace(/[$\s]/g, ''); if (!s) return 0;
+    if (s.includes(',') && s.includes('.')) s = s.replace(/\./g, '').replace(',', '.');
+    else if (s.includes(',')) s = s.replace(',', '.');
+    else if ((s.match(/\./g) || []).length > 1 || /\.\d{3}$/.test(s)) s = s.replace(/\./g, '');
+    const x = parseFloat(s); return isNaN(x) ? 0 : x; };
+  async function postJSON(url, data) {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF }, body: JSON.stringify(data) });
+    let j = {}; try { j = await r.json(); } catch (e) { j = { ok: false, errores: ['Error de conexión. Intenta de nuevo.'] }; }
+    return j;
+  }
+  // confirmación para formularios peligrosos: <form data-confirm="¿Seguro?">
+  document.addEventListener('submit', e => { const m = e.target.dataset.confirm; if (m && !confirm(m)) e.preventDefault(); });
+  // evita doble envío
+  document.addEventListener('submit', e => { if (e.defaultPrevented) return; const b = e.target.querySelector('button[type=submit],button:not([type])'); if (b) setTimeout(() => b.disabled = true, 0); });
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

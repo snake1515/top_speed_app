@@ -1,0 +1,109 @@
+{% extends "base.html" %}
+{% block title %}Venta {{ v.folio }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Venta {{ v.folio }}</h1>
+    <p>{{ v.fecha|fh }} · {{ v.usuario.nombre if v.usuario else '' }} · caja #{{ v.turno.numero if v.turno else '' }}
+      {% if v.origen == 'tienda' %}· <a href="{{ url_for('pedido_detalle', pid=v.pedido_id) }}">pedido web</a>{% endif %}</p></div>
+  <div class="actions">
+    <a class="btn dark" href="{{ url_for('venta_ticket', vid=v.id, imprimir=1) }}" target="_blank">🖨 Ticket</a>
+    <a class="btn sec" href="{{ wa }}" target="_blank">Enviar por WhatsApp</a>
+  </div>
+</div>
+{% if v.anulada %}<div class="flash err">Venta anulada el {{ v.anulada_fecha|fh }}: {{ v.anulada_motivo }}</div>{% endif %}
+<div class="grid g-main">
+  <div>
+    <div class="card">
+      <div class="table-wrap"><table>
+        <thead><tr><th>Repuesto</th><th class="num">Cant.</th><th class="num">Precio</th><th class="num">Total</th>{% if current_user.ve_costos %}<th class="num">Costo u.</th>{% endif %}<th class="num">Devuelto</th></tr></thead>
+        <tbody>{% for it in v.items %}<tr>
+          <td><a href="{{ url_for('producto_detalle', pid=it.producto_id) }}">{{ it.nombre }}</a><br><small class="mono">{{ it.codigo }}</small></td>
+          <td class="num">{{ it.cantidad|cant }}</td><td class="num">{{ it.precio|pesos }}</td><td class="num">{{ it.total|pesos }}</td>
+          {% if current_user.ve_costos %}<td class="num">{{ it.costo_unitario|pesos }}</td>{% endif %}
+          <td class="num">{{ it.devuelto|cant if it.devuelto else '' }}</td></tr>{% endfor %}</tbody>
+      </table></div>
+      <div style="max-width:360px;margin-left:auto;margin-top:10px">
+        {% if v.descuento %}<div class="sum-row"><span>Subtotal</span><b>{{ v.bruto|pesos }}</b></div><div class="sum-row"><span>Descuento</span><b>-{{ v.descuento|pesos }}</b></div>{% endif %}
+        <div class="sum-row big"><span>Total</span><span>{{ v.total|pesos }}</span></div>
+        {% if v.iva %}<div class="sum-row"><span>IVA incluido</span><b>{{ v.iva|pesos }}</b></div>{% endif %}
+        {% if v.devuelto %}<div class="sum-row"><span>Devoluciones</span><b class="neg">-{{ v.devuelto|pesos }}</b></div>{% endif %}
+        <div class="sum-row"><span>Pagado</span><b>{{ v.pagado|pesos }}</b></div>
+        {% if v.cambio %}<div class="sum-row"><span>Cambio entregado</span><b>{{ v.cambio|pesos }}</b></div>{% endif %}
+        {% if v.saldo %}<div class="sum-row"><span>Saldo</span><b class="neg">{{ v.saldo|pesos }}</b></div>{% endif %}
+        {% if current_user.ve_costos and not v.anulada %}<div class="sum-row"><span>Utilidad</span><b class="pos">{{ v.ganancia|pesos }}</b></div>{% endif %}
+      </div>
+      {% if v.nota %}<p class="note">{{ v.nota }}</p>{% endif %}
+    </div>
+
+    <div class="card">
+      <h2 style="margin-bottom:8px">Pagos y abonos</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Fecha</th><th>Tipo</th><th>Medio</th><th>Referencia</th><th class="num">Valor</th></tr></thead>
+        <tbody>{% for pg in v.pagos %}<tr class="{{ 'anulada' if pg.anulado }}"><td>{{ pg.fecha|fh }}</td><td>{{ pg.tipo|capitalize }}</td><td>{{ pg.medio.nombre }}</td><td>{{ pg.referencia or '' }}</td><td class="num">{{ pg.valor|pesos }}</td></tr>
+        {% else %}<tr><td colspan="5" class="empty">Sin pagos (venta a crédito).</td></tr>{% endfor %}</tbody>
+      </table></div>
+    </div>
+
+    {% if devs %}
+    <div class="card">
+      <h2 style="margin-bottom:8px">Devoluciones</h2>
+      {% for d, det in devs %}
+      <p><b>{{ d.fecha|fh }}</b> · {{ d.valor|pesos }}{% if d.reembolso %} · reembolso {{ d.reembolso|pesos }} en {{ d.medio.nombre }}{% endif %} · <i>{{ d.motivo }}</i><br>
+      <small>{% for l in det %}{{ l.cantidad|cant }} × {{ l.nombre }}{{ ', ' if not loop.last }}{% endfor %}</small></p>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
+
+  <div>
+    <div class="card">
+      <h2 style="margin-bottom:10px">Cliente</h2>
+      {% if v.cliente %}<p style="margin:0"><a href="{{ url_for('cliente_detalle', cid=v.cliente_id) }}"><b>{{ v.cliente.nombre }}</b></a><br>{{ v.cliente.documento or '' }} {{ v.cliente.telefono or '' }}</p>
+      {% else %}<p style="margin:0">{{ v.cliente_nombre or 'Cliente de mostrador' }}<br><small>{{ v.cliente_doc or '' }} {{ v.cliente_tel or '' }}</small></p>{% endif %}
+      <p class="muted" style="margin-bottom:0">Precio: {{ LISTAS_PRECIO[v.lista] }}</p>
+    </div>
+
+    {% if v.saldo and not v.anulada %}
+    <form class="card" method="post" action="{{ url_for('venta_abono', vid=v.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <h2 style="margin-bottom:10px">Registrar abono</h2>
+      {% if not turno %}<p class="flash warn">Abre la caja para recibir abonos.</p>{% endif %}
+      <div class="field"><label>Valor</label><input class="input" name="valor" value="{{ v.saldo|round|int }}" inputmode="numeric" required></div>
+      <div class="field"><label>Medio</label><select class="input" name="medio_id">{% for m in medios %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}</select></div>
+      <div class="field"><input class="input" name="referencia" placeholder="Nº transferencia (opcional)"></div>
+      <button class="btn ok" {{ 'disabled' if not turno }}>Registrar abono</button>
+    </form>
+    {% endif %}
+
+    {% if not v.anulada and v.items|sum(attribute='cantidad') > v.items|sum(attribute='devuelto') %}
+    <details class="card">
+      <summary>Devolución de productos</summary>
+      <form method="post" action="{{ url_for('venta_devolucion', vid=v.id) }}" style="margin-top:12px" data-confirm="¿Registrar la devolución? El repuesto vuelve al inventario.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% for it in v.items if it.cantidad - it.devuelto > 0 %}
+        <div class="sum-row" style="align-items:center"><span>{{ it.nombre }}<br><small class="muted">máx. {{ (it.cantidad - it.devuelto)|cant }} · {{ it.neto_unitario|pesos }} c/u</small></span>
+          <input class="input" name="dev_{{ it.id }}" placeholder="0" style="width:70px;text-align:right" inputmode="decimal"></div>
+        {% endfor %}
+        <div class="field" style="margin-top:8px"><label>Devolver el dinero en</label><select class="input" name="medio_id">{% for m in medios %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}</select>
+          <div class="hint">Si la venta tiene saldo a crédito, primero se descuenta de lo que debe.</div></div>
+        <div class="field"><input class="input" name="motivo" placeholder="Motivo (ej. no le sirvió a la moto)" required></div>
+        <button class="btn sec" {{ 'disabled' if not turno }}>Registrar devolución</button>
+        {% if not turno %}<p class="hint">Abre la caja para registrar devoluciones.</p>{% endif %}
+      </form>
+    </details>
+    {% endif %}
+
+    {% if current_user.puede('admin') and not v.anulada and not v.devuelto %}
+    <details class="card">
+      <summary class="neg">Anular venta</summary>
+      <form method="post" action="{{ url_for('venta_anular', vid=v.id) }}" style="margin-top:12px" data-confirm="¿Anular {{ v.folio }}? Los repuestos vuelven al inventario y el dinero sale de la caja.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="field"><input class="input" name="motivo" placeholder="Motivo de la anulación" required></div>
+        <button class="btn danger">Anular venta</button>
+        <p class="hint">Si la caja de esa venta ya se cerró, el reembolso sale de la caja abierta.</p>
+      </form>
+    </details>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

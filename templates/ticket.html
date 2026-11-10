@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Recibo {{ v.folio }} · {{ cfg.nombre }}</title>
+<style>
+  @page { size: {{ cfg.ancho_ticket }}mm auto; margin: 3mm; }
+  body { font-family: "Courier New", ui-monospace, monospace; font-size: {{ '11px' if cfg.ancho_ticket == 58 else '12.5px' }}; color: #000; margin: 0; background: #e9e9e6; }
+  .t { width: {{ cfg.ancho_ticket - 6 }}mm; margin: 14px auto; background: #fff; padding: 4mm; box-shadow: 0 2px 12px rgba(0,0,0,.12); }
+  .c { text-align: center; } .r { text-align: right; } b { font-weight: 700; }
+  .lg { font-size: 1.35em; font-weight: 700; }
+  hr { border: 0; border-top: 1px dashed #000; margin: 6px 0; }
+  table { width: 100%; border-collapse: collapse; } td { vertical-align: top; padding: 1px 0; }
+  img.logo { max-width: 38mm; max-height: 22mm; display: block; margin: 0 auto 4px; filter: grayscale(1); }
+  .acc { text-align: center; margin: 14px; font-family: system-ui, sans-serif; }
+  .acc a, .acc button { display: inline-block; margin: 3px; padding: 9px 16px; background: #121418; color: #fff; border-radius: 8px; text-decoration: none; border: 0; font: inherit; font-weight: 600; cursor: pointer; }
+  .anul { border: 2px solid #000; text-align: center; font-weight: 700; padding: 3px; margin: 4px 0; }
+  @media print { body { background: #fff; } .t { box-shadow: none; margin: 0; width: auto; padding: 0; } .acc { display: none; } }
+</style>
+</head>
+<body>
+<div class="t">
+  <img class="logo" src="{{ url_for('logo', v=cfg.logo_v) }}" alt="">
+  <div class="c lg">{{ cfg.nombre }}</div>
+  <div class="c">{% if cfg.nit %}NIT {{ cfg.nit }}<br>{% endif %}{% if cfg.direccion %}{{ cfg.direccion }}{% if cfg.ciudad %}, {{ cfg.ciudad }}{% endif %}<br>{% endif %}{% if cfg.telefono or cfg.whatsapp %}Tel {{ cfg.telefono or cfg.whatsapp }}{% endif %}</div>
+  <hr>
+  <div><b>Recibo {{ v.folio }}</b>{% if v.origen == 'tienda' %} · pedido web{% endif %}<br>{{ v.fecha|fh }}<br>Atendió: {{ v.usuario.nombre if v.usuario else '' }}</div>
+  {% if v.cliente_nombre %}<div>Cliente: {{ v.cliente_nombre }}{% if v.cliente_doc %}<br>CC/NIT: {{ v.cliente_doc }}{% endif %}</div>{% endif %}
+  {% if v.anulada %}<div class="anul">*** VENTA ANULADA ***</div>{% endif %}
+  <hr>
+  <table>
+    {% for it in v.items %}
+    <tr><td colspan="2">{{ it.nombre }}</td></tr>
+    <tr><td>{{ it.cantidad|cant }} x {{ it.precio|pesos }} <small>{{ it.codigo }}</small></td><td class="r">{{ it.total|pesos }}</td></tr>
+    {% if it.devuelto %}<tr><td colspan="2"><small>Devuelto: {{ it.devuelto|cant }}</small></td></tr>{% endif %}
+    {% endfor %}
+  </table>
+  <hr>
+  <table>
+    {% if v.descuento %}<tr><td>Subtotal</td><td class="r">{{ v.bruto|pesos }}</td></tr><tr><td>Descuento</td><td class="r">-{{ v.descuento|pesos }}</td></tr>{% endif %}
+    <tr><td class="lg">TOTAL</td><td class="r lg">{{ v.total|pesos }}</td></tr>
+    {% if v.iva %}<tr><td>IVA incluido</td><td class="r">{{ v.iva|pesos }}</td></tr>{% endif %}
+    {% if v.devuelto %}<tr><td>Devoluciones</td><td class="r">-{{ v.devuelto|pesos }}</td></tr>{% endif %}
+    {% for pg in v.pagos if not pg.anulado %}
+    <tr><td>{{ pg.medio.nombre }}{% if pg.tipo == 'abono' %} (abono {{ pg.fecha.strftime('%d/%m') }}){% endif %}</td><td class="r">{{ (pg.recibido or pg.valor)|pesos }}</td></tr>
+    {% endfor %}
+    {% if v.cambio %}<tr><td>Cambio</td><td class="r">{{ v.cambio|pesos }}</td></tr>{% endif %}
+    {% if v.saldo %}<tr><td><b>SALDO PENDIENTE</b></td><td class="r"><b>{{ v.saldo|pesos }}</b></td></tr>{% if v.vence %}<tr><td colspan="2">Vence: {{ v.vence|f }}</td></tr>{% endif %}{% endif %}
+  </table>
+  {% if v.nota %}<hr><div>{{ v.nota }}</div>{% endif %}
+  <hr>
+  <div class="c">{{ cfg.mensaje_recibo or '' }}</div>
+  <div class="c" style="margin-top:6px"><small>Documento soporte de venta. No es factura electrónica.</small></div>
+</div>
+<div class="acc">
+  <button onclick="window.print()">🖨 Imprimir</button>
+  {% if not publico %}<a href="{{ url_for('venta_detalle', vid=v.id) }}">Ver venta</a> <a href="{{ url_for('pos') }}">Nueva venta</a>{% endif %}
+</div>
+{% if auto %}<script>window.addEventListener('load', () => setTimeout(() => window.print(), 300));</script>{% endif %}
+</body>
+</html>

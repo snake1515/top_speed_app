@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Gastos{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Gastos del negocio</h1><p>Arriendo, servicios, publicidad, domicilios… Se restan en la ganancia neta.</p></div></div>
+<div class="grid g-main">
+  <div>
+    <form class="filters card"><div class="field"><label>Desde</label><input class="input" type="date" name="desde" value="{{ desde }}"></div><div class="field"><label>Hasta</label><input class="input" type="date" name="hasta" value="{{ hasta }}"></div><button class="btn dark">Filtrar</button><b style="margin-left:auto;font-size:1.2rem">{{ total|pesos }}</b></form>
+    <div class="card"><div class="table-wrap"><table>
+      <thead><tr><th>Fecha</th><th>Categoría</th><th>Descripción</th><th>Medio</th><th class="num">Valor</th><th></th></tr></thead>
+      <tbody>{% for g in gastos %}<tr class="{{ 'anulada' if g.anulado }}"><td>{{ g.fecha|f }}</td><td>{{ g.categoria }}</td><td>{{ g.descripcion }}</td><td>{{ g.medio.nombre if g.medio else '' }}{{ ' · caja' if g.mov_caja_id }}</td><td class="num">{{ g.valor|pesos }}</td>
+        <td>{% if not g.anulado %}<form method="post" action="{{ url_for('gasto_anular', gid=g.id) }}" data-confirm="¿Anular el gasto?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn ghost sm">✕</button></form>{% endif %}</td></tr>
+      {% else %}<tr><td colspan="6" class="empty">Sin gastos en ese periodo.</td></tr>{% endfor %}</tbody>
+    </table></div></div>
+  </div>
+  <form class="card" method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h2 style="margin-bottom:10px">Registrar gasto</h2>
+    <div class="field"><label>Categoría</label><select class="input" name="categoria" required>{% for c in categorias %}<option>{{ c }}</option>{% endfor %}</select></div>
+    <div class="field"><label>Descripción</label><input class="input" name="descripcion" required placeholder="ej. Arriendo noviembre"></div>
+    <div class="form-row" style="grid-template-columns:1fr 1fr">
+      <div class="field"><label>Valor</label><input class="input" name="valor" inputmode="numeric" required></div>
+      <div class="field"><label>Fecha</label><input class="input" type="date" name="fecha" value="{{ hoy }}"></div>
+    </div>
+    <div class="field"><label>Medio</label><select class="input" name="medio_id">{% for m in medios %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}</select></div>
+    <label class="check" style="margin-bottom:12px"><input type="checkbox" name="desde_caja" value="1" {{ 'disabled' if not turno }}> Sale de la caja abierta</label>
+    <button class="btn">Guardar gasto</button>
+  </form>
+</div>
+{% endblock %}

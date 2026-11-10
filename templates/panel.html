@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Resumen{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Resumen</h1><p>{{ cfg.nombre }} · hoy {{ hoy|f }}</p></div>
+  <div class="actions">
+    <a class="btn sec" href="{{ url_for('reportes') }}">Reporte del mes</a>
+    <a class="btn" href="{{ url_for('pos') }}">▶ Vender</a>
+  </div>
+</div>
+
+{% if pedidos %}
+<div class="flash info" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+  <span>🛒 Tienes <b>{{ PEDIDOS_PEND }}</b> pedido(s) web pendiente(s) por confirmar.</span>
+  <a class="btn sm dark" href="{{ url_for('pedidos') }}">Ver pedidos</a>
+</div>
+{% endif %}
+
+<div class="kpis">
+  <div class="kpi hl"><div class="lbl">Ventas de hoy</div><div class="val">{{ r_hoy.ventas_netas|pesos }}</div><div class="sub">{{ r_hoy.num_ventas }} venta(s) · ticket {{ r_hoy.ticket_promedio|pesos }}</div></div>
+  <div class="kpi"><div class="lbl">Utilidad bruta hoy</div><div class="val {{ 'pos' if r_hoy.utilidad_bruta >= 0 else 'neg' }}">{{ r_hoy.utilidad_bruta|pesos }}</div><div class="sub">margen {{ r_hoy.margen|round(1) }} %</div></div>
+  <div class="kpi"><div class="lbl">Ventas del mes</div><div class="val">{{ r_mes.ventas_netas|pesos }}</div><div class="sub">utilidad bruta {{ r_mes.utilidad_bruta|pesos }}</div></div>
+  <div class="kpi"><div class="lbl">Ganancia neta del mes</div><div class="val {{ 'pos' if r_mes.neta >= 0 else 'neg' }}">{{ r_mes.neta|pesos }}</div><div class="sub">después de gastos y nómina</div></div>
+</div>
+
+<div class="grid g-main">
+  <div>
+    <div class="card">
+      <div class="card-head"><h2>Últimos 30 días</h2><span class="muted">ventas y utilidad bruta por día</span></div>
+      <div class="chart-box"><canvas id="graf"></canvas></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Lo más vendido (30 días)</h2><a href="{{ url_for('reportes') }}">Ver todo</a></div>
+      {% if top %}
+      <div class="table-wrap"><table>
+        <thead><tr><th>Repuesto</th><th class="num">Und.</th><th class="num">Ventas</th><th class="num">Utilidad</th></tr></thead>
+        <tbody>{% for t in top %}<tr><td><a href="{{ url_for('producto_detalle', pid=t.id) }}">{{ t.nombre }}</a><br><small class="mono">{{ t.codigo }}</small></td><td class="num">{{ t.cantidad|cant }}</td><td class="num">{{ t.ventas|pesos }}</td><td class="num">{{ t.utilidad|pesos }}</td></tr>{% endfor %}</tbody>
+      </table></div>
+      {% else %}<p class="empty">Aún no hay ventas.</p>{% endif %}
+    </div>
+  </div>
+  <div>
+    <div class="card">
+      <div class="card-head"><h2>Caja</h2><a href="{{ url_for('caja') }}">Ir a caja</a></div>
+      {% if turno %}
+        <p style="margin-top:0"><span class="badge ok">Abierta</span> #{{ turno.numero }} por {{ turno.usuario.nombre }} · {{ turno.apertura|fh }}</p>
+        <div class="sum-row"><span>Base</span><b>{{ turno.base|pesos }}</b></div>
+        {% for d in caja.medios %}<div class="sum-row"><span>{{ d.medio.nombre }}</span><b>{{ d.neto|pesos }}</b></div>{% endfor %}
+        <div class="sum-row big"><span>Efectivo en caja</span><span>{{ caja.efectivo_esperado|pesos }}</span></div>
+      {% else %}
+        <p class="muted">La caja está cerrada.</p>
+        <a class="btn ok" href="{{ url_for('caja') }}">Abrir caja</a>
+      {% endif %}
+    </div>
+    <div class="card">
+      <h2 style="margin-bottom:10px">Inventario</h2>
+      <div class="sum-row"><span>Valor al costo promedio</span><b>{{ valor_inv|pesos }}</b></div>
+      <div class="sum-row"><span>Repuestos activos</span><b>{{ num_prods }}</b></div>
+      <div class="sum-row"><span>Bajo el mínimo</span><b class="{{ 'neg' if num_bajos }}">{{ num_bajos }}</b></div>
+      <div class="sum-row"><span>Cartera por cobrar</span><b><a href="{{ url_for('cartera') }}">{{ cartera|pesos }}</a></b></div>
+      <div class="sum-row"><span>Por pagar a proveedores</span><b><a href="{{ url_for('compras', f='porpagar') }}">{{ por_pagar|pesos }}</a></b></div>
+    </div>
+    <div class="card">
+      <div class="card-head"><h2>Para reponer</h2><a href="{{ url_for('productos', f='bajos') }}">Ver todos</a></div>
+      {% for p in bajos %}
+        <div class="sum-row"><a href="{{ url_for('producto_detalle', pid=p.id) }}">{{ p.nombre }}</a><span class="{{ 'neg' if p.stock <= 0 }}"><b>{{ p.stock|cant }}</b> / mín {{ p.stock_minimo|cant }}</span></div>
+      {% else %}<p class="muted">Todo está por encima del mínimo.</p>{% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="{{ url_for('static', filename='vendor/chart.umd.js') }}"></script>
+<script>
+  const serie = {{ serie30|tojson }};
+  new Chart(document.getElementById('graf'), {
+    data: { labels: serie.map(s => s[0]),
+      datasets: [
+        { type: 'bar', label: 'Ventas', data: serie.map(s => Math.round(s[1])), backgroundColor: '#121418', borderRadius: 4 },
+        { type: 'line', label: 'Utilidad bruta', data: serie.map(s => Math.round(s[2])), borderColor: '#e3262f', backgroundColor: '#e3262f', tension: .3, pointRadius: 2 }] },
+    options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom' }, tooltip: { callbacks: { label: c => c.dataset.label + ': ' + COP(c.raw) } } },
+      scales: { y: { ticks: { callback: v => COP(v) } }, x: { grid: { display: false } } } }
+  });
+</script>
+{% endblock %}

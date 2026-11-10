@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Cartera{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Cartera (crédito)</h1><p>Lo que los clientes deben por ventas a crédito.</p></div></div>
+<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+  <div class="kpi hl"><div class="lbl">Total por cobrar</div><div class="val">{{ total|pesos }}</div></div>
+  <div class="kpi"><div class="lbl">Vencido</div><div class="val neg">{{ vencido|pesos }}</div></div>
+  <div class="kpi"><div class="lbl">Clientes con saldo</div><div class="val">{{ filas|length }}</div></div>
+</div>
+{% for d in filas %}
+<div class="card">
+  <div class="card-head">
+    <div><h2>{% if d.cliente %}<a href="{{ url_for('cliente_detalle', cid=d.cliente.id) }}">{{ d.nombre }}</a>{% else %}{{ d.nombre }}{% endif %}</h2>
+      <small class="muted">{{ d.cliente.telefono if d.cliente else '' }}</small></div>
+    <div class="actions"><b style="font-size:1.2rem">{{ d.saldo|pesos }}</b>{% if d.vencido %}<span class="badge err">vencido {{ d.vencido|pesos }}</span>{% endif %}
+      {% if d.wa %}<a class="btn sm sec" href="{{ d.wa }}" target="_blank">Recordar por WhatsApp</a>{% endif %}</div>
+  </div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Venta</th><th>Fecha</th><th>Vence</th><th class="num">Total</th><th class="num">Pagado</th><th class="num">Saldo</th></tr></thead>
+    <tbody>{% for v in d.ventas %}<tr><td><a href="{{ url_for('venta_detalle', vid=v.id) }}">{{ v.folio }}</a></td><td>{{ v.fecha|f }}</td>
+      <td>{% if v.vence %}<span class="{{ 'neg' if v.vence < hoy }}">{{ v.vence|f }}</span>{% endif %}</td>
+      <td class="num">{{ v.neto|pesos }}</td><td class="num">{{ v.pagado|pesos }}</td><td class="num"><b>{{ v.saldo|pesos }}</b></td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% else %}
+<div class="card"><p class="empty">Nadie debe nada. 👌</p></div>
+{% endfor %}
+{% endblock %}

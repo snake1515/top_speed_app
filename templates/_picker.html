@@ -1,0 +1,46 @@
+{# Selector de repuestos con búsqueda para compras y ajustes. modo: 'compra' | 'ajuste' #}
+<div class="pos-search" style="margin-bottom:8px"><input class="input" id="pk-q" placeholder="Busca el repuesto por código, nombre o escanea el código de barras" autocomplete="off"></div>
+<div id="pk-res" class="res-list" style="margin-bottom:10px"></div>
+<div class="table-wrap"><table class="lines">
+  <thead><tr><th>Repuesto</th><th class="num">Stock</th><th style="width:110px">Cantidad</th><th style="width:150px" id="pk-th-costo">Costo unitario</th><th class="num">Subtotal</th><th></th></tr></thead>
+  <tbody id="pk-lineas"><tr class="pk-vacio"><td colspan="6" class="empty">Agrega repuestos con el buscador.</td></tr></tbody>
+  <tfoot><tr><td colspan="4">Total</td><td class="num" id="pk-total">$ 0</td><td></td></tr></tfoot>
+</table></div>
+<script>
+(() => {
+  const q = document.getElementById('pk-q'), res = document.getElementById('pk-res'), body = document.getElementById('pk-lineas');
+  let lista = [], t;
+  window.pkAgregar = function (p) {
+    if (body.querySelector(`[data-pid="${p.id}"]`)) { const i = body.querySelector(`[data-pid="${p.id}"] .pk-cant`); i.value = num(i.value) + 1; total(); return; }
+    body.querySelector('.pk-vacio')?.remove();
+    const tr = document.createElement('tr'); tr.dataset.pid = p.id;
+    tr.innerHTML = `<td><input type="hidden" name="producto_id" value="${p.id}"><b>${esc(p.nombre)}</b><br><small class="mono">${esc(p.codigo)}</small> <small class="muted">prom. ${COP(p.costo)}</small></td>
+      <td class="num">${NUM(p.stock)}</td>
+      <td><input class="input pk-cant" name="cantidad" value="1" inputmode="decimal" style="text-align:right"></td>
+      <td><input class="input pk-costo" name="costo" value="${(p.ultimo || p.costo || '') && Math.round(p.ultimo || p.costo).toLocaleString('es-CO')}" inputmode="numeric" style="text-align:right"></td>
+      <td class="num pk-sub"></td><td><button type="button" class="btn ghost sm">✕</button></td>`;
+    tr.querySelector('button').onclick = () => { tr.remove(); total(); };
+    body.appendChild(tr); total();
+    tr.querySelector('.pk-cant').select();
+  };
+  function total() {
+    let tot = 0;
+    body.querySelectorAll('tr[data-pid]').forEach(tr => { const s = num(tr.querySelector('.pk-cant').value) * num(tr.querySelector('.pk-costo').value); tot += s; tr.querySelector('.pk-sub').textContent = COP(s); });
+    document.getElementById('pk-total').textContent = COP(tot);
+  }
+  body.addEventListener('input', total);
+  function pintar() {
+    res.innerHTML = lista.map((p, i) => `<div class="res" data-i="${i}"><img class="thumb" src="${p.img || '{{ url_for('static', filename='sin-foto.svg') }}'}" alt="">
+      <div style="min-width:0"><div class="nm">${esc(p.nombre)}</div><div class="meta mono">${esc(p.codigo)} ${p.marca ? '· ' + esc(p.marca) : ''}</div></div>
+      <div class="st">stock ${NUM(p.stock)}<br>prom. ${COP(p.costo)}</div></div>`).join('');
+  }
+  q.addEventListener('input', () => { clearTimeout(t); const v = q.value.trim(); if (!v) { res.innerHTML = ''; return; }
+    t = setTimeout(async () => { lista = await (await fetch('{{ url_for('api_productos') }}?q=' + encodeURIComponent(v))).json(); pintar(); }, 180); });
+  q.addEventListener('keydown', async e => { if (e.key !== 'Enter') return; e.preventDefault(); const v = q.value.trim(); if (!v) return;
+    lista = await (await fetch('{{ url_for('api_productos') }}?q=' + encodeURIComponent(v))).json();
+    const ex = lista.find(p => p.codigo.toLowerCase() === v.toLowerCase() || p.barras === v) || lista[0];
+    if (ex) { pkAgregar(ex); q.value = ''; res.innerHTML = ''; } else pintar(); });
+  res.addEventListener('click', e => { const el = e.target.closest('.res'); if (!el) return; pkAgregar(lista[el.dataset.i]); q.value = ''; res.innerHTML = ''; q.focus(); });
+  {% if pre %}pkAgregar({{ pre|tojson }});{% endif %}
+})();
+</script>

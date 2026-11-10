@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Mi clave{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Cambiar mi clave</h1><p>{{ current_user.nombre }} · usuario <b>{{ current_user.usuario }}</b></p></div></div>
+<form method="post" class="card" style="max-width:420px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="field"><label>Clave actual</label><input class="input" type="password" name="actual" required></div>
+  <div class="field"><label>Nueva clave</label><input class="input" type="password" name="nueva" minlength="6" required></div>
+  <div class="field"><label>Repite la nueva clave</label><input class="input" type="password" name="repite" minlength="6" required></div>
+  <button class="btn">Guardar</button>
+</form>
+{% endblock %}

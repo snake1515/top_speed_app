@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Nómina {{ p.empleado.nombre }}{% endblock %}
+{% block content %}
+<div class="page-head no-print"><div><h1>Desprendible de nómina</h1></div><div class="actions"><button class="btn sec" onclick="window.print()">🖨 Imprimir</button><a class="btn sec" href="{{ url_for('nominas') }}">← Nómina</a></div></div>
+{% if p.anulada %}<div class="flash err">Nómina anulada.</div>{% endif %}
+<div class="card" style="max-width:640px">
+  <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+    <div><h2>{{ cfg.nombre }}</h2><small>{% if cfg.nit %}NIT {{ cfg.nit }}{% endif %}</small></div>
+    <div style="text-align:right"><b>{{ p.empleado.nombre }}</b><br><small>{{ p.empleado.documento or '' }} · {{ p.empleado.cargo or '' }}</small><br><small>Periodo {{ p.desde|f }} – {{ p.hasta|f }} · pagado {{ p.fecha_pago|f }}</small></div>
+  </div>
+  {% if p.basico %}<div class="sum-row"><span>Sueldo ({{ p.dias }} días)</span><b>{{ p.basico|pesos }}</b></div>{% endif %}
+  {% if p.comisiones %}<div class="sum-row"><span>Comisiones sobre {{ p.ventas_base|pesos }}</span><b>{{ p.comisiones|pesos }}</b></div>{% endif %}
+  {% if p.aux_transporte %}<div class="sum-row"><span>Auxilio de transporte</span><b>{{ p.aux_transporte|pesos }}</b></div>{% endif %}
+  {% if p.horas_extra %}<div class="sum-row"><span>Horas extra</span><b>{{ p.horas_extra|pesos }}</b></div>{% endif %}
+  {% if p.bonificaciones %}<div class="sum-row"><span>Bonificaciones</span><b>{{ p.bonificaciones|pesos }}</b></div>{% endif %}
+  {% if p.deduccion_salud %}<div class="sum-row"><span>− Salud</span><b>{{ p.deduccion_salud|pesos }}</b></div>{% endif %}
+  {% if p.deduccion_pension %}<div class="sum-row"><span>− Pensión</span><b>{{ p.deduccion_pension|pesos }}</b></div>{% endif %}
+  {% if p.otras_deducciones %}<div class="sum-row"><span>− {{ p.deducciones_detalle or 'Otras deducciones' }}</span><b>{{ p.otras_deducciones|pesos }}</b></div>{% endif %}
+  <div class="sum-row big"><span>Neto pagado</span><span>{{ p.neto|pesos }}</span></div>
+  <p class="muted">Pagado por {{ p.medio.nombre if p.medio else '—' }}{{ ' desde la caja' if p.mov_caja_id }}. Costo total empresa {{ p.costo_empresa|pesos }} (aportes {{ p.aportes|pesos }}, prestaciones {{ p.provisiones|pesos }}).</p>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:30px;margin-top:40px"><div style="border-top:1px solid #000;padding-top:4px"><small>Firma empleador</small></div><div style="border-top:1px solid #000;padding-top:4px"><small>Firma empleado</small></div></div>
+</div>
+{% if not p.anulada %}
+<form method="post" action="{{ url_for('nomina_anular', nid=p.id) }}" class="no-print" style="margin-top:12px" data-confirm="¿Anular esta nómina?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn danger">Anular</button></form>
+{% endif %}
+{% endblock %}

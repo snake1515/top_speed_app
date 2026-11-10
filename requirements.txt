@@ -1,0 +1,11 @@
+Flask==3.0.3
+Flask-SQLAlchemy==3.1.1
+SQLAlchemy==2.0.36
+Flask-Login==0.6.3
+python-dotenv==1.0.1
+psycopg2-binary==2.9.9
+gunicorn==22.0.0
+tzdata==2024.1
+Pillow==11.0.0
+openpyxl==3.1.5
+Flask-Compress==1.17

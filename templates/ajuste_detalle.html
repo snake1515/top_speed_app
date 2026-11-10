@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Ajuste A-{{ '%05d'|format(a.numero) }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Ajuste A-{{ '%05d'|format(a.numero) }}</h1><p>{{ a.fecha|fh }} · {{ a.motivo_nombre }} · {{ a.usuario.nombre if a.usuario else '' }}</p></div><a class="btn sec" href="{{ url_for('ajustes') }}">← Ajustes</a></div>
+{% if a.anulado %}<div class="flash err">Ajuste anulado.</div>{% endif %}
+<div class="card">
+  <div class="table-wrap"><table>
+    <thead><tr><th>Repuesto</th><th class="num">{{ 'Entra' if a.sentido == 'entrada' else 'Sale' }}</th><th class="num">Costo u.</th><th class="num">Valor</th></tr></thead>
+    <tbody>{% for it in a.items %}<tr><td><a href="{{ url_for('producto_detalle', pid=it.producto_id) }}">{{ it.producto.nombre }}</a></td><td class="num">{{ it.cantidad|cant }}</td><td class="num">{{ it.costo_unitario|pesos }}</td><td class="num">{{ (it.cantidad * it.costo_unitario)|pesos }}</td></tr>{% endfor %}</tbody>
+    <tfoot><tr><td colspan="3">Total</td><td class="num">{{ a.valor|pesos }}</td></tr></tfoot>
+  </table></div>
+  {% if a.nota %}<p class="note">{{ a.nota }}</p>{% endif %}
+  {% if current_user.puede('admin') and not a.anulado %}
+  <form method="post" action="{{ url_for('ajuste_anular', aid=a.id) }}" data-confirm="¿Anular el ajuste?" style="margin-top:12px"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn danger">Anular ajuste</button></form>
+  {% endif %}
+</div>
+{% endblock %}

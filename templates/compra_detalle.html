@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Compra C-{{ '%05d'|format(c.numero) }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Compra C-{{ '%05d'|format(c.numero) }}</h1><p>{{ c.fecha|fh }} · {{ c.proveedor.nombre if c.proveedor else 'Sin proveedor' }}{% if c.factura %} · factura {{ c.factura }}{% endif %} · {{ c.usuario.nombre if c.usuario else '' }}</p></div>
+  <a class="btn sec" href="{{ url_for('compras') }}">← Compras</a></div>
+{% if c.anulada %}<div class="flash err">Compra anulada.</div>{% endif %}
+<div class="grid g-main">
+  <div class="card"><div class="table-wrap"><table>
+    <thead><tr><th>Repuesto</th><th class="num">Cantidad</th><th class="num">Costo u.</th><th class="num">Subtotal</th><th class="num">Costo prom. hoy</th></tr></thead>
+    <tbody>{% for it in c.items %}<tr><td><a href="{{ url_for('producto_detalle', pid=it.producto_id) }}">{{ it.producto.nombre }}</a><br><small class="mono">{{ it.producto.codigo }}</small></td>
+      <td class="num">{{ it.cantidad|cant }}</td><td class="num">{{ it.costo_unitario|pesos }}</td><td class="num">{{ it.subtotal|pesos }}</td><td class="num">{{ it.producto.costo_promedio|pesos }}</td></tr>{% endfor %}</tbody>
+    <tfoot><tr><td colspan="3">Total</td><td class="num">{{ c.total|pesos }}</td><td></td></tr></tfoot>
+  </table></div>{% if c.nota %}<p class="note">{{ c.nota }}</p>{% endif %}</div>
+  <div>
+    <div class="card">
+      <h2 style="margin-bottom:10px">Pago al proveedor</h2>
+      <div class="sum-row"><span>Total</span><b>{{ c.total|pesos }}</b></div>
+      <div class="sum-row"><span>Pagado</span><b>{{ c.pagado|pesos }}</b></div>
+      <div class="sum-row big"><span>Saldo</span><span class="{{ 'neg' if c.saldo }}">{{ c.saldo|pesos }}</span></div>
+      {% if c.vence and c.saldo %}<p class="muted">Vence {{ c.vence|f }}</p>{% endif %}
+      {% for pg in c.pagos %}<div class="sum-row"><small>{{ pg.fecha|f }} · {{ pg.medio.nombre if pg.medio else '' }}{{ ' · caja' if pg.desde_caja }}</small><small>{{ pg.valor|pesos }}</small></div>{% endfor %}
+      {% if c.saldo and not c.anulada %}
+      <form method="post" action="{{ url_for('compra_pago', cid=c.id) }}" style="margin-top:12px">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="form-row" style="grid-template-columns:1fr 1fr">
+          <input class="input" name="valor" value="{{ c.saldo|round|int }}" inputmode="numeric">
+          <select class="input" name="medio_id">{% for m in medios %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}</select>
+        </div>
+        <label class="check" style="margin:8px 0"><input type="checkbox" name="desde_caja" value="1" {{ 'disabled' if not turno }}> Sale de la caja abierta</label>
+        <button class="btn ok">Registrar pago</button>
+      </form>
+      {% endif %}
+    </div>
+    {% if current_user.puede('admin') and not c.anulada %}
+    <details class="card"><summary class="neg">Anular compra</summary>
+      <form method="post" action="{{ url_for('compra_anular', cid=c.id) }}" style="margin-top:10px" data-confirm="¿Anular la compra? Se resta el stock y se recalcula el costo promedio.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn danger">Anular compra</button>
+        <p class="hint">Solo se puede si aún tienes en stock las unidades compradas.</p></form></details>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

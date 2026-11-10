@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Ventas{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Ventas</h1><p>{{ ventas|length }} ventas · neto {{ total|pesos }}{% if current_user.ve_costos %} · utilidad {{ ganancia|pesos }}{% endif %}</p></div>
+  <a class="btn" href="{{ url_for('pos') }}">▶ Nueva venta</a>
+</div>
+<form class="filters card" method="get">
+  <div class="field"><label>Desde</label><input class="input" type="date" name="desde" value="{{ desde }}"></div>
+  <div class="field"><label>Hasta</label><input class="input" type="date" name="hasta" value="{{ hasta }}"></div>
+  <div class="field"><label>Estado</label><select class="input" name="estado"><option value="">Todas</option>{% for k, l in [('pagada','Pagadas'),('credito','A crédito'),('anulada','Anuladas')] %}<option value="{{ k }}" {{ 'selected' if request.args.estado == k }}>{{ l }}</option>{% endfor %}</select></div>
+  <div class="field"><label>Origen</label><select class="input" name="origen"><option value="">Todos</option><option value="pos" {{ 'selected' if request.args.origen == 'pos' }}>Mostrador</option><option value="tienda" {{ 'selected' if request.args.origen == 'tienda' }}>Tienda web</option></select></div>
+  <div class="field"><label>Buscar</label><input class="input" name="q" value="{{ request.args.q or '' }}" placeholder="Nº o cliente"></div>
+  <button class="btn dark">Filtrar</button>
+</form>
+<div class="card"><div class="table-wrap"><table>
+  <thead><tr><th>Folio</th><th>Fecha</th><th>Cliente</th><th>Vendedor</th><th class="num">Total</th>{% if current_user.ve_costos %}<th class="num">Utilidad</th>{% endif %}<th class="num">Saldo</th><th>Estado</th></tr></thead>
+  <tbody>
+  {% for v in ventas %}
+  <tr class="clic {{ 'anulada' if v.anulada }}" onclick="location.href='{{ url_for('venta_detalle', vid=v.id) }}'">
+    <td><a href="{{ url_for('venta_detalle', vid=v.id) }}"><b>{{ v.folio }}</b></a>{% if v.origen == 'tienda' %} <span class="badge blue">web</span>{% endif %}</td>
+    <td>{{ v.fecha|fh }}</td><td>{{ v.cliente_nombre or '—' }}</td><td>{{ v.usuario.nombre if v.usuario else '' }}</td>
+    <td class="num">{{ v.neto|pesos if not v.anulada else v.total|pesos }}</td>
+    {% if current_user.ve_costos %}<td class="num">{{ v.ganancia|pesos }}</td>{% endif %}
+    <td class="num">{{ v.saldo|pesos if v.saldo else '' }}</td>
+    <td>{% if v.anulada %}<span class="badge err">Anulada</span>{% elif v.estado == 'credito' %}<span class="badge warn">Crédito</span>{% else %}<span class="badge ok">Pagada</span>{% endif %}{% if v.devuelto %} <span class="badge">dev.</span>{% endif %}</td>
+  </tr>
+  {% else %}<tr><td colspan="8" class="empty">No hay ventas en ese periodo.</td></tr>{% endfor %}
+  </tbody>
+</table></div></div>
+{% endblock %}

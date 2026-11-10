@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}Nómina{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Nómina</h1><p>Pagos de personal con aportes y prestaciones. Cuenta en la ganancia neta por su costo total para la empresa.</p></div><a class="btn" href="{{ url_for('nomina_nueva') }}">＋ Liquidar</a></div>
+<div class="card"><div class="table-wrap"><table>
+  <thead><tr><th>Empleado</th><th>Periodo</th><th>Pagado</th><th class="num">Comisiones</th><th class="num">Neto pagado</th><th class="num">Costo empresa</th></tr></thead>
+  <tbody>{% for p in nominas %}<tr class="clic {{ 'anulada' if p.anulada }}" onclick="location.href='{{ url_for('nomina_detalle', nid=p.id) }}'">
+    <td><a href="{{ url_for('nomina_detalle', nid=p.id) }}"><b>{{ p.empleado.nombre }}</b></a></td><td>{{ p.desde|f }} – {{ p.hasta|f }}</td><td>{{ p.fecha_pago|f }}</td>
+    <td class="num">{{ p.comisiones|pesos if p.comisiones else '' }}</td><td class="num">{{ p.neto|pesos }}</td><td class="num">{{ p.costo_empresa|pesos }}</td></tr>
+  {% else %}<tr><td colspan="6" class="empty">Sin nóminas.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

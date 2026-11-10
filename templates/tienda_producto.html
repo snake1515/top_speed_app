@@ -1,0 +1,31 @@
+{% extends "tienda_base.html" %}
+{% block title %}{{ p.nombre }} · {{ cfg.nombre }}{% endblock %}
+{% block content %}
+{% set img = url_for('img_producto', pid=p.id, v=p.imagen_v) if p.imagen_v else url_for('static', filename='sin-foto.svg') %}
+<p><a href="{{ url_for('tienda', cat=p.categoria_id) if p.categoria_id else url_for('tienda') }}">← {{ p.categoria.nombre if p.categoria else 'Volver a la tienda' }}</a></p>
+<div class="s-prod">
+  <div class="foto"><img src="{{ img }}" alt="{{ p.nombre }}"></div>
+  <div>
+    <small class="mono muted">Código {{ p.codigo }}{% if p.referencia %} · Ref. {{ p.referencia }}{% endif %}</small>
+    <h1>{{ p.nombre }}</h1>
+    {% if p.marca %}<p style="margin:4px 0"><b>Marca:</b> {{ p.marca }}</p>{% endif %}
+    {% if p.compatibilidad %}<p style="margin:4px 0"><b>🏍 Sirve para:</b> {{ p.compatibilidad }}</p>{% endif %}
+    <div class="precio">{{ p.precio_detal|pesos }}</div>
+    {% if disp > 0 %}
+      <span class="badge ok">{{ 'Disponible' if disp > 3 else 'Últimas ' ~ (disp|cant) ~ ' unidades' }}</span>
+      <div class="s-qty"><label for="qty" style="margin:0">Cantidad</label><input class="input" id="qty" type="number" min="1" max="{{ disp|int }}" value="1"></div>
+      <button class="btn lg" type="button" data-qty="qty" data-add='{{ {"id": p.id, "nombre": p.nombre, "codigo": p.codigo, "precio": p.precio_detal, "img": img, "disp": disp}|tojson|forceescape }}'>Agregar al carrito</button>
+    {% else %}
+      <span class="badge dark">Agotado</span>
+      <p>Escríbenos y te avisamos cuando llegue.</p>
+    {% endif %}
+    {% if cfg.whatsapp %}<p><a href="https://wa.me/{{ ('57' ~ cfg.whatsapp) if cfg.whatsapp|length == 10 else cfg.whatsapp }}?text={{ ('Hola, pregunto por ' ~ p.nombre ~ ' (' ~ p.codigo ~ ')')|urlencode }}" target="_blank" rel="noopener">¿Dudas? Pregunta por WhatsApp si le sirve a tu moto</a></p>{% endif %}
+    {% if p.descripcion %}<div style="margin-top:14px;white-space:pre-line">{{ p.descripcion }}</div>{% endif %}
+    {% if medios %}<p class="muted" style="margin-top:14px">Pagos: {{ medios|map(attribute='nombre')|join(', ') }}.</p>{% endif %}
+  </div>
+</div>
+{% if relacionados %}
+<h2 style="margin:26px 0 12px">También en {{ p.categoria.nombre }}</h2>
+<div class="s-grid">{% for p in relacionados %}{% include "_tarjeta.html" %}{% endfor %}</div>
+{% endif %}
+{% endblock %}

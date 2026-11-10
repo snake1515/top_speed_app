@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Caja #{{ t.numero }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Caja #{{ t.numero }}</h1><p>Abrió {{ t.usuario.nombre }} · {{ t.apertura|fh }}{% if t.cierre %} · cerró {{ t.cerrado_por.nombre if t.cerrado_por else '' }} · {{ t.cierre|fh }}{% endif %}</p></div>
+  <div class="actions no-print"><button class="btn sec" onclick="window.print()">🖨 Imprimir cuadre</button><a class="btn sec" href="{{ url_for('turnos') }}">← Cierres</a></div>
+</div>
+<div class="grid g2">
+  <div class="card">
+    <h2 style="margin-bottom:10px">Cuadre de efectivo</h2>
+    <div class="sum-row"><span>Base</span><b>{{ t.base|pesos }}</b></div>
+    {% for d in r.medios if d.medio.es_efectivo %}
+      <div class="sum-row"><span>+ Entradas en efectivo</span><b>{{ d.ingresos|pesos }}</b></div>
+      <div class="sum-row"><span>− Salidas en efectivo</span><b>{{ d.egresos|pesos }}</b></div>
+    {% endfor %}
+    <div class="sum-row big"><span>Debía haber</span><span>{{ (t.efectivo_esperado if t.efectivo_esperado is not none else r.efectivo_esperado)|pesos }}</span></div>
+    {% if t.efectivo_contado is not none %}
+    <div class="sum-row"><span>Contado</span><b>{{ t.efectivo_contado|pesos }}</b></div>
+    <div class="sum-row"><span>{{ 'Sobrante' if t.diferencia > 0 else ('Faltante' if t.diferencia < 0 else 'Diferencia') }}</span><b class="{{ 'neg' if t.diferencia < 0 else ('pos' if t.diferencia > 0 else '') }}">{{ t.diferencia|pesos }}</b></div>
+    {% endif %}
+    {% if t.nota_cierre %}<p class="note">{{ t.nota_cierre }}</p>{% endif %}
+    {% if denoms %}
+    <h3 style="margin:14px 0 6px">Conteo</h3>
+    {% for d in denominaciones if denoms.get(d|string) %}<div class="sum-row"><span>{{ denoms[d|string] }} × {{ d|pesos }}</span><span>{{ (denoms[d|string] * d)|pesos }}</span></div>{% endfor %}
+    {% endif %}
+  </div>
+  <div class="card">
+    <h2 style="margin-bottom:10px">Por medio de pago</h2>
+    {% for d in r.medios %}
+    <div class="sum-row"><span><b>{{ d.medio.nombre }}</b><br><small class="muted">entró {{ d.ingresos|pesos }} · salió {{ d.egresos|pesos }}</small></span><b>{{ d.neto|pesos }}</b></div>
+    {% else %}<p class="muted">Sin movimientos.</p>{% endfor %}
+    <div class="sum-row big"><span>Ventas</span><span>{{ r.ventas_total|pesos }}</span></div>
+    <div class="sum-row"><span>Número de ventas</span><b>{{ r.num_ventas }}</b></div>
+    {% if r.ventas_credito %}<div class="sum-row"><span>Vendido a crédito</span><b>{{ r.ventas_credito|pesos }}</b></div>{% endif %}
+  </div>
+</div>
+<div class="card">
+  <h2 style="margin-bottom:8px">Movimientos</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Hora</th><th>Concepto</th><th>Medio</th><th>Usuario</th><th class="num">Valor</th></tr></thead>
+    <tbody>{% for m in r.movs|sort(attribute='fecha') %}<tr><td>{{ m.fecha|fh }}</td><td>{{ m.concepto }}</td><td>{{ m.medio.nombre }}</td><td>{{ m.usuario.nombre if m.usuario else '' }}</td>
+      <td class="num {{ 'pos' if m.tipo == 'ingreso' else 'neg' }}">{{ '+' if m.tipo == 'ingreso' else '−' }}{{ m.valor|pesos }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endblock %}

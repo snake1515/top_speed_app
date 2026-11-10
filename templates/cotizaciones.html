@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Cotizaciones{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Cotizaciones</h1><p>Se crean desde el POS con el botón «Cotizar» y se convierten en venta con un clic.</p></div><a class="btn" href="{{ url_for('pos') }}">▶ Ir al POS</a></div>
+<div class="card"><div class="table-wrap"><table>
+  <thead><tr><th>Folio</th><th>Fecha</th><th>Cliente</th><th class="num">Total</th><th>Estado</th><th></th></tr></thead>
+  <tbody>{% for c in cotizaciones %}<tr>
+    <td><a href="{{ url_for('cotizacion_detalle', cid=c.id) }}"><b>{{ c.folio }}</b></a></td><td>{{ c.fecha|f }}</td><td>{{ c.cliente_nombre or '—' }}</td><td class="num">{{ c.total|pesos }}</td>
+    <td>{% if c.estado == 'vendida' %}<span class="badge ok">Vendida</span>{% elif c.estado == 'descartada' %}<span class="badge">Descartada</span>{% elif (hoy - c.fecha).days > c.vigencia_dias %}<span class="badge warn">Vencida</span>{% else %}<span class="badge blue">Abierta</span>{% endif %}</td>
+    <td>{% if c.estado == 'abierta' %}<a class="btn sm" href="{{ url_for('pos', cotizacion=c.id) }}">Vender</a>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="6" class="empty">Sin cotizaciones.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

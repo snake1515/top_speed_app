@@ -1,0 +1,399 @@
+{% extends "base.html" %}
+{% block title %}Punto de venta{% endblock %}
+{% block content %}
+{% if not turno %}
+<div class="card" style="max-width:520px;margin:30px auto;text-align:center">
+  <h1>La caja está cerrada</h1>
+  <p class="muted">Abre la caja con la base en efectivo para empezar a vender.</p>
+  <form method="post" action="{{ url_for('caja_abrir') }}" style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="volver" value="{{ request.full_path }}">
+    <input class="input" name="base" placeholder="Base en efectivo, ej. 100.000" inputmode="numeric" style="max-width:240px" required>
+    <button class="btn ok">Abrir caja</button>
+  </form>
+</div>
+{% else %}
+<div class="pos-wrap">
+  <section>
+    <div class="page-head" style="margin-bottom:10px">
+      <div><h1>Punto de venta</h1><p>Caja #{{ turno.numero }} · {{ turno.usuario.nombre }} · <span class="kbd">F1</span> buscar <span class="kbd">F2</span> cobrar <span class="kbd">↑↓</span> elegir <span class="kbd">Enter</span> agregar</p></div>
+      {% if precarga %}<span class="badge {{ 'blue' if precarga.tipo == 'pedido' else 'warn' }}" style="font-size:.9rem">{{ 'Pedido web' if precarga.tipo == 'pedido' else 'Cotización' }} {{ precarga.folio }}</span>{% endif %}
+    </div>
+    <div class="pos-search"><input id="buscar" class="input" placeholder="Código, código de barras, nombre, marca o moto (ej. pastillas pulsar)" autocomplete="off" autofocus></div>
+    <div id="resultados" class="res-list"></div>
+  </section>
+
+  <aside class="card cart">
+    <div class="card-head" style="margin-bottom:8px">
+      <h2>Venta</h2>
+      <div class="actions"><button class="btn ghost sm" id="vaciar" type="button">Vaciar</button></div>
+    </div>
+    <div class="field" style="margin-bottom:8px;position:relative">
+      <div id="cli-sel" style="display:none" class="sum-row"><span>👤 <b id="cli-nombre"></b> <small id="cli-info" class="muted"></small></span><button class="btn ghost sm" type="button" id="cli-quitar">✕</button></div>
+      <div id="cli-busca"><input class="input" id="cli-q" placeholder="Cliente (opcional): nombre, cédula o celular" autocomplete="off">
+        <div id="cli-res" class="res-list" style="position:absolute;left:0;right:0;z-index:5;margin-top:4px"></div></div>
+    </div>
+    <div class="form-row" style="grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px">
+      <select class="input" id="lista">{% for k, v in LISTAS_PRECIO.items() %}<option value="{{ k }}">Precio {{ v|lower }}</option>{% endfor %}</select>
+      <input class="input" id="cli-tel" placeholder="Celular para el recibo">
+    </div>
+    <div id="carrito" class="cart-items"></div>
+    <div class="sum-row" style="margin-top:8px"><span>Subtotal</span><b id="subtotal">$ 0</b></div>
+    <div class="sum-row" style="align-items:center"><span>Descuento</span><input class="input" id="descuento" style="width:130px;text-align:right;padding:5px 8px" placeholder="0" inputmode="numeric"></div>
+    <div class="cart-total" id="total">$ 0</div>
+    <div style="display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:12px">
+      <button class="btn lg" id="btn-cobrar" type="button">Cobrar</button>
+      <button class="btn sec" id="btn-cotizar" type="button" title="Guardar como cotización">Cotizar</button>
+    </div>
+  </aside>
+</div>
+
+<!-- modal de cobro -->
+<div class="modal-bg" id="m-cobro">
+  <div class="modal">
+    <div class="card-head"><h2>Cobrar</h2><button class="btn ghost" type="button" data-cerrar>✕</button></div>
+    <div class="cart-total" id="c-total" style="text-align:left"></div>
+    <p class="muted" style="margin:2px 0 12px">Toca un medio para agregarlo. Puedes combinar efectivo y transferencia.</p>
+    <div class="pay-grid">{% for m in medios %}<button type="button" class="pay-btn" data-medio="{{ m.id }}" data-tipo="{{ m.tipo }}" data-nombre="{{ m.nombre }}">{{ m.nombre }}</button>{% endfor %}</div>
+    <div id="pagos"></div>
+    <div id="rapido" class="quick-cash"></div>
+    <div class="sum-row" style="margin-top:12px"><span>Recibido</span><b id="c-recibido">$ 0</b></div>
+    <div class="sum-row"><span id="c-falta-lbl">Falta</span><b id="c-falta">$ 0</b></div>
+    <div class="sum-row big" id="c-cambio-row"><span>Cambio</span><span id="c-cambio">$ 0</span></div>
+    <label class="check" id="c-credito-lbl" style="margin-top:10px"><input type="checkbox" id="c-credito"> Dejar el saldo a crédito (cartera)</label>
+    <div class="field" style="margin-top:10px"><input class="input" id="c-nota" placeholder="Nota (opcional): placa, mecánico, garantía…"></div>
+    <div id="c-err"></div>
+    <button class="btn lg ok" style="width:100%" id="c-confirmar" type="button">Confirmar venta</button>
+  </div>
+</div>
+
+<!-- modal resultado -->
+<div class="modal-bg" id="m-ok">
+  <div class="modal" style="text-align:center">
+    <div style="font-size:3rem">✔</div>
+    <h1 id="ok-folio"></h1>
+    <div id="ok-cambio" class="cart-total" style="text-align:center;margin:10px 0"></div>
+    <p id="ok-saldo" class="muted"></p>
+    <div class="actions" style="justify-content:center;margin-top:14px">
+      <a class="btn dark" id="ok-ticket" target="_blank">🖨 Imprimir ticket</a>
+      <a class="btn sec" id="ok-wa" target="_blank">WhatsApp</a>
+      <a class="btn sec" id="ok-detalle">Ver venta</a>
+    </div>
+    <button class="btn lg" style="width:100%;margin-top:16px" id="ok-nueva" type="button">Nueva venta (Enter)</button>
+  </div>
+</div>
+
+<!-- modal cliente nuevo -->
+<div class="modal-bg" id="m-cli">
+  <div class="modal">
+    <div class="card-head"><h2>Cliente nuevo</h2><button class="btn ghost" type="button" data-cerrar>✕</button></div>
+    <div class="field"><label>Nombre</label><input class="input" id="nc-nombre"></div>
+    <div class="form-row"><div class="field"><label>Cédula / NIT</label><input class="input" id="nc-doc"></div>
+      <div class="field"><label>Celular</label><input class="input" id="nc-tel"></div></div>
+    <div class="field"><label>Tipo de precio</label><select class="input" id="nc-lista">{% for k, v in LISTAS_PRECIO.items() %}<option value="{{ k }}">{{ v }}</option>{% endfor %}</select></div>
+    <div id="nc-err"></div>
+    <button class="btn" type="button" id="nc-guardar">Guardar y usar</button>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if turno %}
+<script>
+const VE_COSTO = {{ 'true' if current_user.ve_costos else 'false' }};
+const ES_ADMIN = {{ 'true' if current_user.puede('admin') else 'false' }};
+const PRECARGA = {{ precarga|tojson }};
+const DESTACADOS = {{ destacados|tojson }};
+const $ = id => document.getElementById(id);
+let carrito = [];        // {p, cantidad, precio, manual}
+let cliente = null;
+let resultados = [], selIdx = 0, pagos = [];
+const CLAVE = 'ts_pos_borrador';
+
+function precioLista(p) { const l = $('lista').value; return p[l] || p.detal; }
+function totales() {
+  const sub = carrito.reduce((a, it) => a + it.cantidad * it.precio, 0);
+  const desc = Math.min(num($('descuento').value), sub);
+  return { sub, desc, total: Math.round(sub - desc) };
+}
+function guardarBorrador() {
+  try { localStorage.setItem(CLAVE, JSON.stringify({ carrito, cliente, lista: $('lista').value, desc: $('descuento').value, tel: $('cli-tel').value })); } catch (e) {}
+}
+function pintarCarrito() {
+  const box = $('carrito');
+  if (!carrito.length) { box.innerHTML = '<p class="empty">Busca y agrega repuestos.<br><small>El lector de código de barras también funciona aquí.</small></p>'; }
+  else box.innerHTML = carrito.map((it, i) => {
+    const disp = it.p.stock - (it.p.reservado || 0);
+    const alerta = it.cantidad > it.p.stock ? `<span class="badge err">solo hay ${NUM(it.p.stock)}</span>` : (it.cantidad > disp ? `<span class="badge warn">${NUM(it.p.reservado)} apartado(s) web</span>` : '');
+    const bajoCosto = VE_COSTO && it.p.costo && it.precio < it.p.costo ? '<span class="badge err">bajo costo</span>' : '';
+    return `<div class="ci">
+      <div><div class="nm">${esc(it.p.nombre)}</div><div class="cd">${esc(it.p.codigo)}${it.p.ubicacion ? ' · 📍' + esc(it.p.ubicacion) : ''} ${alerta} ${bajoCosto}</div></div>
+      <div class="tot">${COP(it.cantidad * it.precio)}</div>
+      <div class="ctl">
+        <button class="qty-btn" data-i="${i}" data-d="-1" type="button">−</button>
+        <input class="input" data-i="${i}" data-campo="cantidad" value="${NUM(it.cantidad)}" inputmode="decimal">
+        <button class="qty-btn" data-i="${i}" data-d="1" type="button">+</button>
+        <span class="muted">×</span>
+        <input class="input precio" data-i="${i}" data-campo="precio" value="${Math.round(it.precio).toLocaleString('es-CO')}" inputmode="numeric">
+        <button class="btn ghost sm" data-quitar="${i}" type="button" title="Quitar">✕</button>
+      </div></div>`;
+  }).join('');
+  const t = totales();
+  $('subtotal').textContent = COP(t.sub);
+  $('total').textContent = COP(t.total);
+  guardarBorrador();
+}
+function agregar(p, cantidad = 1, precio = null) {
+  const ex = carrito.find(it => it.p.id === p.id);
+  if (ex) ex.cantidad += cantidad;
+  else carrito.unshift({ p, cantidad, precio: precio ?? precioLista(p), manual: precio !== null });
+  pintarCarrito();
+}
+$('carrito').addEventListener('click', e => {
+  const b = e.target.closest('[data-d]');
+  if (b) { const it = carrito[b.dataset.i]; it.cantidad = Math.max(1, it.cantidad + Number(b.dataset.d)); pintarCarrito(); }
+  const q = e.target.closest('[data-quitar]');
+  if (q) { carrito.splice(Number(q.dataset.quitar), 1); pintarCarrito(); }
+});
+$('carrito').addEventListener('change', e => {
+  const el = e.target; if (!el.dataset.campo) return;
+  const it = carrito[el.dataset.i]; const v = num(el.value);
+  if (el.dataset.campo === 'cantidad') it.cantidad = v > 0 ? v : 1;
+  else { it.precio = Math.max(0, Math.round(v)); it.manual = true; }
+  pintarCarrito();
+});
+$('descuento').addEventListener('input', () => { const t = totales(); $('total').textContent = COP(t.total); guardarBorrador(); });
+$('lista').addEventListener('change', () => { carrito.forEach(it => { if (!it.manual) it.precio = precioLista(it.p); }); pintarCarrito(); });
+$('vaciar').addEventListener('click', () => { if (carrito.length && !confirm('¿Vaciar la venta?')) return; limpiar(); });
+
+// ---------- búsqueda de productos
+let tBusca;
+function pintarResultados(lista, titulo = '') {
+  resultados = lista; selIdx = 0;
+  $('resultados').innerHTML = (titulo ? `<small class="muted">${titulo}</small>` : '') + (lista.length ? lista.map((p, i) => {
+    const disp = p.stock - (p.reservado || 0);
+    const st = p.stock <= 0 ? '<span class="neg">Agotado</span>' : `<span class="${disp <= 0 ? 'neg' : 'muted'}">Stock ${NUM(p.stock)}${p.reservado ? ' · ' + NUM(p.reservado) + ' apart.' : ''}</span>`;
+    return `<div class="res ${i === 0 ? 'sel' : ''}" data-i="${i}">
+      <img class="thumb" src="${p.img || '{{ url_for('static', filename='sin-foto.svg') }}'}" alt="" loading="lazy">
+      <div style="min-width:0"><div class="nm">${esc(p.nombre)}</div>
+        <div class="meta"><span class="mono">${esc(p.codigo)}</span>${p.marca ? ' · ' + esc(p.marca) : ''}${p.ubicacion ? ' · 📍' + esc(p.ubicacion) : ''}${p.compat ? ' · 🏍 ' + esc(p.compat) : ''}</div></div>
+      <div><div class="pr">${COP(precioLista(p))}</div><div class="st">${st}${VE_COSTO ? ' · costo ' + COP(p.costo) : ''}</div></div></div>`;
+  }).join('') : ($('buscar').value.trim() ? '<p class="empty">Sin resultados. Revisa el código o busca por otra palabra.</p>'
+    : '<p class="empty">Escribe el código, el nombre del repuesto o la moto, o pasa el lector de código de barras.<br><small>Marca repuestos como «Destacado» para verlos aquí siempre.</small></p>'));
+}
+async function buscar(q) {
+  const r = await fetch('{{ url_for('api_productos') }}?q=' + encodeURIComponent(q));
+  return r.json();
+}
+$('buscar').addEventListener('input', () => {
+  clearTimeout(tBusca);
+  const q = $('buscar').value.trim();
+  if (!q) { pintarResultados(DESTACADOS, DESTACADOS.length ? 'Destacados' : ''); return; }
+  tBusca = setTimeout(async () => pintarResultados(await buscar(q)), 180);
+});
+$('buscar').addEventListener('keydown', async e => {
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault(); if (!resultados.length) return;
+    selIdx = (selIdx + (e.key === 'ArrowDown' ? 1 : -1) + resultados.length) % resultados.length;
+    document.querySelectorAll('.res').forEach((el, i) => el.classList.toggle('sel', i === selIdx));
+    document.querySelector('.res.sel')?.scrollIntoView({ block: 'nearest' });
+  }
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    const q = $('buscar').value.trim(); if (!q) return;
+    clearTimeout(tBusca);
+    // lector de barras: escribe rápido + Enter → buscar exacto
+    const lista = await buscar(q);
+    const exacto = lista.find(p => p.codigo.toLowerCase() === q.toLowerCase() || p.barras === q);
+    const p = exacto || (resultados.length ? resultados[selIdx] : lista[0]);
+    if (p) { agregar(p); $('buscar').value = ''; pintarResultados(DESTACADOS, DESTACADOS.length ? 'Destacados' : ''); }
+    else pintarResultados(lista);
+  }
+});
+$('resultados').addEventListener('click', e => {
+  const el = e.target.closest('.res'); if (!el) return;
+  agregar(resultados[el.dataset.i]); $('buscar').focus(); $('buscar').select();
+});
+
+// ---------- clientes
+let tCli;
+function usarCliente(c) {
+  cliente = c;
+  $('cli-busca').style.display = c ? 'none' : '';
+  $('cli-sel').style.display = c ? 'flex' : 'none';
+  if (c) {
+    $('cli-nombre').textContent = c.nombre;
+    $('cli-info').textContent = [c.documento, c.saldo > 0 ? 'debe ' + COP(c.saldo) : ''].filter(Boolean).join(' · ');
+    $('lista').value = c.lista || 'detal'; $('lista').dispatchEvent(new Event('change'));
+    if (c.telefono) $('cli-tel').value = c.telefono;
+  }
+  $('cli-res').innerHTML = ''; guardarBorrador();
+}
+$('cli-quitar').addEventListener('click', () => { usarCliente(null); $('cli-q').value = ''; });
+$('cli-q').addEventListener('input', () => {
+  clearTimeout(tCli);
+  const q = $('cli-q').value.trim();
+  if (q.length < 2) { $('cli-res').innerHTML = ''; return; }
+  tCli = setTimeout(async () => {
+    const lista = await (await fetch('{{ url_for('api_clientes') }}?q=' + encodeURIComponent(q))).json();
+    $('cli-res').innerHTML = lista.map((c, i) => `<div class="res" style="grid-template-columns:1fr auto" data-c='${esc(JSON.stringify(c))}'><div><div class="nm">${esc(c.nombre)}</div><div class="meta">${esc(c.documento)} ${esc(c.telefono)}</div></div><span class="badge">${esc(c.lista)}</span></div>`).join('')
+      + `<div class="res" style="grid-template-columns:1fr" id="cli-nuevo"><div class="nm">＋ Crear cliente «${esc(q)}»</div></div>`;
+  }, 200);
+});
+$('cli-res').addEventListener('click', e => {
+  const el = e.target.closest('.res'); if (!el) return;
+  if (el.id === 'cli-nuevo') { $('nc-nombre').value = $('cli-q').value; abrir('m-cli'); $('nc-nombre').focus(); return; }
+  usarCliente(JSON.parse(el.dataset.c));
+});
+$('nc-guardar').addEventListener('click', async () => {
+  const j = await postJSON('{{ url_for('api_cliente_nuevo') }}', { nombre: $('nc-nombre').value, documento: $('nc-doc').value, telefono: $('nc-tel').value, lista: $('nc-lista').value });
+  if (!j.ok) { $('nc-err').innerHTML = j.errores.map(m => `<div class="flash err">${esc(m)}</div>`).join(''); return; }
+  cerrar('m-cli'); usarCliente(j.cliente);
+});
+
+// ---------- modales
+function abrir(id) { $(id).classList.add('on'); }
+function cerrar(id) { $(id).classList.remove('on'); }
+document.querySelectorAll('[data-cerrar]').forEach(b => b.addEventListener('click', () => b.closest('.modal-bg').classList.remove('on')));
+
+// ---------- cobro
+function pintarPagos() {
+  const t = totales().total;
+  $('pagos').innerHTML = pagos.map((pg, i) => `<div class="pay-line">
+      <div><b>${esc(pg.nombre)}</b>${pg.tipo !== 'efectivo' ? `<input class="input" data-ref="${i}" placeholder="Nº transferencia (opcional)" value="${esc(pg.referencia || '')}" style="padding:4px 8px;margin-top:3px;font-size:.85rem">` : ''}</div>
+      <input class="input" data-pago="${i}" value="${Math.round(pg.valor).toLocaleString('es-CO')}" inputmode="numeric" style="text-align:right">
+      <button class="btn ghost sm" data-qp="${i}" type="button">✕</button></div>`).join('');
+  const recibido = pagos.reduce((a, p) => a + p.valor, 0);
+  const falta = Math.max(t - recibido, 0), cambio = Math.max(recibido - t, 0);
+  $('c-recibido').textContent = COP(recibido);
+  $('c-falta').textContent = COP(falta);
+  $('c-falta').className = falta > 0 ? 'neg' : '';
+  $('c-cambio').textContent = COP(cambio);
+  $('c-cambio-row').style.opacity = cambio > 0 ? 1 : .35;
+  $('c-credito-lbl').style.display = falta > 0 ? 'flex' : 'none';
+  const ef = pagos.find(p => p.tipo === 'efectivo');
+  if (ef) {
+    const necesita = Math.max(t - pagos.filter(p => p !== ef).reduce((a, p) => a + p.valor, 0), 0);
+    const cands = [...new Set([5000, 10000, 20000, 50000].map(m => Math.ceil(necesita / m) * m).concat([50000, 100000]))]
+      .filter(v => v > necesita).sort((a, b) => a - b).slice(0, 4);
+    $('rapido').innerHTML = [['Exacto', null], ...cands.map(v => [COP(v), v])].map(([l, v]) => `<button type="button" data-rap="${v ?? ''}">${l}</button>`).join('');
+  } else $('rapido').innerHTML = '';
+}
+function abrirCobro() {
+  if (!carrito.length) { $('buscar').focus(); return; }
+  const t = totales().total;
+  $('c-total').textContent = COP(t);
+  pagos = []; $('c-err').innerHTML = ''; $('c-credito').checked = false;
+  const ef = document.querySelector('.pay-btn[data-tipo=efectivo]');
+  if (ef) pagos.push({ medio_id: Number(ef.dataset.medio), nombre: ef.dataset.nombre, tipo: 'efectivo', valor: t });
+  pintarPagos(); abrir('m-cobro');
+  setTimeout(() => document.querySelector('[data-pago]')?.select(), 50);
+}
+document.querySelectorAll('.pay-btn').forEach(b => b.addEventListener('click', () => {
+  const t = totales().total;
+  const ya = pagos.reduce((a, p) => a + p.valor, 0);
+  const ex = pagos.find(p => p.medio_id === Number(b.dataset.medio));
+  if (ex) return;
+  if (pagos.length === 1 && pagos[0].tipo === 'efectivo' && pagos[0].valor === t) pagos = [];  // cambia de medio
+  const resto = Math.max(t - pagos.reduce((a, p) => a + p.valor, 0), 0);
+  pagos.push({ medio_id: Number(b.dataset.medio), nombre: b.dataset.nombre, tipo: b.dataset.tipo, valor: resto });
+  pintarPagos();
+  setTimeout(() => document.querySelector(`[data-pago="${pagos.length - 1}"]`)?.select(), 30);
+}));
+$('pagos').addEventListener('input', e => {
+  if (e.target.dataset.pago !== undefined) { pagos[e.target.dataset.pago].valor = Math.max(num(e.target.value), 0); actualizarSoloTotales(); }
+  if (e.target.dataset.ref !== undefined) pagos[e.target.dataset.ref].referencia = e.target.value;
+});
+$('pagos').addEventListener('change', e => { if (e.target.dataset.pago !== undefined) pintarPagos(); });
+$('pagos').addEventListener('click', e => { const b = e.target.closest('[data-qp]'); if (b) { pagos.splice(Number(b.dataset.qp), 1); pintarPagos(); } });
+$('rapido').addEventListener('click', e => {
+  const b = e.target.closest('[data-rap]'); if (!b) return;
+  const ef = pagos.find(p => p.tipo === 'efectivo'); const t = totales().total;
+  const otros = pagos.filter(p => p !== ef).reduce((a, p) => a + p.valor, 0);
+  ef.valor = b.dataset.rap ? Number(b.dataset.rap) : Math.max(t - otros, 0);
+  pintarPagos();
+});
+function actualizarSoloTotales() {
+  const t = totales().total, recibido = pagos.reduce((a, p) => a + p.valor, 0);
+  $('c-recibido').textContent = COP(recibido);
+  $('c-falta').textContent = COP(Math.max(t - recibido, 0));
+  $('c-cambio').textContent = COP(Math.max(recibido - t, 0));
+  $('c-cambio-row').style.opacity = recibido > t ? 1 : .35;
+  $('c-credito-lbl').style.display = recibido < t ? 'flex' : 'none';
+}
+function datosVenta() {
+  const t = totales();
+  return {
+    items: carrito.map(it => ({ producto_id: it.p.id, cantidad: it.cantidad, precio: it.precio })),
+    descuento: t.desc, lista: $('lista').value, cliente_id: cliente ? cliente.id : null,
+    cliente_nombre: cliente ? '' : (PRECARGA && PRECARGA.cliente_nombre) || '', cliente_doc: (PRECARGA && PRECARGA.cliente_doc) || '',
+    cliente_tel: $('cli-tel').value,
+    pedido_id: PRECARGA && PRECARGA.tipo === 'pedido' ? PRECARGA.id : null,
+    cotizacion_id: PRECARGA && PRECARGA.tipo === 'cotizacion' ? PRECARGA.id : null,
+  };
+}
+let enviando = false;
+$('c-confirmar').addEventListener('click', async () => {
+  if (enviando) return; enviando = true; $('c-confirmar').disabled = true;
+  const d = datosVenta();
+  d.pagos = pagos.map(p => ({ medio_id: p.medio_id, valor: p.valor, referencia: p.referencia || '' }));
+  d.credito = $('c-credito').checked; d.nota = $('c-nota').value;
+  const j = await postJSON('{{ url_for('pos_venta') }}', d);
+  enviando = false; $('c-confirmar').disabled = false;
+  if (!j.ok) { $('c-err').innerHTML = j.errores.map(m => `<div class="flash err">${esc(m)}</div>`).join(''); return; }
+  cerrar('m-cobro');
+  $('ok-folio').textContent = 'Venta ' + j.folio;
+  $('ok-cambio').innerHTML = j.cambio > 0 ? 'Cambio: ' + COP(j.cambio) : 'Total ' + COP(j.total);
+  $('ok-saldo').textContent = j.saldo > 0 ? 'Quedó a crédito: ' + COP(j.saldo) : '';
+  $('ok-ticket').href = j.ticket + '?imprimir=1';
+  $('ok-detalle').href = j.detalle;
+  $('ok-wa').style.display = j.whatsapp ? '' : 'none'; $('ok-wa').href = j.whatsapp || '#';
+  limpiar(true);
+  abrir('m-ok'); $('ok-nueva').focus();
+});
+$('ok-nueva').addEventListener('click', () => { cerrar('m-ok'); if (PRECARGA) location.href = '{{ url_for('pos') }}'; else $('buscar').focus(); });
+$('btn-cobrar').addEventListener('click', abrirCobro);
+$('btn-cotizar').addEventListener('click', async () => {
+  if (!carrito.length) return;
+  const j = await postJSON('{{ url_for('pos_cotizacion') }}', { ...datosVenta(), nota: '' });
+  if (!j.ok) { alert(j.errores.join('\n')); return; }
+  limpiar(true); location.href = j.url;
+});
+function limpiar(silencioso) {
+  carrito = []; cliente = null; usarCliente(null); $('cli-q').value = ''; $('cli-tel').value = '';
+  $('descuento').value = ''; $('lista').value = 'detal'; $('c-nota').value = '';
+  try { localStorage.removeItem(CLAVE); } catch (e) {}
+  pintarCarrito();
+}
+document.addEventListener('keydown', e => {
+  if (e.key === 'F1') { e.preventDefault(); $('buscar').focus(); $('buscar').select(); }
+  if (e.key === 'F2') { e.preventDefault(); if (!$('m-cobro').classList.contains('on')) abrirCobro(); else $('c-confirmar').click(); }
+  if (e.key === 'Escape') document.querySelectorAll('.modal-bg.on').forEach(m => m.classList.remove('on'));
+});
+
+// ---------- arranque
+(function inicio() {
+  if (PRECARGA) {
+    if (PRECARGA.cliente) usarCliente(PRECARGA.cliente);
+    $('lista').value = PRECARGA.lista || 'detal';
+    if (PRECARGA.cliente_tel) $('cli-tel').value = PRECARGA.cliente_tel;
+    if (!PRECARGA.cliente && PRECARGA.cliente_nombre) { $('cli-q').value = PRECARGA.cliente_nombre; }
+    $('descuento').value = PRECARGA.descuento ? Math.round(PRECARGA.descuento).toLocaleString('es-CO') : '';
+    $('c-nota').value = PRECARGA.nota || '';
+    PRECARGA.items.forEach(it => carrito.push({ p: it.producto, cantidad: it.cantidad, precio: it.precio, manual: true }));
+  } else {
+    try {
+      const b = JSON.parse(localStorage.getItem(CLAVE) || 'null');
+      if (b && b.carrito && b.carrito.length) {
+        carrito = b.carrito; $('lista').value = b.lista || 'detal'; $('descuento').value = b.desc || ''; $('cli-tel').value = b.tel || '';
+        if (b.cliente) usarCliente(b.cliente);
+      }
+    } catch (e) {}
+  }
+  pintarCarrito();
+  pintarResultados(DESTACADOS, DESTACADOS.length ? 'Destacados' : '');
+})();
+</script>
+{% endif %}
+{% endblock %}

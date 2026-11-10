@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Ajustes de inventario{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Ajustes de inventario</h1><p>Conteos físicos, daños, garantías, uso interno e inventario inicial.</p></div><a class="btn" href="{{ url_for('ajuste_nuevo') }}">＋ Ajuste</a></div>
+<div class="card"><div class="table-wrap"><table>
+  <thead><tr><th>Nº</th><th>Fecha</th><th>Motivo</th><th>Repuestos</th><th class="num">Valor al costo</th><th>Usuario</th></tr></thead>
+  <tbody>{% for a in ajustes %}<tr class="clic {{ 'anulada' if a.anulado }}" onclick="location.href='{{ url_for('ajuste_detalle', aid=a.id) }}'">
+    <td><a href="{{ url_for('ajuste_detalle', aid=a.id) }}"><b>A-{{ '%05d'|format(a.numero) }}</b></a></td><td>{{ a.fecha|f }}</td>
+    <td><span class="badge {{ 'ok' if a.sentido == 'entrada' else 'err' }}">{{ '＋' if a.sentido == 'entrada' else '−' }}</span> {{ a.motivo_nombre }}</td>
+    <td>{{ a.items|length }}</td><td class="num">{{ a.valor|pesos }}</td><td>{{ a.usuario.nombre if a.usuario else '' }}</td></tr>
+  {% else %}<tr><td colspan="6" class="empty">Sin ajustes.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

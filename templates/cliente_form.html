@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar' if c.id else 'Nuevo' }} cliente{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ c.nombre if c.id else 'Nuevo cliente' }}</h1></div></div>
+<form method="post" class="card" style="max-width:720px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="field"><label>Nombre o razón social *</label><input class="input" name="nombre" value="{{ c.nombre or '' }}" required></div>
+  <div class="form-row">
+    <div class="field"><label>Cédula / NIT</label><input class="input" name="documento" value="{{ c.documento or '' }}"></div>
+    <div class="field"><label>Celular / WhatsApp</label><input class="input" name="telefono" value="{{ c.telefono or '' }}"></div>
+    <div class="field"><label>Correo</label><input class="input" type="email" name="email" value="{{ c.email or '' }}"></div>
+  </div>
+  <div class="field"><label>Dirección</label><input class="input" name="direccion" value="{{ c.direccion or '' }}"></div>
+  <div class="form-row">
+    <div class="field"><label>Tipo de precio</label><select class="input" name="lista">{% for k, v in LISTAS_PRECIO.items() %}<option value="{{ k }}" {{ 'selected' if c.lista == k }}>{{ v }}</option>{% endfor %}</select>
+      <div class="hint">En el POS se aplica solo al elegir el cliente.</div></div>
+    {% if current_user.puede('admin') %}
+    <div class="field"><label>Cupo de crédito</label><input class="input" name="cupo" value="{{ (c.cupo or 0)|round|int }}" inputmode="numeric"><div class="hint">0 = sin límite.</div></div>
+    <div class="field"><label>Plazo (días)</label><input class="input" name="plazo_dias" value="{{ c.plazo_dias or 30 }}" inputmode="numeric"></div>
+    {% endif %}
+  </div>
+  <div class="field"><label>Notas</label><input class="input" name="notas" value="{{ c.notas or '' }}" placeholder="Ej. taller en el barrio X, moto Pulsar 200"></div>
+  <button class="btn">Guardar</button>
+  <a class="btn sec" href="{{ url_for('cliente_detalle', cid=c.id) if c.id else url_for('clientes') }}">Cancelar</a>
+</form>
+{% endblock %}

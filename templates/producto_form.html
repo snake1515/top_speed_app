@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% macro v(campo, defecto='') %}{{ f.get(campo) if f and f.get(campo) is not none else (p[campo] if p[campo] is not none else defecto) }}{% endmacro %}
+{% macro money(campo) %}{% set x = f.get(campo) if f and f.get(campo) is not none else p[campo] %}{{ (x|round|int) if x is number and x else (x or '') }}{% endmacro %}
+{% block title %}{{ 'Editar' if p.id else 'Nuevo' }} repuesto{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ p.nombre if p.id else 'Nuevo repuesto' }}</h1>{% if p.id %}<p>Stock {{ p.stock|cant }} · costo promedio {{ p.costo_promedio|pesos }} (cambian solo con compras, ventas y ajustes)</p>{% endif %}</div></div>
+<form method="post" enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="grid g-main">
+    <div>
+      <div class="card">
+        <h2 style="margin-bottom:12px">Datos del repuesto</h2>
+        <div class="form-row">
+          <div class="field"><label>Código interno *</label><input class="input mono" name="codigo" value="{{ v('codigo') }}" required placeholder="ej. PAST-PUL180-D"></div>
+          <div class="field"><label>Código de barras</label><input class="input mono" name="codigo_barras" value="{{ v('codigo_barras') }}" placeholder="Escanéalo aquí"></div>
+        </div>
+        <div class="field"><label>Nombre *</label><input class="input" name="nombre" value="{{ v('nombre') }}" required placeholder="ej. Pastillas de freno delanteras"></div>
+        <div class="form-row">
+          <div class="field"><label>Categoría</label><select class="input" name="categoria_id"><option value="">—</option>{% for c in categorias %}<option value="{{ c.id }}" {{ 'selected' if (f.get('categoria_id')|string if f else p.categoria_id|string) == c.id|string }}>{{ c.nombre }}</option>{% endfor %}</select></div>
+          <div class="field"><label>Marca</label><input class="input" name="marca" value="{{ v('marca') }}" placeholder="ej. NGK, Yuasa, Bajaj original"></div>
+          <div class="field"><label>Referencia del fabricante</label><input class="input" name="referencia" value="{{ v('referencia') }}"></div>
+        </div>
+        <div class="field"><label>Compatible con (motos)</label><input class="input" name="compatibilidad" value="{{ v('compatibilidad') }}" placeholder="ej. Pulsar 180, Pulsar 200 NS, Discover 125">
+          <div class="hint">Se busca por aquí en el POS y en la tienda: «pastillas ns 200» lo encuentra.</div></div>
+        <div class="form-row">
+          <div class="field"><label>Ubicación en bodega</label><input class="input" name="ubicacion" value="{{ v('ubicacion') }}" placeholder="ej. E3-C2"></div>
+          <div class="field"><label>Unidad</label><select class="input" name="unidad">{% for u in unidades %}<option {{ 'selected' if v('unidad', 'unidad') == u }}>{{ u }}</option>{% endfor %}</select></div>
+          <div class="field"><label>Stock mínimo</label><input class="input" name="stock_minimo" value="{{ v('stock_minimo', 0)|replace('.0', '') }}" inputmode="decimal"><div class="hint">Avisa para reponer.</div></div>
+        </div>
+        <div class="field"><label>Descripción (se ve en la tienda)</label><textarea class="input" name="descripcion" rows="3">{{ v('descripcion') }}</textarea></div>
+      </div>
+      <div class="card">
+        <h2 style="margin-bottom:4px">Precios</h2>
+        <p class="muted" style="margin-top:0">{% if cfg.cobra_iva %}Con IVA incluido.{% else %}Precio final al cliente.{% endif %} {% if current_user.ve_costos and p.costo_promedio %}Costo promedio actual: <b>{{ p.costo_promedio|pesos }}</b>.{% endif %}</p>
+        <div class="form-row c4">
+          <div class="field"><label>Detal *</label><input class="input precio" name="precio_detal" id="pd" value="{{ money('precio_detal') }}" inputmode="numeric" required></div>
+          <div class="field"><label>Por mayor</label><input class="input precio" name="precio_mayor" id="pm" value="{{ money('precio_mayor') }}" inputmode="numeric"></div>
+          <div class="field"><label>Mecánico / taller</label><input class="input precio" name="precio_taller" id="pt" value="{{ money('precio_taller') }}" inputmode="numeric"></div>
+          {% if cfg.cobra_iva %}<div class="field"><label>IVA %</label><input class="input" name="iva_pct" value="{{ v('iva_pct', cfg.iva_defecto)|replace('.0','') }}"></div>{% endif %}
+        </div>
+        {% if current_user.ve_costos %}
+        <div class="note" id="sug" style="display:none"></div>
+        {% endif %}
+      </div>
+      {% if not p.id %}
+      <div class="card">
+        <h2 style="margin-bottom:4px">Stock inicial (opcional)</h2>
+        <p class="muted" style="margin-top:0">Si ya tienes unidades en el local. Las compras siguientes se suman y promedian el costo.</p>
+        <div class="form-row">
+          <div class="field"><label>Cantidad</label><input class="input" name="stock_inicial" value="{{ f.get('stock_inicial', '') if f else '' }}" inputmode="decimal"></div>
+          <div class="field"><label>Costo unitario</label><input class="input" name="costo_inicial" id="ci" value="{{ f.get('costo_inicial', '') if f else '' }}" inputmode="numeric"></div>
+        </div>
+      </div>
+      {% endif %}
+    </div>
+    <div>
+      <div class="card">
+        <h2 style="margin-bottom:10px">Foto</h2>
+        <img src="{{ url_for('img_producto', pid=p.id, v=p.imagen_v) if p.imagen_v else url_for('static', filename='sin-foto.svg') }}" id="prev" style="width:100%;aspect-ratio:1;object-fit:contain;border-radius:10px;border:1px solid var(--line);background:#fafaf8" alt="">
+        <input class="input" type="file" name="foto" accept="image/*" style="margin-top:8px" onchange="if(this.files[0]) document.getElementById('prev').src = URL.createObjectURL(this.files[0])">
+        <div class="hint">Se reduce sola para que cargue rápido en la tienda.</div>
+      </div>
+      <div class="card">
+        <h2 style="margin-bottom:10px">Publicación</h2>
+        <label class="check"><input type="checkbox" name="en_tienda" value="1" {{ 'checked' if (f.get('en_tienda') if f else p.en_tienda) }}> Mostrar en la tienda online</label>
+        <label class="check" style="margin-top:8px"><input type="checkbox" name="destacado" value="1" {{ 'checked' if (f.get('destacado') if f else p.destacado) }}> Destacado (primero en tienda y POS)</label>
+        {% if p.id %}<label class="check" style="margin-top:8px"><input type="checkbox" name="activo" value="1" {{ 'checked' if p.activo }}> Activo</label>{% endif %}
+      </div>
+      <div class="actions">
+        <button class="btn lg">Guardar</button>
+        {% if not p.id %}<button class="btn sec" name="otro" value="1">Guardar y crear otro</button>{% endif %}
+      </div>
+    </div>
+  </div>
+</form>
+{% if p.id and p.imagen_v %}
+<form method="post" action="{{ url_for('producto_foto_borrar', pid=p.id) }}" style="margin-top:10px"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn ghost sm">Quitar foto</button></form>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if current_user.ve_costos %}
+<script>
+  const costoActual = {{ (p.costo_promedio or 0)|round|int }};
+  const M = { pd: {{ cfg.margen_detal or 0 }}, pm: {{ cfg.margen_mayor or 0 }}, pt: {{ cfg.margen_taller or 0 }} };
+  function sugerir() {
+    const c = num(document.getElementById('ci')?.value) || costoActual;
+    const box = document.getElementById('sug');
+    if (!c) { box.style.display = 'none'; return; }
+    const r = v => Math.ceil(v / 500) * 500;
+    const s = { pd: r(c * (1 + M.pd / 100)), pm: r(c * (1 + M.pm / 100)), pt: r(c * (1 + M.pt / 100)) };
+    box.style.display = '';
+    box.innerHTML = `Sugerido con tus márgenes (costo ${COP(c)}): detal <b>${COP(s.pd)}</b> · mayor <b>${COP(s.pm)}</b> · taller <b>${COP(s.pt)}</b> <button type="button" class="btn sm sec" id="usar-sug">Usar</button>`;
+    document.getElementById('usar-sug').onclick = () => { for (const k in s) document.getElementById(k).value = s[k].toLocaleString('es-CO'); };
+  }
+  document.getElementById('ci')?.addEventListener('input', sugerir);
+  sugerir();
+</script>
+{% endif %}
+{% endblock %}

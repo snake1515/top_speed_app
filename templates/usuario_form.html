@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Usuario{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ u.nombre if u.id else 'Nuevo usuario' }}</h1></div></div>
+<form method="post" class="card" style="max-width:520px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="field"><label>Nombre</label><input class="input" name="nombre" value="{{ u.nombre or '' }}" required></div>
+  <div class="field"><label>Usuario para entrar</label><input class="input mono" name="usuario" value="{{ u.usuario or '' }}" required autocomplete="off"></div>
+  <div class="field"><label>Rol</label><select class="input" name="rol">{% for k, v in ROLES.items() %}<option value="{{ k }}" {{ 'selected' if u.rol == k }}>{{ v }}</option>{% endfor %}</select></div>
+  <div class="field"><label>{{ 'Nueva clave (déjala vacía para no cambiarla)' if u.id else 'Clave' }}</label><input class="input" type="password" name="clave" minlength="6" {{ '' if u.id else 'required' }} autocomplete="new-password"></div>
+  {% if u.id %}<label class="check" style="margin-bottom:12px"><input type="checkbox" name="activo" value="1" {{ 'checked' if u.activo }}> Activo (puede entrar)</label>{% endif %}
+  <button class="btn">Guardar</button> <a class="btn sec" href="{{ url_for('usuarios') }}">Cancelar</a>
+</form>
+{% endblock %}

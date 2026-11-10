@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Cierres de caja{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Cierres de caja</h1><p>Historial de turnos con su cuadre.</p></div><a class="btn sec" href="{{ url_for('caja') }}">← Caja</a></div>
+<div class="card"><div class="table-wrap"><table>
+  <thead><tr><th>#</th><th>Abrió</th><th>Apertura</th><th>Cierre</th><th class="num">Base</th><th class="num">Esperado</th><th class="num">Contado</th><th class="num">Diferencia</th></tr></thead>
+  <tbody>{% for t in turnos %}<tr class="clic" onclick="location.href='{{ url_for('turno_detalle', tid=t.id) }}'">
+    <td><a href="{{ url_for('turno_detalle', tid=t.id) }}"><b>{{ t.numero }}</b></a></td><td>{{ t.usuario.nombre }}</td><td>{{ t.apertura|fh }}</td>
+    <td>{% if t.abierto %}<span class="badge ok">Abierta</span>{% else %}{{ t.cierre|fh }}{% endif %}</td>
+    <td class="num">{{ t.base|pesos }}</td><td class="num">{{ t.efectivo_esperado|pesos if t.efectivo_esperado is not none else '' }}</td>
+    <td class="num">{{ t.efectivo_contado|pesos if t.efectivo_contado is not none else '' }}</td>
+    <td class="num">{% if t.diferencia is not none %}<b class="{{ 'neg' if t.diferencia < 0 else ('pos' if t.diferencia > 0 else '') }}">{{ t.diferencia|pesos }}</b>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="8" class="empty">Aún no hay turnos.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

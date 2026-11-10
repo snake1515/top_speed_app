@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Nueva compra{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Registrar compra a proveedor</h1><p>Suma al inventario y recalcula el costo promedio ponderado de cada repuesto.</p></div><a class="btn sec" href="{{ url_for('compras') }}">← Compras</a></div>
+<form method="post" id="f-compra">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="grid g-main">
+    <div class="card">{% include "_picker.html" %}</div>
+    <div>
+      <div class="card">
+        <div class="field"><label>Proveedor</label><select class="input" name="proveedor_id"><option value="">— Sin proveedor —</option>{% for p in proveedores %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select>
+          <div class="hint"><a href="{{ url_for('proveedor_form', volver=url_for('compra_nueva')) }}">＋ Crear proveedor</a></div></div>
+        <div class="form-row" style="grid-template-columns:1fr 1fr">
+          <div class="field"><label>Nº factura</label><input class="input" name="factura"></div>
+          <div class="field"><label>Fecha</label><input class="input" type="date" name="fecha" value="{{ hoy }}"></div>
+        </div>
+        <fieldset><legend>Pago</legend>
+          <label class="check"><input type="radio" name="modo" value="contado" checked onchange="modo()"> De contado</label>
+          <label class="check" style="margin-top:6px"><input type="radio" name="modo" value="credito" onchange="modo()"> A crédito con el proveedor</label>
+          <div id="m-contado" style="margin-top:10px">
+            <div class="field"><label>Medio</label><select class="input" name="medio_id">{% for m in medios %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}</select></div>
+            <label class="check"><input type="checkbox" name="desde_caja" value="1" {{ 'disabled' if not turno }}> Sale de la caja abierta</label>
+            <div class="hint">{% if turno %}Márcalo si pagas con plata del cajón o de las cuentas que cuadras en caja.{% else %}La caja está cerrada: el pago queda registrado sin afectar la caja.{% endif %}</div>
+          </div>
+          <div id="m-credito" style="display:none;margin-top:10px"><div class="field"><label>Plazo (días)</label><input class="input" name="plazo" value="30" inputmode="numeric"></div></div>
+        </fieldset>
+        <div class="field"><input class="input" name="nota" placeholder="Nota (opcional)"></div>
+        <button class="btn lg" style="width:100%">Registrar compra</button>
+      </div>
+    </div>
+  </div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+  function modo() { const c = document.querySelector('[name=modo]:checked').value === 'credito';
+    document.getElementById('m-contado').style.display = c ? 'none' : ''; document.getElementById('m-credito').style.display = c ? '' : 'none'; }
+  document.getElementById('f-compra').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') e.preventDefault(); });
+</script>
+{% endblock %}

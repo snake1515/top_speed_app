@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}{{ p.nombre }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div style="display:flex;gap:14px;align-items:center">
+    <img class="thumb" style="width:72px;height:72px" src="{{ url_for('img_producto', pid=p.id, v=p.imagen_v) if p.imagen_v else url_for('static', filename='sin-foto.svg') }}" alt="">
+    <div><h1>{{ p.nombre }}</h1><p><span class="mono">{{ p.codigo }}</span>{% if p.codigo_barras %} · <span class="mono">{{ p.codigo_barras }}</span>{% endif %} · {{ p.categoria.nombre if p.categoria else 'Sin categoría' }}{% if p.marca %} · {{ p.marca }}{% endif %}
+      {% if not p.activo %}<span class="badge err">Inactivo</span>{% endif %}{% if p.en_tienda %} <span class="badge blue">En tienda</span>{% endif %}</p></div>
+  </div>
+  {% if current_user.puede('bodega') %}<div class="actions">
+    <a class="btn sec" href="{{ url_for('producto_form', pid=p.id) }}">Editar</a>
+    <a class="btn sec" href="{{ url_for('ajuste_nuevo', p=p.id) }}">± Ajustar stock</a>
+    <a class="btn" href="{{ url_for('compra_nueva', p=p.id) }}">⇣ Comprar</a></div>{% endif %}
+</div>
+<div class="kpis">
+  <div class="kpi hl"><div class="lbl">Stock</div><div class="val">{{ p.stock|cant }} <small style="font-size:1rem">{{ p.unidad }}</small></div><div class="sub">{% if reservado %}{{ reservado|cant }} apartado(s) web · {% endif %}mínimo {{ p.stock_minimo|cant }}</div></div>
+  {% if current_user.ve_costos %}
+  <div class="kpi"><div class="lbl">Costo promedio</div><div class="val">{{ p.costo_promedio|pesos }}</div><div class="sub">último costo {{ p.ultimo_costo|pesos }}</div></div>
+  <div class="kpi"><div class="lbl">Valor en inventario</div><div class="val">{{ p.valor_inventario|pesos }}</div><div class="sub">margen detal {{ p.margen_detal|round|int if p.margen_detal is not none else '—' }} %</div></div>
+  {% endif %}
+  <div class="kpi"><div class="lbl">Vendidos 90 días</div><div class="val">{{ vendidos_90|cant }}</div><div class="sub">detal {{ p.precio_detal|pesos }}{% if p.precio_mayor %} · mayor {{ p.precio_mayor|pesos }}{% endif %}{% if p.precio_taller %} · taller {{ p.precio_taller|pesos }}{% endif %}</div></div>
+</div>
+<div class="grid g-main">
+  <div class="card">
+    <div class="card-head"><h2>Kardex</h2><span class="muted">cada entrada y salida con su costo y saldo</span></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Fecha</th><th>Movimiento</th><th>Documento</th><th class="num">Entra</th><th class="num">Sale</th><th class="num">Saldo</th>{% if current_user.ve_costos %}<th class="num">Costo u.</th><th class="num">Costo prom.</th>{% endif %}</tr></thead>
+      <tbody>{% for m in movs %}<tr>
+        <td>{{ m.fecha|fh }}</td><td>{{ m.tipo_nombre }}{% if m.nota %}<br><small class="muted">{{ m.nota }}</small>{% endif %}</td>
+        <td>{% if m.doc_tipo == 'venta' %}<a href="{{ url_for('venta_detalle', vid=m.doc_id) }}">{{ m.documento }}</a>{% elif m.doc_tipo == 'compra' and current_user.puede('bodega') %}<a href="{{ url_for('compra_detalle', cid=m.doc_id) }}">{{ m.documento }}</a>{% elif m.doc_tipo == 'ajuste' and current_user.puede('bodega') %}<a href="{{ url_for('ajuste_detalle', aid=m.doc_id) }}">{{ m.documento }}</a>{% else %}{{ m.documento or '' }}{% endif %}</td>
+        <td class="num pos">{{ m.cantidad|cant if m.cantidad > 0 else '' }}</td><td class="num neg">{{ (-m.cantidad)|cant if m.cantidad < 0 else '' }}</td><td class="num"><b>{{ m.saldo|cant }}</b></td>
+        {% if current_user.ve_costos %}<td class="num">{{ m.costo_unitario|pesos }}</td><td class="num">{{ m.costo_promedio|pesos }}</td>{% endif %}</tr>
+      {% else %}<tr><td colspan="8" class="empty">Sin movimientos.</td></tr>{% endfor %}</tbody>
+    </table></div>
+  </div>
+  <div class="card">
+    <h2 style="margin-bottom:10px">Ficha</h2>
+    <dl class="dl">
+      <dt>Ubicación</dt><dd>{{ p.ubicacion or '—' }}</dd>
+      <dt>Referencia</dt><dd>{{ p.referencia or '—' }}</dd>
+      <dt>Compatible con</dt><dd>{{ p.compatibilidad or '—' }}</dd>
+      <dt>Unidad</dt><dd>{{ p.unidad }}</dd>
+      {% if cfg.cobra_iva %}<dt>IVA</dt><dd>{{ p.iva_pct|cant }} %</dd>{% endif %}
+    </dl>
+    {% if p.descripcion %}<p class="muted">{{ p.descripcion }}</p>{% endif %}
+    {% if p.en_tienda and p.activo %}<a href="{{ url_for('tienda_producto', pid=p.id) }}" target="_blank">Ver en la tienda ↗</a>{% endif %}
+  </div>
+</div>
+{% endblock %}

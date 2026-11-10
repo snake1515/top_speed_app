@@ -1,0 +1,35 @@
+{% extends "tienda_base.html" %}
+{% block content %}
+{% if not q and not cat and pagina == 1 %}
+<section class="s-hero">
+  <h1>{{ cfg.eslogan or 'Repuestos para tu moto' }}</h1>
+  <p>{{ cfg.tienda_mensaje or '' }}</p>
+</section>
+{% endif %}
+<div class="s-layout">
+  <nav class="s-cats">
+    <h3>Categorías</h3>
+    <a href="{{ url_for('tienda', q=q) }}" class="{{ 'on' if not cat }}">Todo</a>
+    {% for c, nn in cats %}<a href="{{ url_for('tienda', cat=c.id, q=q) }}" class="{{ 'on' if cat == c.id }}">{{ c.nombre }} <small>{{ nn }}</small></a>{% endfor %}
+  </nav>
+  <section>
+    <div class="s-toolbar">
+      <div>{% if q %}<h2>Resultados para «{{ q }}»</h2>{% endif %}<small class="muted">{{ total }} repuesto(s)</small></div>
+      <form><input type="hidden" name="q" value="{{ q }}">{% if cat %}<input type="hidden" name="cat" value="{{ cat }}">{% endif %}
+        <select class="input" name="orden" onchange="this.form.submit()" style="padding:6px 10px"><option value="">Relevancia</option><option value="menor" {{ 'selected' if orden == 'menor' }}>Menor precio</option><option value="mayor" {{ 'selected' if orden == 'mayor' }}>Mayor precio</option></select></form>
+    </div>
+    {% if prods %}
+    <div class="s-grid">{% for p in prods %}{% include "_tarjeta.html" %}{% endfor %}</div>
+    {% else %}
+    <div class="card empty">
+      <h2>No encontramos ese repuesto</h2>
+      <p>Prueba con otra palabra o escríbenos: lo buscamos por ti.</p>
+      {% if cfg.whatsapp %}<a class="btn ok" target="_blank" rel="noopener" href="https://wa.me/{{ ('57' ~ cfg.whatsapp) if cfg.whatsapp|length == 10 else cfg.whatsapp }}?text={{ ('Hola, busco: ' ~ (q or ''))|urlencode }}">Preguntar por WhatsApp</a>{% endif %}
+    </div>
+    {% endif %}
+    {% if paginas > 1 %}
+    <div class="s-pag">{% for i in range(1, paginas + 1) %}{% if i == pagina %}<span class="on">{{ i }}</span>{% elif i <= 2 or i > paginas - 2 or (i - pagina)|abs <= 2 %}<a href="{{ url_for('tienda', q=q, cat=cat, orden=orden, p=i) }}">{{ i }}</a>{% elif (i - pagina)|abs == 3 %}<span>…</span>{% endif %}{% endfor %}</div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

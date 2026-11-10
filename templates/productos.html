@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Repuestos{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Repuestos</h1><p>{{ total }} repuesto(s){% if current_user.ve_costos %} · inventario al costo {{ total_valor|pesos }}{% endif %}</p></div>
+  {% if current_user.puede('bodega') %}<div class="actions">
+    <a class="btn sec" href="{{ url_for('productos_importar') }}">Importar Excel</a>
+    <a class="btn sec" href="{{ url_for('compra_nueva') }}">⇣ Registrar compra</a>
+    <a class="btn" href="{{ url_for('producto_form') }}">＋ Repuesto</a></div>{% endif %}
+</div>
+<form class="filters">
+  <input class="input" name="q" value="{{ q }}" placeholder="Código, nombre, marca, moto, ubicación…" style="max-width:340px">
+  <select class="input" name="cat" style="max-width:220px"><option value="">Todas las categorías</option>{% for c in categorias %}<option value="{{ c.id }}" {{ 'selected' if cat == c.id }}>{{ c.nombre }}</option>{% endfor %}</select>
+  <input type="hidden" name="f" value="{{ filtro }}">
+  <button class="btn dark">Buscar</button>
+</form>
+<div class="tabs">
+  {% for k, l in [('', 'Activos'), ('bajos', 'Bajo mínimo'), ('agotados', 'Agotados'), ('sinfoto', 'Sin foto'), ('inactivos', 'Inactivos')] %}
+  <a class="{{ 'on' if filtro == k }}" href="{{ url_for('productos', f=k, q=q, cat=cat) }}">{{ l }}</a>{% endfor %}
+</div>
+<div class="card"><div class="table-wrap"><table>
+  <thead><tr><th></th><th>Código</th><th>Repuesto</th><th>Ubicación</th><th class="num">Stock</th>{% if current_user.ve_costos %}<th class="num">Costo prom.</th>{% endif %}<th class="num">Detal</th><th class="num">Mayor</th><th class="num">Taller</th>{% if current_user.ve_costos %}<th class="num">Margen</th>{% endif %}</tr></thead>
+  <tbody>{% for p in productos %}<tr class="clic" onclick="location.href='{{ url_for('producto_detalle', pid=p.id) }}'">
+    <td><img class="thumb" src="{{ url_for('img_producto', pid=p.id, v=p.imagen_v) if p.imagen_v else url_for('static', filename='sin-foto.svg') }}" alt="" loading="lazy"></td>
+    <td class="mono">{{ p.codigo }}</td>
+    <td><a href="{{ url_for('producto_detalle', pid=p.id) }}"><b>{{ p.nombre }}</b></a><br><small class="muted">{{ p.marca or '' }}{% if p.compatibilidad %} · 🏍 {{ p.compatibilidad|truncate(60) }}{% endif %}</small></td>
+    <td>{{ p.ubicacion or '' }}</td>
+    <td class="num"><b class="{{ 'neg' if p.stock <= 0 else ('' if not p.bajo_minimo else 'neg') }}">{{ p.stock|cant }}</b>{% if p.bajo_minimo %} <span class="badge err">mín {{ p.stock_minimo|cant }}</span>{% endif %}{% if reservado.get(p.id) %}<br><small class="muted">{{ reservado[p.id]|cant }} apartado(s)</small>{% endif %}</td>
+    {% if current_user.ve_costos %}<td class="num">{{ p.costo_promedio|pesos }}</td>{% endif %}
+    <td class="num">{{ p.precio_detal|pesos }}</td><td class="num">{{ p.precio_mayor|pesos if p.precio_mayor else '—' }}</td><td class="num">{{ p.precio_taller|pesos if p.precio_taller else '—' }}</td>
+    {% if current_user.ve_costos %}<td class="num">{% if p.margen_detal is not none and p.costo_promedio %}<span class="{{ 'neg' if p.margen_detal < 10 }}">{{ p.margen_detal|round|int }} %</span>{% endif %}</td>{% endif %}
+  </tr>{% else %}<tr><td colspan="10" class="empty">No hay repuestos aquí. {% if current_user.puede('bodega') %}<a href="{{ url_for('producto_form') }}">Crea el primero</a> o <a href="{{ url_for('productos_importar') }}">impórtalos desde Excel</a>.{% endif %}</td></tr>{% endfor %}</tbody>
+</table></div>{% if total > productos|length %}<p class="muted">Mostrando {{ productos|length }} de {{ total }}. Usa la búsqueda para encontrar el resto.</p>{% endif %}</div>
+{% endblock %}

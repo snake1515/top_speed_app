@@ -1,0 +1,29 @@
+{% extends "tienda_base.html" %}
+{% block title %}Pedido {{ p.folio }} · {{ cfg.nombre }}{% endblock %}
+{% block content %}
+<div class="card" style="max-width:640px;margin:0 auto">
+  {% if p.estado == 'pendiente' %}
+    <div style="font-size:2.6rem">✔</div>
+    <h1>¡Pedido recibido!</h1>
+    <p>Tu pedido <b>{{ p.folio }}</b> quedó registrado{% if not vencido %} y apartamos los repuestos por {{ cfg.reserva_horas }} horas{% endif %}. Te escribimos al <b>{{ p.telefono }}</b> para confirmar.</p>
+    {% if wa %}<a class="btn lg ok" href="{{ wa }}" target="_blank" rel="noopener" style="width:100%">Enviar el pedido por WhatsApp</a>
+    <p class="hint" style="text-align:center">Así te atendemos más rápido.</p>{% endif %}
+  {% elif p.estado == 'confirmado' %}
+    <h1>Pedido {{ p.folio }} confirmado ✔</h1><p>¡Gracias por tu compra!</p>
+  {% else %}
+    <h1>Pedido {{ p.folio }} cancelado</h1><p>Si fue un error, escríbenos.</p>
+  {% endif %}
+  <table style="margin-top:14px">
+    <thead><tr><th>Repuesto</th><th class="num">Cant.</th><th class="num">Total</th></tr></thead>
+    <tbody>{% for i in p.items %}<tr><td>{{ i.nombre }}<br><small class="mono muted">{{ i.codigo }}</small></td><td class="num">{{ i.cantidad|cant }}</td><td class="num">{{ (i.cantidad * i.precio)|pesos }}</td></tr>{% endfor %}</tbody>
+    <tfoot><tr><td colspan="2">Total</td><td class="num">{{ p.total|pesos }}</td></tr></tfoot>
+  </table>
+  {% set con_datos = medios|selectattr('detalle')|list %}
+  {% if con_datos and p.estado == 'pendiente' %}
+  <div class="note" style="margin-top:14px"><b>Si vas a pagar por transferencia:</b>
+    {% for m in con_datos %}<br>{{ m.nombre }}: <b>{{ m.detalle }}</b>{% endfor %}
+    <br>Envía el comprobante por WhatsApp con el número de pedido {{ p.folio }}.</div>
+  {% endif %}
+  <p style="margin-top:18px"><a href="{{ url_for('tienda') }}">← Seguir comprando</a></p>
+</div>
+{% endblock %}

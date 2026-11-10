@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ cfg.nombre }} · {{ cfg.eslogan or 'Repuestos para moto' }}{% endblock %}</title>
+  <meta name="description" content="{{ cfg.nombre }}: {{ cfg.eslogan or 'repuestos para moto' }}. {{ cfg.tienda_mensaje or '' }}">
+  <meta property="og:title" content="{{ cfg.nombre }}">
+  <meta property="og:description" content="{{ cfg.eslogan or 'Repuestos para moto' }}">
+  <meta property="og:image" content="{{ url_for('logo', v=cfg.logo_v, _external=True) }}">
+  <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:ital,wght@0,600;0,700;1,700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=STATIC_V) }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='tienda.css', v=STATIC_V) }}">
+  <link rel="icon" href="{{ url_for('logo', v=cfg.logo_v) if cfg.logo_v else url_for('static', filename='favicon.svg') }}">
+  <meta name="csrf" content="{{ csrf_token() }}">
+</head>
+<body class="shop">
+<header class="s-top">
+  <div class="s-wrap s-bar">
+    <a class="s-brand" href="{{ url_for('tienda') }}"><img src="{{ url_for('logo', v=cfg.logo_v) }}" alt=""><span><b>{{ cfg.nombre }}</b><small>{{ cfg.eslogan or '' }}</small></span></a>
+    <form class="s-search" action="{{ url_for('tienda') }}"><input name="q" value="{{ q or '' }}" placeholder="Busca por repuesto o por tu moto: «kit arrastre boxer»" aria-label="Buscar"><button aria-label="Buscar">⌕</button></form>
+    <button class="s-cart-btn" type="button" id="abrir-carrito" aria-label="Carrito">🛒 <span id="cnt">0</span></button>
+  </div>
+  <div class="s-stripe"></div>
+</header>
+<main class="s-wrap s-main">
+  {% block content %}{% endblock %}
+</main>
+<footer class="s-foot">
+  <div class="s-wrap s-foot-g">
+    <div><b>{{ cfg.nombre }}</b><br>{{ cfg.direccion or '' }}{% if cfg.ciudad %}, {{ cfg.ciudad }}{% endif %}<br>{{ cfg.telefono or '' }}</div>
+    <div>{{ cfg.tienda_envio or '' }}</div>
+    <div>{% if cfg.whatsapp %}<a class="btn ok" href="https://wa.me/{{ '57' ~ cfg.whatsapp if cfg.whatsapp|length == 10 else cfg.whatsapp }}" target="_blank" rel="noopener">WhatsApp</a>{% endif %}</div>
+  </div>
+</footer>
+
+<!-- carrito -->
+<div class="s-drawer-bg" id="drawer-bg"></div>
+<aside class="s-drawer" id="drawer" aria-label="Carrito">
+  <div class="s-drawer-h"><h2>Tu pedido</h2><button type="button" class="btn ghost" id="cerrar-carrito">✕</button></div>
+  <div id="c-lista" class="s-drawer-b"></div>
+  <div class="s-drawer-f">
+    <div class="sum-row big"><span>Total</span><span id="c-total">$ 0</span></div>
+    <button class="btn lg" style="width:100%" id="ir-pedido" type="button">Hacer pedido</button>
+    <p class="hint" style="text-align:center">Te confirmamos disponibilidad y forma de pago por WhatsApp.</p>
+  </div>
+</aside>
+
+<!-- checkout -->
+<div class="modal-bg" id="m-pedido">
+  <form class="modal" id="f-pedido">
+    <div class="card-head"><h2>Datos para tu pedido</h2><button class="btn ghost" type="button" data-cerrar>✕</button></div>
+    <div class="field"><label>Nombre completo *</label><input class="input" name="nombre" autocomplete="name" required></div>
+    <div class="form-row" style="grid-template-columns:1fr 1fr">
+      <div class="field"><label>WhatsApp *</label><input class="input" name="telefono" inputmode="tel" autocomplete="tel" placeholder="3001234567" required></div>
+      <div class="field"><label>Cédula / NIT</label><input class="input" name="documento" inputmode="numeric"></div>
+    </div>
+    <div class="field"><label>¿Cómo lo recibes?</label>
+      <div class="s-opts">
+        <label><input type="radio" name="entrega" value="recoger" checked> Recojo en el local</label>
+        <label><input type="radio" name="entrega" value="domicilio"> Domicilio</label>
+        <label><input type="radio" name="entrega" value="envio"> Envío a otra ciudad</label>
+      </div></div>
+    <div id="f-dir" style="display:none" class="form-row">
+      <div class="field"><label>Dirección *</label><input class="input" name="direccion" autocomplete="street-address"></div>
+      <div class="field"><label>Ciudad</label><input class="input" name="ciudad" value="{{ cfg.ciudad or '' }}"></div>
+    </div>
+    <div class="field"><label>¿Cómo vas a pagar?</label><select class="input" name="medio">{% for m in medios %}<option>{{ m.nombre }}</option>{% endfor %}</select></div>
+    <div class="field"><label>Nota</label><input class="input" name="nota" placeholder="Modelo y año de tu moto, color, etc."></div>
+    <input name="web" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
+    <div id="p-err"></div>
+    <button class="btn lg" style="width:100%" id="enviar">Enviar pedido</button>
+    <p class="hint" style="text-align:center">Apartamos tus repuestos por {{ cfg.reserva_horas }} horas mientras confirmamos.</p>
+  </form>
+</div>
+<script>
+  const CSRF = document.querySelector('meta[name=csrf]').content;
+  const URLS = { disp: '{{ url_for('tienda_disponible') }}', pedido: '{{ url_for('tienda_pedido') }}', sinfoto: '{{ url_for('static', filename='sin-foto.svg') }}' };
+</script>
+<script src="{{ url_for('static', filename='tienda.js', v=STATIC_V) }}"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
