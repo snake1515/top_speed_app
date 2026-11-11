@@ -4,7 +4,7 @@
 <div class="page-head">
   <div><h1>Venta {{ v.folio }}</h1>
     <p>{{ v.fecha|fh }} · {{ v.usuario.nombre if v.usuario else '' }} · caja #{{ v.turno.numero if v.turno else '' }}
-      {% if v.origen == 'tienda' %}· <a href="{{ url_for('pedido_detalle', pid=v.pedido_id) }}">pedido web</a>{% endif %}</p></div>
+      {% if v.origen in ('tienda', 'preventa') and v.pedido_id %}· <a href="{{ url_for('pedido_detalle', pid=v.pedido_id) }}">{{ 'pedido de preventa' if v.origen == 'preventa' else 'pedido web' }}</a>{% endif %}</p></div>
   <div class="actions">
     <a class="btn dark" href="{{ url_for('venta_ticket', vid=v.id, imprimir=1) }}" target="_blank">🖨 Ticket</a>
     <a class="btn sec" href="{{ wa }}" target="_blank">Enviar por WhatsApp</a>
