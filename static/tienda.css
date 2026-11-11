@@ -94,3 +94,8 @@ body.shop { background: #f4f4f1; }
 .s-card .pr { color: var(--ink); }
 .s-pag span.on { background: var(--nav); color: var(--accent); }
 @media (max-width: 860px) { .s-hero { grid-template-columns: 1fr; } .s-hero .mascota { display: none; } }
+
+.s-acc { display: flex; align-items: center; gap: 14px; }
+.s-ingresar { color: var(--nav-ink); font-weight: 600; font-size: .92rem; text-decoration: none !important; border: 1px solid #3a3424; padding: 8px 12px; border-radius: 9px; }
+.s-ingresar:hover { color: var(--accent); border-color: var(--accent); }
+@media (max-width: 860px) { .s-ingresar { padding: 7px 10px; font-size: .85rem; } }

@@ -6,6 +6,14 @@
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Barlow+Condensed:wght@600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=STATIC_V) }}">
   <link rel="icon" href="{{ url_for('static', filename='favicon.svg', v=STATIC_V) }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+  <meta name="theme-color" content="#0b0a07">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Moto Speed">
+
   <style>
     body { min-height: 100vh; display: grid; grid-template-columns: 1.1fr 1fr; background: var(--nav); }
     .hero { position: relative; overflow: hidden; color: #fff; padding: 48px; display: flex; flex-direction: column; justify-content: flex-end; }
@@ -37,8 +45,18 @@
       <div class="field"><label>Clave</label><input class="input" type="password" name="clave" autocomplete="current-password" required></div>
       <label class="check" style="margin-bottom:16px"><input type="checkbox" name="recordar" value="1"> Recordarme en este equipo</label>
       <button class="btn lg" style="width:100%">Entrar</button>
+      <button type="button" class="btn sec" id="instalar" style="width:100%;margin-top:10px;display:none">📲 Instalar la app en este equipo</button>
+      <p class="hint" id="ios-hint" style="display:none;text-align:center">En iPhone: toca <b>Compartir</b> ⬆️ y luego <b>Agregar a inicio</b>.</p>
       <p class="muted" style="text-align:center;margin-top:18px"><a href="{{ url_for('tienda') }}">← Ir a la tienda online</a></p>
     </form>
   </div>
+<script>
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  let aviso = null;
+  const enApp = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); aviso = e; if (!enApp) document.getElementById('instalar').style.display = ''; });
+  document.getElementById('instalar').addEventListener('click', async () => { if (!aviso) return; aviso.prompt(); await aviso.userChoice; aviso = null; document.getElementById('instalar').style.display = 'none'; });
+  if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !enApp) document.getElementById('ios-hint').style.display = '';
+</script>
 </body>
 </html>

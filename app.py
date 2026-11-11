@@ -289,7 +289,11 @@ with app.app_context():
 
 @app.route("/salud")
 def salud():
-    return "ok"
+    """Respuesta liviana para despertar la app (la usa la página de entrada de softgestapps.com)."""
+    r = jsonify(ok=True)
+    r.headers["Access-Control-Allow-Origin"] = "*"
+    r.headers["Cache-Control"] = "no-store"
+    return r
 
 
 # ================================================================ archivos
@@ -2102,6 +2106,21 @@ def tienda_estado_pedido(token):
     return render_template("tienda_pedido.html", p=p, vencido=pedido_vencido(p),
                            wa=wa_link(cfg.whatsapp, "\n".join(lineas)) if cfg.whatsapp else "",
                            medios=MedioPago.query.filter(MedioPago.activo.is_(True), MedioPago.tipo != "efectivo").order_by(MedioPago.orden).all())
+
+
+@app.route("/sw.js")
+def service_worker():
+    r = send_file(os.path.join(app.static_folder, "sw.js"), mimetype="application/javascript")
+    r.headers["Cache-Control"] = "no-cache"
+    r.headers["Service-Worker-Allowed"] = "/"
+    return r
+
+
+@app.route("/manifest.webmanifest")
+def manifest():
+    r = send_file(os.path.join(app.static_folder, "manifest.webmanifest"), mimetype="application/manifest+json")
+    r.headers["Cache-Control"] = "no-cache"
+    return r
 
 
 @app.route("/robots.txt")
