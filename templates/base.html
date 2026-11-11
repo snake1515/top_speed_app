@@ -6,9 +6,11 @@
   <title>{% block title %}{{ cfg.nombre }}{% endblock %} · {{ cfg.nombre }}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=STATIC_V) }}">
-  <link rel="icon" href="{{ url_for('static', filename='favicon.svg') }}">
+  <link rel="icon" href="{{ url_for('static', filename='favicon.svg', v=STATIC_V) }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+  <meta name="theme-color" content="#0b0a07">
   <meta name="csrf" content="{{ csrf_token() }}">
   {% block head %}{% endblock %}
 </head>
@@ -22,7 +24,7 @@
 </header>
 <div class="layout">
   <aside class="sidebar">
-    <div class="brand"><img class="brand-logo" src="{{ url_for('logo', v=cfg.logo_v) }}" alt=""><div><b>{{ cfg.nombre }}</b><small>{{ cfg.eslogan or 'Repuestos de moto' }}</small></div></div>
+    <div class="brand"><img class="brand-logo" src="{{ url_for('logo', v=cfg.logo_v) }}" alt=""><div><b>{{ cfg.nombre }}</b><small>{{ cfg.eslogan or 'Repuestos para tu moto' }}</small></div></div>
     <div class="speed-stripe"></div>
     <nav class="nav">
       {% if current_user.puede('cajero') %}
@@ -38,10 +40,23 @@
       <div class="nav-sep">Ventas</div>
       <a href="{{ url_for('caja') }}" class="{{ 'on' if ep in ('caja', 'turnos', 'turno_detalle') }}"><span class="ico">⊟</span>Caja y cuadre</a>
       <a href="{{ url_for('ventas') }}" class="{{ 'on' if ep in ('ventas', 'venta_detalle') }}"><span class="ico">$</span>Ventas</a>
-      <a href="{{ url_for('pedidos') }}" class="{{ 'on' if ep.startswith('pedido') }}"><span class="ico">🛒</span>Pedidos web{% if PEDIDOS_PEND %}<span class="cnt">{{ PEDIDOS_PEND }}</span>{% endif %}</a>
+      <a href="{{ url_for('pedidos') }}" class="{{ 'on' if ep.startswith('pedido') }}"><span class="ico">🛒</span>Pedidos (web y ruta){% if PEDIDOS_PEND %}<span class="cnt">{{ PEDIDOS_PEND }}</span>{% endif %}</a>
       <a href="{{ url_for('cotizaciones') }}" class="{{ 'on' if ep.startswith('cotizacion') }}"><span class="ico">✎</span>Cotizaciones</a>
       <a href="{{ url_for('cartera') }}" class="{{ 'on' if ep == 'cartera' }}"><span class="ico">⏳</span>Cartera (crédito)</a>
       <a href="{{ url_for('clientes') }}" class="{{ 'on' if ep.startswith('cliente') }}"><span class="ico">☺</span>Clientes</a>
+      {% endif %}
+      {% if current_user.es_preventista %}
+      <a href="{{ url_for('mi_ruta') }}" class="pos-link">▶ Mi ruta de hoy</a>
+      <div class="nav-sep">Preventa</div>
+      <a href="{{ url_for('mi_ruta') }}" class="{{ 'on' if ep in ('mi_ruta', 'preventa_pedido_form') }}"><span class="ico">⚑</span>Mi ruta</a>
+      <a href="{{ url_for('preventa_mis_pedidos') }}" class="{{ 'on' if ep == 'preventa_mis_pedidos' }}"><span class="ico">✎</span>Mis pedidos</a>
+      <a href="{{ url_for('preventa_cliente_nuevo') }}" class="{{ 'on' if ep == 'preventa_cliente_nuevo' }}"><span class="ico">＋</span>Cliente nuevo</a>
+      {% endif %}
+      {% if current_user.puede('admin') %}
+      <div class="nav-sep">Preventa</div>
+      <a href="{{ url_for('rutas') }}" class="{{ 'on' if ep.startswith('ruta') }}"><span class="ico">⚑</span>Rutas</a>
+      <a href="{{ url_for('mi_ruta') }}" class="{{ 'on' if ep == 'mi_ruta' }}"><span class="ico">⌖</span>Vista del preventista</a>
+      <a href="{{ url_for('preventa_reporte') }}" class="{{ 'on' if ep in ('preventa_reporte', 'preventa_mis_pedidos') }}"><span class="ico">▤</span>Reporte de preventa</a>
       {% endif %}
       {% if current_user.puede('cajero', 'bodega') %}
       <div class="nav-sep">Inventario</div>

@@ -1,14 +1,15 @@
 {% extends "base.html" %}
 {% block title %}Pedidos web{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Pedidos de la tienda online</h1><p>Los pendientes apartan el stock por {{ cfg.reserva_horas }} horas. Al confirmarlos se cobran en el POS y se descuentan del inventario.</p></div>
+<div class="page-head"><div><h1>Pedidos</h1><p>De la tienda online y de los preventistas. Los pendientes apartan el stock por {{ cfg.reserva_horas }} horas. Al confirmarlos se cobran en el POS y se descuentan del inventario.</p></div>
   <a class="btn sec" href="{{ url_for('tienda') }}" target="_blank">Ver tienda ↗</a></div>
-<div class="tabs">{% for k, l in [('pendiente','Pendientes'),('confirmado','Confirmados'),('cancelado','Cancelados'),('todos','Todos')] %}<a href="{{ url_for('pedidos', estado=k) }}" class="{{ 'on' if estado == k }}">{{ l }}</a>{% endfor %}</div>
+<div class="tabs">{% for k, l in [('pendiente','Pendientes'),('confirmado','Confirmados'),('cancelado','Cancelados'),('todos','Todos')] %}<a href="{{ url_for('pedidos', estado=k, origen=origen) }}" class="{{ 'on' if estado == k }}">{{ l }}</a>{% endfor %}
+  <span style="width:14px"></span>{% for k, l in [('', 'Todos los orígenes'), ('web', 'Tienda web'), ('preventa', 'Preventa')] %}<a href="{{ url_for('pedidos', estado=estado, origen=k) }}" class="{{ 'on' if origen == k }}">{{ l }}</a>{% endfor %}</div>
 <div class="card"><div class="table-wrap"><table>
-  <thead><tr><th>Pedido</th><th>Fecha</th><th>Cliente</th><th>Entrega</th><th class="num">Total</th><th>Estado</th><th></th></tr></thead>
+  <thead><tr><th>Pedido</th><th>Fecha</th><th>Cliente</th><th>Origen</th><th class="num">Total</th><th>Estado</th><th></th></tr></thead>
   <tbody>{% for p in pedidos %}<tr>
     <td><a href="{{ url_for('pedido_detalle', pid=p.id) }}"><b>{{ p.folio }}</b></a></td><td>{{ p.fecha|fh }}</td><td>{{ p.nombre }}<br><small class="muted">{{ p.telefono }}</small></td>
-    <td>{{ {'recoger':'Recoge en local','domicilio':'Domicilio','envio':'Envío nacional'}[p.entrega] }}</td><td class="num">{{ p.total|pesos }}</td>
+    <td>{% if p.es_preventa %}<span class="badge yellow">Preventa</span><br><small>{{ p.vendedor.nombre if p.vendedor else '' }}</small>{% else %}<span class="badge blue">Web</span><br><small>{{ {'recoger':'Recoge en local','domicilio':'Domicilio','envio':'Envío nacional'}[p.entrega] }}</small>{% endif %}</td><td class="num">{{ p.total|pesos }}</td>
     <td>{% if p.estado == 'pendiente' %}{% if vencido(p) %}<span class="badge warn">Reserva vencida</span>{% else %}<span class="badge red">Pendiente</span>{% endif %}{% elif p.estado == 'confirmado' %}<span class="badge ok">Confirmado</span>{% else %}<span class="badge">Cancelado</span>{% endif %}</td>
     <td>{% if p.estado == 'pendiente' %}<a class="btn sm" href="{{ url_for('pos', pedido=p.id) }}">Cobrar</a>{% endif %}</td></tr>
   {% else %}<tr><td colspan="7" class="empty">No hay pedidos aquí.</td></tr>{% endfor %}</tbody>

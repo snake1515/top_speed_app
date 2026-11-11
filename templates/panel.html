@@ -76,8 +76,8 @@
   new Chart(document.getElementById('graf'), {
     data: { labels: serie.map(s => s[0]),
       datasets: [
-        { type: 'bar', label: 'Ventas', data: serie.map(s => Math.round(s[1])), backgroundColor: '#121418', borderRadius: 4 },
-        { type: 'line', label: 'Utilidad bruta', data: serie.map(s => Math.round(s[2])), borderColor: '#e3262f', backgroundColor: '#e3262f', tension: .3, pointRadius: 2 }] },
+        { type: 'bar', label: 'Ventas', data: serie.map(s => Math.round(s[1])), backgroundColor: '#0b0a07', borderRadius: 4 },
+        { type: 'line', label: 'Utilidad bruta', data: serie.map(s => Math.round(s[2])), borderColor: '#ffc400', backgroundColor: '#ffc400', borderWidth: 3, tension: .3, pointRadius: 2 }] },
     options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom' }, tooltip: { callbacks: { label: c => c.dataset.label + ': ' + COP(c.raw) } } },
       scales: { y: { ticks: { callback: v => COP(v) } }, x: { grid: { display: false } } } }
   });

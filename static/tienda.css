@@ -4,19 +4,19 @@ body.shop { background: #f4f4f1; }
 .s-top { background: var(--nav); color: #fff; position: sticky; top: 0; z-index: 30; }
 .s-bar { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 18px; align-items: center; padding-top: 12px; padding-bottom: 12px; }
 .s-brand { display: flex; align-items: center; gap: 10px; color: #fff; text-decoration: none !important; }
-.s-brand img { width: 44px; height: 44px; border-radius: 9px; object-fit: cover; background: #fff; }
-.s-brand b { font-family: var(--cond); font-size: 1.5rem; text-transform: uppercase; font-style: italic; letter-spacing: .02em; display: block; line-height: 1; }
+.s-brand img { width: 54px; height: 54px; border-radius: 50%; object-fit: cover; }
+.s-brand b { font-family: "Orbitron", var(--cond); font-weight: 900; font-size: 1.35rem; text-transform: uppercase; font-style: italic; letter-spacing: .02em; display: block; line-height: 1; color: var(--accent); }
 .s-brand small { color: var(--nav-ink); font-size: .78rem; }
 .s-search { display: flex; background: #fff; border-radius: 10px; overflow: hidden; max-width: 640px; width: 100%; justify-self: center; }
 .s-search input { flex: 1; border: 0; padding: 12px 14px; font: inherit; font-size: 1rem; min-width: 0; outline: none; }
-.s-search button { border: 0; background: var(--accent); color: #fff; width: 52px; font-size: 1.4rem; cursor: pointer; }
-.s-cart-btn { background: var(--accent); color: #fff; border: 0; border-radius: 10px; padding: 10px 16px; font: inherit; font-weight: 700; cursor: pointer; font-size: 1rem; }
-.s-cart-btn span { background: #fff; color: var(--accent); border-radius: 99px; padding: 0 7px; margin-left: 4px; font-size: .85rem; }
-.s-stripe { height: 5px; background: linear-gradient(90deg, var(--accent) 0 70%, var(--amber) 70% 85%, var(--nav) 85%); }
+.s-search button { border: 0; background: var(--accent); color: var(--accent-ink); width: 52px; font-size: 1.4rem; cursor: pointer; }
+.s-cart-btn { background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 10px; padding: 10px 16px; font: inherit; font-weight: 700; cursor: pointer; font-size: 1rem; }
+.s-cart-btn span { background: var(--red); color: #fff; border-radius: 99px; padding: 0 7px; margin-left: 4px; font-size: .85rem; }
+.s-stripe { height: 5px; background: linear-gradient(90deg, var(--accent) 0 70%, var(--red) 70% 85%, var(--nav) 85%); }
 .s-main { padding-top: 22px; padding-bottom: 50px; min-height: 60vh; }
 
 .s-hero { background: var(--nav); color: #fff; border-radius: 16px; padding: 28px 30px; position: relative; overflow: hidden; margin-bottom: 22px; }
-.s-hero::after { content: ""; position: absolute; right: -60px; top: -40px; bottom: -40px; width: 260px; background: repeating-linear-gradient(-60deg, var(--accent) 0 26px, transparent 26px 46px); opacity: .85; }
+.s-hero::after { content: ""; position: absolute; right: -60px; top: -40px; bottom: -40px; width: 300px; background: repeating-linear-gradient(-60deg, var(--accent) 0 22px, transparent 22px 34px, var(--red) 34px 40px, transparent 40px 58px); opacity: .9; }
 .s-hero h1 { font-size: 2.4rem; font-style: italic; position: relative; z-index: 1; max-width: 70%; }
 .s-hero p { color: var(--nav-ink); position: relative; z-index: 1; max-width: 60%; margin: 6px 0 0; }
 
@@ -25,7 +25,7 @@ body.shop { background: #f4f4f1; }
 .s-cats h3 { font-family: var(--cond); text-transform: uppercase; letter-spacing: .08em; color: var(--muted); font-size: .85rem; margin-bottom: 8px; }
 .s-cats a { display: flex; justify-content: space-between; padding: 7px 10px; border-radius: 8px; color: var(--ink); font-weight: 600; font-size: .93rem; }
 .s-cats a:hover { background: #fff; text-decoration: none; }
-.s-cats a.on { background: var(--ink); color: #fff; }
+.s-cats a.on { background: var(--nav); color: var(--accent); }
 .s-cats a small { color: inherit; opacity: .55; margin-left: 6px; }
 .s-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
 .s-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
@@ -86,3 +86,11 @@ body.shop { background: #f4f4f1; }
   .s-prod { grid-template-columns: 1fr; padding: 14px; }
   .s-foot-g { grid-template-columns: 1fr; }
 }
+
+.s-hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.s-hero h1 { color: var(--accent); }
+.s-hero .mascota { position: relative; z-index: 2; width: 190px; height: auto; margin: -20px 40px -34px 0; filter: drop-shadow(0 8px 18px rgba(0,0,0,.45)); }
+.s-hero .marca { position: relative; z-index: 1; width: min(460px, 100%); margin-bottom: 6px; }
+.s-card .pr { color: var(--ink); }
+.s-pag span.on { background: var(--nav); color: var(--accent); }
+@media (max-width: 860px) { .s-hero { grid-template-columns: 1fr; } .s-hero .mascota { display: none; } }

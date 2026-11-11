@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Pedidos de preventa{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ 'Pedidos de preventa' if current_user.puede('admin') else 'Mis pedidos' }}</h1><p>Tomado {{ total|pesos }} · confirmado (despachado) {{ confirmado|pesos }}</p></div>
+  {% if current_user.es_preventista %}<a class="btn sec" href="{{ url_for('mi_ruta') }}">← Mi ruta</a>{% endif %}</div>
+<form class="filters card"><div class="field"><label>Desde</label><input class="input" type="date" name="desde" value="{{ desde }}"></div><div class="field"><label>Hasta</label><input class="input" type="date" name="hasta" value="{{ hasta }}"></div><button class="btn dark">Ver</button></form>
+<div class="card"><div class="table-wrap"><table>
+  <thead><tr><th>Pedido</th><th>Fecha</th><th>Cliente</th>{% if current_user.puede('admin') %}<th>Preventista</th>{% endif %}<th class="num">Total</th><th>Estado</th></tr></thead>
+  <tbody>{% for p in pedidos %}<tr><td>{% if current_user.puede('cajero') %}<a href="{{ url_for('pedido_detalle', pid=p.id) }}"><b>{{ p.folio }}</b></a>{% else %}<b>{{ p.folio }}</b>{% endif %}</td><td>{{ p.fecha|fh }}</td><td>{{ p.nombre }}</td>
+    {% if current_user.puede('admin') %}<td>{{ p.vendedor.nombre if p.vendedor else '' }}</td>{% endif %}<td class="num">{{ p.total|pesos }}</td>
+    <td>{% if p.estado == 'pendiente' %}<span class="badge yellow">Por despachar</span>{% elif p.estado == 'confirmado' %}<span class="badge ok">Despachado</span>{% else %}<span class="badge">Cancelado</span>{% endif %}</td></tr>
+  {% else %}<tr><td colspan="6" class="empty">Sin pedidos en ese periodo.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

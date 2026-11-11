@@ -1,5 +1,10 @@
 {% extends "base.html" %}
 {% block title %}Configuración{% endblock %}
+{% block scripts %}<script>
+document.getElementById('gps').addEventListener('click', e => { const b = e.target; b.textContent = 'Buscando…';
+  navigator.geolocation.getCurrentPosition(p => { document.getElementById('ubic').value = p.coords.latitude.toFixed(6) + ', ' + p.coords.longitude.toFixed(6); b.textContent = '📍 Listo ✔'; },
+    () => { b.textContent = 'Activa el GPS'; }, { enableHighAccuracy: true, timeout: 15000 }); });
+</script>{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Configuración</h1></div></div>
 <div class="tabs"><a href="#negocio">Negocio</a><a href="#medios">Medios de pago</a><a href="#ventas">Ventas y precios</a><a href="#tienda">Tienda online</a><a href="#categorias">Categorías</a><a href="#nomina">Nómina</a></div>
@@ -11,6 +16,8 @@
     <div class="form-row"><div class="field"><label>NIT</label><input class="input" name="nit" value="{{ cfg.nit or '' }}"></div><div class="field"><label>Teléfono</label><input class="input" name="telefono" value="{{ cfg.telefono or '' }}"></div></div>
     <div class="form-row"><div class="field"><label>Dirección</label><input class="input" name="direccion" value="{{ cfg.direccion or '' }}"></div><div class="field"><label>Ciudad</label><input class="input" name="ciudad" value="{{ cfg.ciudad or '' }}"></div></div>
     <div class="form-row"><div class="field"><label>WhatsApp del negocio</label><input class="input" name="whatsapp" value="{{ cfg.whatsapp or '' }}" placeholder="3001234567"><div class="hint">A este número llegan los pedidos de la tienda.</div></div><div class="field"><label>Correo</label><input class="input" name="email" value="{{ cfg.email or '' }}"></div></div>
+    <div class="field"><label>Ubicación del local (punto de partida de las rutas)</label>
+      <div style="display:flex;gap:6px"><input class="input" name="ubicacion" id="ubic" value="{{ ('%.6f, %.6f'|format(cfg.lat, cfg.lng)) if cfg.lat is not none else '' }}" placeholder="7.889100, -72.496700"><button type="button" class="btn sec" id="gps">📍 Estoy aquí</button></div></div>
     <div class="field"><label>Mensaje al pie del recibo</label><input class="input" name="mensaje_recibo" value="{{ cfg.mensaje_recibo or '' }}"></div>
     <div class="form-row">
       <div class="field"><label>Impresora de tickets</label><select class="input" name="ancho_ticket"><option value="80" {{ 'selected' if cfg.ancho_ticket == 80 }}>80 mm</option><option value="58" {{ 'selected' if cfg.ancho_ticket == 58 }}>58 mm</option></select></div>

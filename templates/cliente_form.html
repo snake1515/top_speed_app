@@ -1,5 +1,10 @@
 {% extends "base.html" %}
 {% block title %}{{ 'Editar' if c.id else 'Nuevo' }} cliente{% endblock %}
+{% block scripts %}<script>
+document.getElementById('gps').addEventListener('click', e => { const b = e.target; b.textContent = 'Buscando…';
+  navigator.geolocation.getCurrentPosition(p => { document.getElementById('ubic').value = p.coords.latitude.toFixed(6) + ', ' + p.coords.longitude.toFixed(6); b.textContent = '📍 Listo ✔'; },
+    () => { b.textContent = 'Activa el GPS'; }, { enableHighAccuracy: true, timeout: 15000 }); });
+</script>{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>{{ c.nombre if c.id else 'Nuevo cliente' }}</h1></div></div>
 <form method="post" class="card" style="max-width:720px">
@@ -10,13 +15,20 @@
     <div class="field"><label>Celular / WhatsApp</label><input class="input" name="telefono" value="{{ c.telefono or '' }}"></div>
     <div class="field"><label>Correo</label><input class="input" type="email" name="email" value="{{ c.email or '' }}"></div>
   </div>
-  <div class="field"><label>Dirección</label><input class="input" name="direccion" value="{{ c.direccion or '' }}"></div>
+  <div class="form-row">
+    <div class="field"><label>Dirección</label><input class="input" name="direccion" value="{{ c.direccion or '' }}"></div>
+    <div class="field"><label>Barrio</label><input class="input" name="barrio" value="{{ c.barrio or '' }}"></div>
+  </div>
+  <div class="field"><label>Ubicación GPS</label>
+    <div style="display:flex;gap:6px"><input class="input" name="ubicacion" id="ubic" value="{{ ('%.6f, %.6f'|format(c.lat, c.lng)) if c.tiene_ubicacion else '' }}" placeholder="7.889100, -72.496700 o un enlace largo de Google Maps"><button type="button" class="btn sec" id="gps">📍 Estoy aquí</button></div>
+    <div class="hint">En Google Maps mantén presionado el punto del local, copia las coordenadas y pégalas aquí. Se usa para trazar las rutas.</div></div>
   <div class="form-row">
     <div class="field"><label>Tipo de precio</label><select class="input" name="lista">{% for k, v in LISTAS_PRECIO.items() %}<option value="{{ k }}" {{ 'selected' if c.lista == k }}>{{ v }}</option>{% endfor %}</select>
       <div class="hint">En el POS se aplica solo al elegir el cliente.</div></div>
     {% if current_user.puede('admin') %}
     <div class="field"><label>Cupo de crédito</label><input class="input" name="cupo" value="{{ (c.cupo or 0)|round|int }}" inputmode="numeric"><div class="hint">0 = sin límite.</div></div>
     <div class="field"><label>Plazo (días)</label><input class="input" name="plazo_dias" value="{{ c.plazo_dias or 30 }}" inputmode="numeric"></div>
+    <div class="field"><label>Ruta de preventa</label><select class="input" name="ruta_id"><option value="">— ninguna —</option>{% for r in rutas %}<option value="{{ r.id }}" {{ 'selected' if c.ruta_id == r.id }}>{{ r.nombre }}</option>{% endfor %}</select></div>
     {% endif %}
   </div>
   <div class="field"><label>Notas</label><input class="input" name="notas" value="{{ c.notas or '' }}" placeholder="Ej. taller en el barrio X, moto Pulsar 200"></div>

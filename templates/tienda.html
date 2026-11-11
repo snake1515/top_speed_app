@@ -2,8 +2,12 @@
 {% block content %}
 {% if not q and not cat and pagina == 1 %}
 <section class="s-hero">
-  <h1>{{ cfg.eslogan or 'Repuestos para tu moto' }}</h1>
-  <p>{{ cfg.tienda_mensaje or '' }}</p>
+  <div>
+    {% with mid='hero' %}{% include "_marca.html" %}{% endwith %}
+    <h1>{{ cfg.eslogan or 'Repuestos para tu moto' }}</h1>
+    <p>{{ cfg.tienda_mensaje or '' }}</p>
+  </div>
+  <img class="mascota" src="{{ url_for('static', filename='mascota.svg', v=STATIC_V) }}" alt="Mascota de {{ cfg.nombre }}">
 </section>
 {% endif %}
 <div class="s-layout">

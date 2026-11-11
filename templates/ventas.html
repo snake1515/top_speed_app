@@ -18,8 +18,8 @@
   <tbody>
   {% for v in ventas %}
   <tr class="clic {{ 'anulada' if v.anulada }}" onclick="location.href='{{ url_for('venta_detalle', vid=v.id) }}'">
-    <td><a href="{{ url_for('venta_detalle', vid=v.id) }}"><b>{{ v.folio }}</b></a>{% if v.origen == 'tienda' %} <span class="badge blue">web</span>{% endif %}</td>
-    <td>{{ v.fecha|fh }}</td><td>{{ v.cliente_nombre or '—' }}</td><td>{{ v.usuario.nombre if v.usuario else '' }}</td>
+    <td><a href="{{ url_for('venta_detalle', vid=v.id) }}"><b>{{ v.folio }}</b></a>{% if v.origen == 'tienda' %} <span class="badge blue">web</span>{% elif v.origen == 'preventa' %} <span class="badge yellow">ruta</span>{% endif %}</td>
+    <td>{{ v.fecha|fh }}</td><td>{{ v.cliente_nombre or '—' }}</td><td>{{ (v.vendedor or v.usuario).nombre if (v.vendedor or v.usuario) else '' }}</td>
     <td class="num">{{ v.neto|pesos if not v.anulada else v.total|pesos }}</td>
     {% if current_user.ve_costos %}<td class="num">{{ v.ganancia|pesos }}</td>{% endif %}
     <td class="num">{{ v.saldo|pesos if v.saldo else '' }}</td>

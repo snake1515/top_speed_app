@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Pedido · {{ c.nombre }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Pedido</h1><p><b>{{ c.nombre }}</b> · precio {{ c.lista_nombre|lower }}{% if saldo %} · <span class="neg">debe {{ saldo|pesos }}</span>{% endif %}</p></div>
+  <a class="btn sec" href="{{ url_for('mi_ruta', ruta=ruta_id) }}#c{{ c.id }}">← Volver a la ruta</a>
+</div>
+<div class="grid g-main">
+  <section>
+    <div class="pos-search"><input id="buscar" class="input" placeholder="Buscar repuesto o moto" autocomplete="off"></div>
+    <div id="resultados" class="res-list"></div>
+  </section>
+  <aside class="card cart">
+    <h2 style="margin-bottom:8px">Pedido</h2>
+    <div id="carrito" class="cart-items"></div>
+    <div class="field" style="margin-top:10px"><input class="input" id="nota" placeholder="Nota: entregar en la tarde, factura a nombre de…"></div>
+    <div class="cart-total" id="total">$ 0</div>
+    <div id="err"></div>
+    <button class="btn lg" style="width:100%;margin-top:10px" id="enviar" type="button">Enviar pedido</button>
+    <p class="hint">El precio sale de la lista del cliente. Lo que pidas queda apartado y se cobra al despachar.</p>
+  </aside>
+</div>
+<div class="modal-bg" id="m-ok"><div class="modal" style="text-align:center">
+  <div style="font-size:3rem">✔</div><h1 id="ok-folio"></h1><div class="cart-total" id="ok-total" style="text-align:center"></div>
+  <div class="actions" style="justify-content:center;margin-top:14px"><a class="btn sec" id="ok-wa" target="_blank">Confirmar al cliente por WhatsApp</a><a class="btn" id="ok-volver">Siguiente parada</a></div>
+</div></div>
+{% endblock %}
+{% block scripts %}
+<script>
+const $ = id => document.getElementById(id);
+const CLI = {{ c.id }}, LISTA = '{{ c.lista }}';
+let carrito = [], res = [], t, gps = null;
+if (navigator.geolocation) navigator.geolocation.getCurrentPosition(p => gps = p.coords, () => {}, { timeout: 8000 });
+function pintar() {
+  $('carrito').innerHTML = carrito.length ? carrito.map((it, i) => `<div class="ci"><div><div class="nm">${esc(it.p.nombre)}</div><div class="cd">${esc(it.p.codigo)} · ${COP(it.p.precio)} c/u · disp. ${NUM(it.p.disp)}</div></div>
+    <div class="tot">${COP(it.q * it.p.precio)}</div>
+    <div class="ctl"><button class="qty-btn" data-i="${i}" data-d="-1" type="button">−</button><input class="input" data-i="${i}" value="${NUM(it.q)}" inputmode="decimal"><button class="qty-btn" data-i="${i}" data-d="1" type="button">+</button>
+    ${it.q > it.p.disp ? '<span class="badge err">no alcanza</span>' : ''}<button class="btn ghost sm" data-x="${i}" type="button">✕</button></div></div>`).join('') : '<p class="empty">Busca y agrega repuestos.</p>';
+  $('total').textContent = COP(carrito.reduce((a, it) => a + it.q * it.p.precio, 0));
+}
+$('carrito').addEventListener('click', e => {
+  const b = e.target.closest('[data-d]'); if (b) { const it = carrito[b.dataset.i]; it.q = Math.max(1, it.q + Number(b.dataset.d)); pintar(); }
+  const x = e.target.closest('[data-x]'); if (x) { carrito.splice(Number(x.dataset.x), 1); pintar(); }
+});
+$('carrito').addEventListener('change', e => { if (e.target.dataset.i !== undefined && e.target.tagName === 'INPUT') { carrito[e.target.dataset.i].q = Math.max(num(e.target.value), 1); pintar(); } });
+async function buscar(q) { return (await fetch('{{ url_for('preventa_productos') }}?lista=' + LISTA + '&q=' + encodeURIComponent(q))).json(); }
+$('buscar').addEventListener('input', () => { clearTimeout(t); const q = $('buscar').value.trim(); if (!q) { $('resultados').innerHTML = ''; return; }
+  t = setTimeout(async () => { res = await buscar(q);
+    $('resultados').innerHTML = res.length ? res.map((p, i) => `<div class="res" data-i="${i}"><img class="thumb" src="${p.img || '{{ url_for('static', filename='sin-foto.svg') }}'}" alt="">
+      <div style="min-width:0"><div class="nm">${esc(p.nombre)}</div><div class="meta">${esc(p.codigo)}${p.compat ? ' · 🏍 ' + esc(p.compat) : ''}</div></div>
+      <div><div class="pr">${COP(p.precio)}</div><div class="st ${p.disp <= 0 ? 'neg' : 'muted'}">${p.disp <= 0 ? 'Agotado' : 'Disp. ' + NUM(p.disp)}</div></div></div>`).join('') : '<p class="empty">Sin resultados.</p>'; }, 200); });
+$('resultados').addEventListener('click', e => { const el = e.target.closest('.res'); if (!el) return; const p = res[el.dataset.i];
+  if (p.disp <= 0) { alert('Ese repuesto está agotado.'); return; }
+  const ex = carrito.find(it => it.p.id === p.id); if (ex) ex.q++; else carrito.unshift({ p, q: 1 }); pintar(); $('buscar').select(); });
+$('enviar').addEventListener('click', async () => {
+  if (!carrito.length) return; $('enviar').disabled = true;
+  const j = await postJSON('{{ url_for('preventa_pedido') }}', { cliente_id: CLI, ruta_id: {{ ruta_id or 'null' }}, nota: $('nota').value,
+    items: carrito.map(it => ({ producto_id: it.p.id, cantidad: it.q })), lat: gps ? gps.latitude : null, lng: gps ? gps.longitude : null });
+  $('enviar').disabled = false;
+  if (!j.ok) { $('err').innerHTML = j.errores.map(m => `<div class="flash err">${esc(m)}</div>`).join(''); return; }
+  $('ok-folio').textContent = 'Pedido ' + j.folio; $('ok-total').textContent = COP(j.total);
+  $('ok-wa').style.display = j.wa ? '' : 'none'; $('ok-wa').href = j.wa || '#'; $('ok-volver').href = j.url;
+  document.getElementById('m-ok').classList.add('on');
+});
+pintar();
+</script>
+{% endblock %}

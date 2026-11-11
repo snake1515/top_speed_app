@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Cliente nuevo{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Cliente nuevo</h1><p>Registra un local o taller que encontraste en la ruta.</p></div><a class="btn sec" href="{{ url_for('mi_ruta') }}">← Mi ruta</a></div>
+<form method="post" class="card" style="max-width:640px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="field"><label>Nombre del local o cliente *</label><input class="input" name="nombre" required></div>
+  <div class="form-row"><div class="field"><label>Celular / WhatsApp</label><input class="input" name="telefono" inputmode="tel"></div><div class="field"><label>Cédula / NIT</label><input class="input" name="documento"></div></div>
+  <div class="form-row"><div class="field"><label>Dirección</label><input class="input" name="direccion"></div><div class="field"><label>Barrio</label><input class="input" name="barrio"></div></div>
+  <div class="field"><label>Ubicación GPS</label>
+    <div style="display:flex;gap:6px"><input class="input" name="ubicacion" id="ubic" placeholder="Se llena con el botón, o pega un enlace de Google Maps"><button type="button" class="btn sec" id="gps">📍 Estoy aquí</button></div></div>
+  <div class="form-row">
+    <div class="field"><label>Tipo de precio</label><select class="input" name="lista">{% for k, v in LISTAS_PRECIO.items() %}<option value="{{ k }}" {{ 'selected' if k == 'taller' }}>{{ v }}</option>{% endfor %}</select></div>
+    <div class="field"><label>Agregar a la ruta</label><select class="input" name="ruta_id"><option value="">—</option>{% for r in rutas %}<option value="{{ r.id }}">{{ r.nombre }}</option>{% endfor %}</select></div>
+  </div>
+  <div class="field"><label>Notas</label><input class="input" name="notas" placeholder="Qué motos atiende, quién compra, horario…"></div>
+  <button class="btn lg">Guardar cliente</button>
+</form>
+{% endblock %}
+{% block scripts %}<script>
+document.getElementById('gps').addEventListener('click', e => { const b = e.target; b.textContent = 'Buscando…';
+  navigator.geolocation.getCurrentPosition(p => { document.getElementById('ubic').value = p.coords.latitude.toFixed(6) + ', ' + p.coords.longitude.toFixed(6); b.textContent = '📍 Listo ✔'; },
+    () => { b.textContent = 'Activa el GPS'; }, { enableHighAccuracy: true, timeout: 15000 }); });
+</script>{% endblock %}

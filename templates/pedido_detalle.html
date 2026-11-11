@@ -2,7 +2,7 @@
 {% block title %}Pedido {{ p.folio }}{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Pedido web {{ p.folio }}</h1><p>{{ p.fecha|fh }}</p></div>
+  <div><h1>{{ 'Pedido de preventa' if p.es_preventa else 'Pedido web' }} {{ p.folio }}</h1><p>{{ p.fecha|fh }}{% if p.es_preventa and p.vendedor %} · tomado por {{ p.vendedor.nombre }} · precio {{ LISTAS_PRECIO.get(p.lista or "detal") }}{% endif %}</p></div>
   <div class="actions">
     <a class="btn sec" href="{{ wa }}" target="_blank">Escribir al cliente</a>
     {% if p.estado == 'pendiente' %}<a class="btn lg" href="{{ url_for('pos', pedido=p.id) }}">Confirmar y cobrar</a>{% endif %}

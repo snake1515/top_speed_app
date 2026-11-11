@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Rutas de preventa{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Rutas de preventa</h1><p>Cada ruta tiene un preventista, un día y sus locales en orden de visita. {{ sin_ruta }} cliente(s) sin ruta.</p></div>
+  <div class="actions"><a class="btn sec" href="{{ url_for('preventa_reporte') }}">Reporte de preventa</a><a class="btn" href="{{ url_for('ruta_form') }}">＋ Ruta</a></div></div>
+{% if cfg.lat is none %}<div class="flash warn">Guarda la ubicación del local en <a href="{{ url_for('configuracion') }}#negocio">Configuración</a> para que las rutas salgan desde ahí y se puedan ordenar por cercanía.</div>{% endif %}
+<div class="card"><div class="table-wrap"><table>
+  <thead><tr><th>Ruta</th><th>Día</th><th>Preventista</th><th class="num">Locales</th><th></th></tr></thead>
+  <tbody>{% for r in rutas %}<tr class="clic {{ 'anulada' if not r.activa }}" onclick="location.href='{{ url_for('ruta_detalle', rid=r.id) }}'">
+    <td><a href="{{ url_for('ruta_detalle', rid=r.id) }}"><b>{{ r.nombre }}</b></a>{% if r.notas %}<br><small class="muted">{{ r.notas }}</small>{% endif %}</td>
+    <td>{{ r.dia_nombre }}</td><td>{{ r.usuario.nombre if r.usuario else '— sin asignar —' }}</td><td class="num">{{ r.clientes.filter_by(activo=True).count() }}</td>
+    <td><a class="btn sm sec" href="{{ url_for('ruta_form', rid=r.id) }}">Editar</a></td></tr>
+  {% else %}<tr><td colspan="5" class="empty">Crea la primera ruta, por ejemplo «Ruta Norte» para los lunes.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

@@ -36,9 +36,9 @@ def plantilla():
     ws.append([c[1] for c in COLUMNAS])
     for i, c in enumerate(ws[1]):
         c.font = Font(bold=True, color="FFFFFF")
-        c.fill = PatternFill("solid", fgColor="E3262F" if "*" in c.value else "16181D")
+        c.fill = PatternFill("solid", fgColor="E8243C" if "*" in c.value else "0B0A07")
         if COLUMNAS[i][2]:
-            c.comment = Comment(COLUMNAS[i][2], "Top Speed")
+            c.comment = Comment(COLUMNAS[i][2], "Moto Speed")
         ws.column_dimensions[c.column_letter].width = 20
     ws.append(["EJEMPLO-001", "Kit de arrastre 428 (borrar esta fila)", "Transmisión (kit de arrastre)", "Riffel",
                "KA-428", "Boxer 100, CT 100", "E2-C3", "", "kit", 3, 85000, 129000, 115000, 120000, 2, 0, "SI"])

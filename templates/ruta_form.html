@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Ruta{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ r.nombre if r.id else 'Nueva ruta' }}</h1></div></div>
+<form method="post" class="card" style="max-width:560px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="field"><label>Nombre</label><input class="input" name="nombre" value="{{ r.nombre or '' }}" placeholder="ej. Ruta Norte, Centro, Atalaya" required></div>
+  <div class="form-row">
+    <div class="field"><label>Día de visita</label><select class="input" name="dia"><option value="">Cualquier día</option>{% for d in DIAS %}<option value="{{ loop.index0 }}" {{ 'selected' if r.dia == loop.index0 }}>{{ d }}</option>{% endfor %}</select></div>
+    <div class="field"><label>Preventista</label><select class="input" name="usuario_id"><option value="">— sin asignar —</option>{% for u in preventistas %}<option value="{{ u.id }}" {{ 'selected' if r.usuario_id == u.id }}>{{ u.nombre }}</option>{% endfor %}</select>
+      <div class="hint">Crea el usuario con rol «Preventista» en <a href="{{ url_for('usuarios') }}">Usuarios</a>.</div></div>
+  </div>
+  <div class="field"><label>Notas</label><input class="input" name="notas" value="{{ r.notas or '' }}"></div>
+  {% if r.id %}<label class="check" style="margin-bottom:12px"><input type="checkbox" name="activa" value="1" {{ 'checked' if r.activa }}> Activa</label>{% endif %}
+  <button class="btn">Guardar</button> <a class="btn sec" href="{{ url_for('ruta_detalle', rid=r.id) if r.id else url_for('rutas') }}">Cancelar</a>
+</form>
+{% endblock %}

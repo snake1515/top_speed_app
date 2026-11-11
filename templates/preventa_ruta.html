@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% block title %}Mi ruta{% endblock %}
+{% block head %}<style>
+  .parada { display: grid; grid-template-columns: 38px minmax(0, 1fr); gap: 12px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .parada:last-child { border-bottom: 0; }
+  .num { width: 34px; height: 34px; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-weight: 800; display: flex; align-items: center; justify-content: center; font-family: var(--cond); font-size: 1.1rem; border: 2px solid var(--nav); }
+  .parada.hecha .num { background: #d9d8d0; }
+  .parada.hecha .nm { color: var(--muted); }
+  .parada .nm { font-weight: 700; font-size: 1.05rem; }
+  .botones { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .botones .btn { padding: 8px 12px; font-size: .9rem; }
+  .res-visita { display: none; margin-top: 8px; gap: 6px; flex-wrap: wrap; }
+  .res-visita.on { display: flex; }
+  .progreso { height: 10px; background: #e9e7df; border-radius: 99px; overflow: hidden; }
+  .progreso div { height: 100%; background: linear-gradient(90deg, var(--accent), var(--red)); }
+</style>{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Mi ruta</h1><p>{{ DIAS[hoy.weekday()] }} {{ hoy|f }} · {{ current_user.nombre }}</p></div>
+  <div class="actions"><a class="btn sec" href="{{ url_for('preventa_cliente_nuevo') }}">＋ Cliente nuevo</a><a class="btn sec" href="{{ url_for('preventa_mis_pedidos') }}">Mis pedidos</a></div>
+</div>
+{% if not rutas %}
+<div class="card empty">Aún no tienes rutas asignadas. Pídele al administrador que te asigne una en <b>Rutas</b>.</div>
+{% else %}
+<div class="tabs">{% for r in rutas %}<a href="{{ url_for('mi_ruta', ruta=r.id) }}" class="{{ 'on' if ruta and r.id == ruta.id }}">{{ r.nombre }} · {{ r.dia_nombre }}</a>{% endfor %}</div>
+{% set hechas = clientes|selectattr('id', 'in', visitas.keys()|list)|list|length %}
+<div class="kpis" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+  <div class="kpi hl"><div class="lbl">Visitados</div><div class="val">{{ hechas }} / {{ clientes|length }}</div>
+    <div class="progreso" style="margin-top:6px"><div style="width:{{ (hechas / clientes|length * 100) if clientes else 0 }}%"></div></div></div>
+  <div class="kpi"><div class="lbl">Pedidos hoy</div><div class="val">{{ pedidos_hoy|length }}</div></div>
+  <div class="kpi"><div class="lbl">Vendido hoy</div><div class="val">{{ pedidos_hoy|sum(attribute='total')|pesos }}</div></div>
+</div>
+<div class="card">
+  <div class="card-head"><h2>{{ ruta.nombre }}</h2>
+    <div class="actions">
+      {% for t in tramos %}<a class="btn" href="{{ t.url }}" target="_blank" rel="noopener">🗺 Ir en Google Maps{% if tramos|length > 1 %} ({{ t.desde }}–{{ t.hasta }}){% endif %}</a>{% endfor %}
+      {% if not tramos and tramos_todo %}<span class="badge ok">Ruta completa ✔</span>{% endif %}
+    </div>
+  </div>
+  {% if tramos %}<p class="hint" style="margin-top:-6px">Abre Google Maps con las paradas que te faltan, en orden, saliendo desde el local.</p>{% endif %}
+  {% set pts = [] %}{% for p in puntos %}{% set _ = pts.append(dict(p, hecho=(p.id in visitas))) %}{% endfor %}
+  {% with puntos=pts, alto=280 %}{% include "_mapa.html" %}{% endwith %}
+  <div style="margin-top:6px">
+  {% for c in clientes %}
+    {% set v = visitas.get(c.id) %}
+    <div class="parada {{ 'hecha' if v }}" id="c{{ c.id }}">
+      <div class="num">{{ loop.index }}</div>
+      <div>
+        <div class="nm">{{ c.nombre }}</div>
+        <small class="muted">{{ c.direccion or 'Sin dirección' }}{% if c.barrio %} · {{ c.barrio }}{% endif %} · precio {{ c.lista_nombre|lower }}</small>
+        <div style="margin-top:3px">
+          {% if v %}<span class="badge {{ 'ok' if v.resultado == 'pedido' else 'warn' }}">{{ v.resultado_nombre }} · {{ v.fecha.strftime('%I:%M %p') }}</span>{% endif %}
+          {% if saldos[c.id] %}<span class="badge err">Debe {{ saldos[c.id]|pesos }}</span>{% endif %}
+          {% if c.id in ultima %}<span class="badge">Última compra hace {{ ultima[c.id] }} días</span>{% else %}<span class="badge blue">Aún no compra</span>{% endif %}
+          {% if not c.tiene_ubicacion %}<span class="badge warn">Sin ubicación GPS</span>{% endif %}
+        </div>
+        {% if c.notas %}<small>{{ c.notas }}</small>{% endif %}
+        <div class="botones">
+          <a class="btn" href="{{ url_for('preventa_pedido_form', cid=c.id, ruta=ruta.id) }}">Tomar pedido</a>
+          {% if not v %}<button class="btn sec" type="button" onclick="document.getElementById('rv{{ c.id }}').classList.toggle('on')">Sin pedido…</button>{% endif %}
+          {% if c.destino_maps %}<a class="btn sec" href="{{ llegar(c) }}" target="_blank" rel="noopener">Cómo llegar</a>{% endif %}
+          {% if c.telefono %}<a class="btn sec" href="tel:{{ c.telefono }}">Llamar</a><a class="btn sec" href="{{ wa(c.telefono, 'Hola ' ~ c.nombre ~ ', le saluda ' ~ current_user.nombre ~ ' de ' ~ cfg.nombre ~ '.') }}" target="_blank" rel="noopener">WhatsApp</a>{% endif %}
+          <button class="btn ghost sm" type="button" data-gps="{{ c.id }}">📍 {{ 'Corregir' if c.tiene_ubicacion else 'Guardar' }} ubicación</button>
+        </div>
+        {% if not v %}
+        <form class="res-visita" id="rv{{ c.id }}" method="post" action="{{ url_for('preventa_visita') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="cliente_id" value="{{ c.id }}"><input type="hidden" name="ruta_id" value="{{ ruta.id }}">
+          <input type="hidden" name="lat" class="gps-lat"><input type="hidden" name="lng" class="gps-lng">
+          <input class="input" name="nota" placeholder="Nota (opcional): qué necesita, cuándo volver…" style="flex-basis:100%">
+          {% for k, l in resultados.items() if k != 'pedido' %}<button class="btn sm sec" name="resultado" value="{{ k }}">{{ l }}</button>{% endfor %}
+        </form>
+        {% endif %}
+      </div>
+    </div>
+  {% else %}<p class="empty">Esta ruta aún no tiene clientes.</p>{% endfor %}
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+  // ubicación del celular: se guarda en el cliente y se adjunta a las visitas
+  let gps = null;
+  if (navigator.geolocation) navigator.geolocation.getCurrentPosition(p => {
+    gps = p.coords; document.querySelectorAll('.gps-lat').forEach(i => i.value = gps.latitude); document.querySelectorAll('.gps-lng').forEach(i => i.value = gps.longitude);
+  }, () => {}, { enableHighAccuracy: true, timeout: 8000 });
+  document.querySelectorAll('[data-gps]').forEach(b => b.addEventListener('click', () => {
+    if (!navigator.geolocation) { alert('Este celular no permite la ubicación.'); return; }
+    b.textContent = 'Buscando GPS…';
+    navigator.geolocation.getCurrentPosition(async p => {
+      const j = await postJSON('{{ url_for('preventa_ubicacion', cid=0) }}'.replace('/0/', '/' + b.dataset.gps + '/'), { lat: p.coords.latitude, lng: p.coords.longitude });
+      b.textContent = j.ok ? '📍 Ubicación guardada ✔' : (j.errores || ['Error'])[0];
+    }, () => { b.textContent = '📍 Activa el GPS e intenta de nuevo'; }, { enableHighAccuracy: true, timeout: 15000 });
+  }));
+</script>
+{% endblock %}

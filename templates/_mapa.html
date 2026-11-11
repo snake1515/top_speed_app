@@ -1,0 +1,22 @@
+{# Mapa con las paradas numeradas (Leaflet + OpenStreetMap). Requiere `puntos` = [{n, nombre, lat, lng}] #}
+{% if puntos %}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+<div id="mapa" style="height:{{ alto|default(320) }}px;border-radius:10px;border:1px solid var(--line);background:#e9e7df"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+(() => {
+  if (!window.L) { document.getElementById('mapa').innerHTML = '<p class="empty">No se pudo cargar el mapa. Usa los botones de Google Maps.</p>'; return; }
+  const pts = {{ puntos|tojson }};
+  const local = {{ ([cfg.lat, cfg.lng] if cfg.lat is not none else none)|tojson }};
+  const m = L.map('mapa', { scrollWheelZoom: false });
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap' }).addTo(m);
+  const icono = (txt, fondo, color) => L.divIcon({ className: '', iconSize: [28, 28], iconAnchor: [14, 14],
+    html: `<div style="width:28px;height:28px;border-radius:50%;background:${fondo};color:${color};border:2px solid #0b0a07;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;box-shadow:0 2px 6px rgba(0,0,0,.4)">${txt}</div>` });
+  const linea = [];
+  if (local) { L.marker(local, { icon: icono('★', '#0b0a07', '#ffc400') }).addTo(m).bindPopup('{{ cfg.nombre }}'); linea.push(local); }
+  pts.forEach(p => { L.marker([p.lat, p.lng], { icon: icono(p.n, p.hecho ? '#9a9a92' : '#ffc400', '#0b0a07') }).addTo(m).bindPopup(`${p.n}. ${p.nombre.replace(/</g, '&lt;')}`); linea.push([p.lat, p.lng]); });
+  if (linea.length > 1) L.polyline(linea, { color: '#e8243c', weight: 3, dashArray: '6 6' }).addTo(m);
+  m.fitBounds(L.latLngBounds(linea).pad(0.2));
+})();
+</script>
+{% endif %}

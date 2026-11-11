@@ -1,4 +1,4 @@
-"""Top Speed — punto de venta, caja, inventario con costo promedio, cartera, nómina,
+"""Moto Speed — punto de venta, caja, inventario con costo promedio, cartera, nómina,
 reportes y tienda online para un almacén de repuestos de moto."""
 import json
 import os
@@ -20,14 +20,14 @@ from sqlalchemy.exc import IntegrityError
 import importador
 import nomina as nom
 import reportes as rpt
-from models import (CATEGORIAS_GASTO, LISTAS_PRECIO, MOTIVOS_AJUSTE, ROLES, TIPOS_MEDIO, TIPOS_MOV,
+from models import (normalizar, DIAS, RESULTADOS_VISITA, Ruta, Visita, migrar, CATEGORIAS_GASTO, LISTAS_PRECIO, MOTIVOS_AJUSTE, ROLES, TIPOS_MEDIO, TIPOS_MOV,
                     TIPOS_PAGO_EMP, UNIDADES, Ajuste, Categoria, Cliente, Compra, Cotizacion,
                     Empleado, Gasto, MedioPago, MovCaja, Movimiento, PagoNomina, Pedido, Producto,
                     Proveedor, Turno, Usuario, Venta, ahora, config, db, semilla)
 from services import (ErrorNegocio, abrir_turno, anular_ajuste, anular_compra, anular_mov_caja,
                       anular_venta, cant, cerrar_turno, crear_pedido, devolver, guardar_cotizacion,
                       mov_caja, pagar_compra, pedido_vencido, pesos, registrar_abono, registrar_ajuste,
-                      registrar_compra, registrar_venta, reservado_por_producto, resumen_turno,
+                      registrar_compra, registrar_venta, registrar_visita, crear_pedido_preventa, reservado_por_producto, resumen_turno,
                       saldo_cliente, turno_abierto)
 
 load_dotenv()
@@ -270,6 +270,7 @@ with app.app_context():
     if es_pg:
         db.session.execute(db.text("SELECT pg_advisory_lock(7310515)"))
     db.create_all()
+    migrar()
     semilla()
     if not Usuario.query.first():
         clave = os.getenv("ADMIN_PASSWORD")
@@ -346,6 +347,8 @@ def inicio_usuario():
         return redirect(url_for("panel"))
     if current_user.rol == "bodega":
         return redirect(url_for("productos"))
+    if current_user.rol == "preventista":
+        return redirect(url_for("mi_ruta"))
     return redirect(url_for("pos"))
 
 
@@ -411,11 +414,8 @@ def buscar_productos(q, limite=30, solo_activos=True):
     if q:
         exacto = Producto.query.filter(or_(Producto.codigo.ilike(q), Producto.codigo_barras == q),
                                        Producto.activo.is_(True)).first()
-        for palabra in q.split()[:6]:
-            like = f"%{palabra}%"
-            query = query.filter(or_(Producto.codigo.ilike(like), Producto.nombre.ilike(like),
-                                     Producto.marca.ilike(like), Producto.referencia.ilike(like),
-                                     Producto.compatibilidad.ilike(like), Producto.codigo_barras.ilike(like)))
+        for palabra in normalizar(q).split()[:6]:
+            query = query.filter(Producto.busqueda.like(f"%{palabra}%"))
         res = query.order_by(Producto.nombre).limit(limite).all()
         if exacto and exacto not in res:
             res.insert(0, exacto)
@@ -443,9 +443,12 @@ def pos():
     elif request.args.get("pedido"):
         ped = db.session.get(Pedido, int(request.args["pedido"]))
         if ped and ped.estado == "pendiente":
-            cli = Cliente.query.filter(Cliente.telefono.ilike(f"%{ped.telefono[-10:]}%")).first() if ped.telefono else None
-            precarga = {"tipo": "pedido", "id": ped.id, "folio": ped.folio, "lista": "detal", "descuento": 0,
-                        "nota": f"Pedido web {ped.folio}" + (f" · {ped.nota}" if ped.nota else ""),
+            cli = ped.cliente or (Cliente.query.filter(Cliente.telefono.ilike(f"%{ped.telefono[-10:]}%")).first()
+                                  if ped.telefono else None)
+            etiqueta = (f"Preventa {ped.folio} · {ped.vendedor.nombre}" if ped.es_preventa and ped.vendedor
+                        else f"Pedido web {ped.folio}")
+            precarga = {"tipo": "pedido", "id": ped.id, "folio": ped.folio, "lista": ped.lista or "detal", "descuento": 0,
+                        "nota": etiqueta + (f" · {ped.nota}" if ped.nota else ""),
                         "cliente": cliente_json(cli) if cli else None, "cliente_nombre": ped.nombre,
                         "cliente_tel": ped.telefono, "cliente_doc": ped.documento or "",
                         "items": [{"producto": producto_json(it.producto, ver_costo=current_user.ve_costos),
@@ -815,7 +818,18 @@ def cliente_form(cid=None):
         c.email = (f.get("email") or "").strip()[:120] or None
         c.direccion = (f.get("direccion") or "").strip()[:200] or None
         c.lista = f.get("lista") if f.get("lista") in LISTAS_PRECIO else "detal"
+        c.barrio = (f.get("barrio") or "").strip()[:80] or None
+        coords = leer_coordenadas(f.get("ubicacion"))
+        if coords:
+            c.lat, c.lng = coords
+        elif (f.get("ubicacion") or "").strip() == "":
+            c.lat = c.lng = None
         if current_user.puede("admin"):
+            nueva_ruta = int(f.get("ruta_id")) if (f.get("ruta_id") or "").isdigit() else None
+            if nueva_ruta != c.ruta_id:
+                c.ruta_id = nueva_ruta
+                c.orden_ruta = (db.session.query(db.func.max(Cliente.orden_ruta)).filter(Cliente.ruta_id == nueva_ruta)
+                                .scalar() or 0) + 1 if nueva_ruta else 0
             c.cupo = max(n(f.get("cupo")), 0)
             c.plazo_dias = max(int(n(f.get("plazo_dias"), 30)), 0)
         c.notas = (f.get("notas") or "").strip()[:300] or None
@@ -828,7 +842,7 @@ def cliente_form(cid=None):
             db.session.commit()
             flash("Cliente guardado.", "ok")
             return redirect(url_for("cliente_detalle", cid=c.id))
-    return render_template("cliente_form.html", c=c)
+    return render_template("cliente_form.html", c=c, rutas=Ruta.query.filter_by(activa=True).order_by(Ruta.nombre).all())
 
 
 @app.route("/clientes/<int:cid>")
@@ -891,11 +905,16 @@ def cotizacion_descartar(cid):
 @requiere("cajero")
 def pedidos():
     estado = request.args.get("estado", "pendiente")
+    origen = request.args.get("origen", "")
     q = Pedido.query
     if estado in ("pendiente", "confirmado", "cancelado"):
         q = q.filter_by(estado=estado)
+    if origen == "preventa":
+        q = q.filter(Pedido.origen == "preventa")
+    elif origen == "web":
+        q = q.filter(or_(Pedido.origen == "web", Pedido.origen.is_(None)))
     return render_template("pedidos.html", pedidos=q.order_by(Pedido.fecha.desc()).limit(200).all(), estado=estado,
-                           vencido=pedido_vencido)
+                           origen=origen, vencido=pedido_vencido)
 
 
 @app.route("/pedidos/<int:pid>")
@@ -931,11 +950,8 @@ def productos():
     if cat:
         query = query.filter(Producto.categoria_id == cat)
     if q.strip():
-        for palabra in q.split()[:6]:
-            like = f"%{palabra}%"
-            query = query.filter(or_(Producto.codigo.ilike(like), Producto.nombre.ilike(like), Producto.marca.ilike(like),
-                                     Producto.referencia.ilike(like), Producto.compatibilidad.ilike(like),
-                                     Producto.codigo_barras.ilike(like), Producto.ubicacion.ilike(like)))
+        for palabra in normalizar(q).split()[:6]:
+            query = query.filter(Producto.busqueda.like(f"%{palabra}%"))
     lista = query.order_by(Producto.nombre).all()
     if filtro == "bajos":
         lista = [p for p in lista if p.bajo_minimo]
@@ -1463,7 +1479,8 @@ def reportes():
     ini, fin = rango_dt(desde, hasta)
     por_vendedor = defaultdict(lambda: [0, 0.0, 0.0])
     for v in r["ventas"]:
-        k = v.usuario.nombre if v.usuario else "—"
+        vend = v.vendedor or v.usuario
+        k = vend.nombre if vend else "—"
         por_vendedor[k][0] += 1
         por_vendedor[k][1] += v.neto
         por_vendedor[k][2] += v.ganancia
@@ -1472,7 +1489,8 @@ def reportes():
                            quietos=rpt.sin_movimiento(), valor_inv=sum(p.valor_inventario for p in prods),
                            por_cat=sorted(por_cat.items(), key=lambda x: -x[1]),
                            por_vendedor=sorted(por_vendedor.items(), key=lambda x: -x[1][1]),
-                           tienda=sum(v.neto for v in r["ventas"] if v.origen == "tienda"))
+                           tienda=sum(v.neto for v in r["ventas"] if v.origen == "tienda"),
+                           preventa=sum(v.neto for v in r["ventas"] if v.origen == "preventa"))
 
 
 @app.route("/reportes/excel")
@@ -1540,12 +1558,17 @@ def configuracion():
         f = request.form
         sec = f.get("seccion")
         if sec == "negocio":
-            cfg.nombre = (f.get("nombre") or "").strip()[:120] or "Top Speed"
+            cfg.nombre = (f.get("nombre") or "").strip()[:120] or "Moto Speed"
             for campo, largo in (("eslogan", 160), ("nit", 30), ("direccion", 200), ("ciudad", 80), ("telefono", 40),
                                  ("email", 120), ("mensaje_recibo", 300)):
                 setattr(cfg, campo, (f.get(campo) or "").strip()[:largo] or None)
             cfg.whatsapp = "".join(ch for ch in (f.get("whatsapp") or "") if ch.isdigit())[:15] or None
             cfg.ancho_ticket = 58 if f.get("ancho_ticket") == "58" else 80
+            coords = leer_coordenadas(f.get("ubicacion"))
+            if coords:
+                cfg.lat, cfg.lng = coords
+            elif not (f.get("ubicacion") or "").strip():
+                cfg.lat = cfg.lng = None
             logo = request.files.get("logo")
             if logo and logo.filename:
                 try:
@@ -1601,6 +1624,374 @@ def configuracion():
                                        .group_by(Producto.categoria_id).all()})
 
 
+# ============================================================== preventa
+def leer_coordenadas(texto):
+    """Saca lat,lng de «7.89, -72.50», de un enlace largo de Google Maps (@lat,lng o q=lat,lng)."""
+    import re
+    t = (texto or "").strip()
+    if not t:
+        return None
+    for patron in (r"@(-?\d{1,2}\.\d+),\s*(-?\d{1,3}\.\d+)", r"[?&](?:q|query|ll|destination)=(-?\d{1,2}\.\d+),\s*(-?\d{1,3}\.\d+)",
+                   r"!3d(-?\d{1,2}\.\d+)!4d(-?\d{1,3}\.\d+)", r"^(-?\d{1,2}\.\d+)\s*[,;]\s*(-?\d{1,3}\.\d+)$"):
+        m = re.search(patron, t)
+        if m:
+            lat, lng = float(m.group(1)), float(m.group(2))
+            if -90 <= lat <= 90 and -180 <= lng <= 180:
+                return lat, lng
+    return None
+
+
+def maps_lugar(c):
+    return "https://www.google.com/maps/search/?api=1&query=" + quote(c.destino_maps) if c.destino_maps else ""
+
+
+def maps_llegar(c):
+    return ("https://www.google.com/maps/dir/?api=1&travelmode=driving&destination=" + quote(c.destino_maps)
+            if c.destino_maps else "")
+
+
+def origen_local():
+    cfg = config()
+    if cfg.lat is not None and cfg.lng is not None:
+        return f"{cfg.lat:.6f},{cfg.lng:.6f}"
+    return ", ".join(x for x in (cfg.direccion, cfg.ciudad) if x)
+
+
+def maps_tramos(clientes, desde_local=True):
+    """Google Maps admite hasta 9 paradas intermedias por enlace: se parte la ruta en tramos."""
+    paradas = [c.destino_maps for c in clientes if c.destino_maps]
+    if not paradas:
+        return []
+    tramos, origen = [], (origen_local() if desde_local else "")
+    for i in range(0, len(paradas), 10):
+        grupo = paradas[i:i + 10]
+        url = "https://www.google.com/maps/dir/?api=1&travelmode=driving"
+        if origen:
+            url += "&origin=" + quote(origen)
+        url += "&destination=" + quote(grupo[-1])
+        if len(grupo) > 1:
+            url += "&waypoints=" + quote("|".join(grupo[:-1]))
+        tramos.append({"url": url, "desde": i + 1, "hasta": i + len(grupo)})
+        origen = grupo[-1]
+    return tramos
+
+
+def distancia(a, b):
+    from math import asin, cos, radians, sin, sqrt
+    la1, lo1, la2, lo2 = map(radians, (a[0], a[1], b[0], b[1]))
+    h = sin((la2 - la1) / 2) ** 2 + cos(la1) * cos(la2) * sin((lo2 - lo1) / 2) ** 2
+    return 12742 * asin(sqrt(h))
+
+
+def ordenar_por_cercania(clientes):
+    """Vecino más cercano desde el local: sencillo y suficiente para una ruta de barrio."""
+    cfg = config()
+    con = [c for c in clientes if c.tiene_ubicacion]
+    sin = [c for c in clientes if not c.tiene_ubicacion]
+    actual = (cfg.lat, cfg.lng) if cfg.lat is not None else ((con[0].lat, con[0].lng) if con else None)
+    orden = []
+    while con:
+        sig = min(con, key=lambda c: distancia(actual, (c.lat, c.lng)))
+        orden.append(sig)
+        con.remove(sig)
+        actual = (sig.lat, sig.lng)
+    return orden + sin
+
+
+def ruta_json(clientes):
+    return [{"id": c.id, "n": i + 1, "nombre": c.nombre, "lat": c.lat, "lng": c.lng} for i, c in enumerate(clientes)
+            if c.tiene_ubicacion]
+
+
+def rutas_de(usuario):
+    q = Ruta.query.filter_by(activa=True)
+    if not usuario.puede("admin"):
+        q = q.filter(Ruta.usuario_id == usuario.id)
+    return q.order_by(Ruta.dia.is_(None), Ruta.dia, Ruta.nombre).all()
+
+
+@app.route("/preventa")
+@requiere("preventista")
+def mi_ruta():
+    rutas = rutas_de(current_user)
+    hoy = ahora()
+    ruta = None
+    if request.args.get("ruta", type=int):
+        ruta = next((r for r in rutas if r.id == request.args.get("ruta", type=int)), None)
+    if ruta is None:
+        ruta = next((r for r in rutas if r.dia == hoy.weekday()), None) or (rutas[0] if rutas else None)
+    clientes = ruta.clientes_orden() if ruta else []
+    ini = datetime.combine(hoy.date(), datetime.min.time())
+    visitas_hoy = {}
+    for v in Visita.query.filter(Visita.fecha >= ini, Visita.usuario_id == current_user.id).order_by(Visita.fecha).all():
+        visitas_hoy[v.cliente_id] = v
+    saldos = defaultdict(float)
+    for v in Venta.query.filter(Venta.estado == "credito", Venta.cliente_id.in_([c.id for c in clientes] or [0])).all():
+        saldos[v.cliente_id] += v.saldo
+    ultima = {}
+    for cid, f in (db.session.query(Venta.cliente_id, db.func.max(Venta.fecha))
+                   .filter(Venta.estado != "anulada", Venta.cliente_id.in_([c.id for c in clientes] or [0]))
+                   .group_by(Venta.cliente_id).all()):
+        ultima[cid] = (hoy - f).days
+    pendientes = [c for c in clientes if c.id not in visitas_hoy]
+    return render_template("preventa_ruta.html", rutas=rutas, ruta=ruta, clientes=clientes, visitas=visitas_hoy,
+                           saldos=saldos, ultima=ultima, tramos=maps_tramos(pendientes), tramos_todo=maps_tramos(clientes),
+                           lugar=maps_lugar, llegar=maps_llegar, wa=wa_link, resultados=RESULTADOS_VISITA,
+                           puntos=ruta_json(clientes), hoy=hoy, DIAS=DIAS,
+                           pedidos_hoy=Pedido.query.filter(Pedido.vendedor_id == current_user.id, Pedido.fecha >= ini)
+                           .filter(Pedido.estado != "cancelado").all())
+
+
+@app.route("/preventa/visita", methods=["POST"])
+@requiere("preventista")
+def preventa_visita():
+    c = get_or_404(Cliente, int(request.form.get("cliente_id") or 0))
+    try:
+        registrar_visita(current_user, c, request.form.get("resultado"), request.form.get("nota"),
+                         pct(request.form.get("lat"), None), pct(request.form.get("lng"), None))
+        db.session.commit()
+        flash(f"Visita a {c.nombre} registrada.", "ok")
+    except ErrorNegocio as e:
+        db.session.rollback()
+        errores_flash(e)
+    return redirect(url_for("mi_ruta", ruta=request.form.get("ruta_id")) + f"#c{c.id}")
+
+
+@app.route("/preventa/cliente/<int:cid>/ubicacion", methods=["POST"])
+@requiere("preventista")
+def preventa_ubicacion(cid):
+    c = get_or_404(Cliente, cid)
+    d = request.get_json(silent=True) or {}
+    try:
+        lat, lng = float(d.get("lat")), float(d.get("lng"))
+    except (TypeError, ValueError):
+        return jsonify(ok=False, errores=["No llegó la ubicación."]), 400
+    if not (-90 <= lat <= 90 and -180 <= lng <= 180):
+        return jsonify(ok=False, errores=["Ubicación inválida."]), 400
+    c.lat, c.lng = lat, lng
+    db.session.commit()
+    return jsonify(ok=True)
+
+
+@app.route("/preventa/cliente/<int:cid>/pedido")
+@requiere("preventista")
+def preventa_pedido_form(cid):
+    c = get_or_404(Cliente, cid)
+    ruta_id = request.args.get("ruta", type=int)
+    return render_template("preventa_pedido.html", c=c, ruta_id=ruta_id, saldo=saldo_cliente(c))
+
+
+@app.route("/preventa/productos")
+@requiere("preventista")
+def preventa_productos():
+    lista = request.args.get("lista") if request.args.get("lista") in LISTAS_PRECIO else "detal"
+    reservado = reservado_por_producto()
+    out = []
+    for p in buscar_productos(request.args.get("q"), 30):
+        d = producto_json(p, reservado)
+        d["precio"] = p.precio(lista)
+        d["disp"] = max((p.stock or 0) - reservado.get(p.id, 0), 0)
+        out.append(d)
+    return jsonify(out)
+
+
+@app.route("/preventa/pedido", methods=["POST"])
+@requiere("preventista")
+def preventa_pedido():
+    d = request.get_json(silent=True) or {}
+    c = db.session.get(Cliente, int(d.get("cliente_id") or 0))
+    try:
+        ped = crear_pedido_preventa(current_user, c, d.get("items"), d.get("nota"), d.get("lat"), d.get("lng"))
+        db.session.commit()
+    except ErrorNegocio as e:
+        db.session.rollback()
+        return jsonify(ok=False, errores=e.errores), 400
+    return jsonify(ok=True, folio=ped.folio, total=ped.total,
+                   url=url_for("mi_ruta", ruta=d.get("ruta_id")) + f"#c{c.id}",
+                   wa=wa_link(c.telefono, f"Hola {c.nombre}, te saluda {current_user.nombre} de {config().nombre}. "
+                                          f"Tu pedido {ped.folio} por {pesos(ped.total)} quedó registrado. ¡Gracias!")
+                   if c.telefono else "")
+
+
+@app.route("/preventa/mis-pedidos")
+@requiere("preventista")
+def preventa_mis_pedidos():
+    desde, hasta = periodo()
+    ini, fin = rango_dt(desde, hasta)
+    q = Pedido.query.filter(Pedido.origen == "preventa", Pedido.fecha >= ini, Pedido.fecha < fin)
+    if not current_user.puede("admin"):
+        q = q.filter(Pedido.vendedor_id == current_user.id)
+    lista = q.order_by(Pedido.fecha.desc()).all()
+    return render_template("preventa_mis_pedidos.html", pedidos=lista, desde=desde, hasta=hasta,
+                           total=sum(p.total for p in lista if p.estado != "cancelado"),
+                           confirmado=sum(p.total for p in lista if p.estado == "confirmado"))
+
+
+@app.route("/preventa/cliente-nuevo", methods=["GET", "POST"])
+@requiere("preventista")
+def preventa_cliente_nuevo():
+    rutas = rutas_de(current_user)
+    if request.method == "POST":
+        f = request.form
+        nombre = (f.get("nombre") or "").strip()
+        doc = (f.get("documento") or "").strip()[:30] or None
+        if len(nombre) < 2:
+            flash("Escribe el nombre del local o del cliente.", "err")
+        elif doc and Cliente.query.filter_by(documento=doc).first():
+            flash("Ya existe un cliente con ese documento.", "err")
+        else:
+            ruta_id = int(f.get("ruta_id")) if (f.get("ruta_id") or "").isdigit() else None
+            if ruta_id and ruta_id not in [r.id for r in rutas]:
+                ruta_id = None
+            c = Cliente(nombre=nombre[:140], documento=doc, telefono=(f.get("telefono") or "").strip()[:40] or None,
+                        direccion=(f.get("direccion") or "").strip()[:200] or None,
+                        barrio=(f.get("barrio") or "").strip()[:80] or None,
+                        lista=f.get("lista") if f.get("lista") in LISTAS_PRECIO else "taller",
+                        notas=(f.get("notas") or "").strip()[:300] or None, ruta_id=ruta_id,
+                        orden_ruta=(db.session.query(db.func.max(Cliente.orden_ruta)).filter(Cliente.ruta_id == ruta_id)
+                                    .scalar() or 0) + 1 if ruta_id else 0)
+            coords = leer_coordenadas(f.get("ubicacion"))
+            if coords:
+                c.lat, c.lng = coords
+            db.session.add(c)
+            db.session.commit()
+            flash(f"{c.nombre} quedó registrado{' en la ruta' if ruta_id else ''}.", "ok")
+            return redirect(url_for("mi_ruta", ruta=ruta_id) if ruta_id else url_for("mi_ruta"))
+    return render_template("preventa_cliente.html", rutas=rutas)
+
+
+# ------------------------------------------------------------ rutas (admin)
+@app.route("/rutas")
+@requiere("admin")
+def rutas():
+    lista = Ruta.query.order_by(Ruta.activa.desc(), Ruta.dia.is_(None), Ruta.dia, Ruta.nombre).all()
+    return render_template("rutas.html", rutas=lista, sin_ruta=Cliente.query.filter_by(activo=True, ruta_id=None).count())
+
+
+@app.route("/rutas/nueva", methods=["GET", "POST"])
+@app.route("/rutas/<int:rid>/editar", methods=["GET", "POST"])
+@requiere("admin")
+def ruta_form(rid=None):
+    r = get_or_404(Ruta, rid) if rid else Ruta(activa=True)
+    if request.method == "POST":
+        f = request.form
+        r.nombre = (f.get("nombre") or "").strip()[:80]
+        r.dia = int(f.get("dia")) if (f.get("dia") or "").isdigit() and int(f.get("dia")) < 7 else None
+        r.usuario_id = int(f.get("usuario_id")) if (f.get("usuario_id") or "").isdigit() else None
+        r.notas = (f.get("notas") or "").strip()[:300] or None
+        r.activa = bool(f.get("activa")) if rid else True
+        if len(r.nombre) < 2:
+            flash("Escribe el nombre de la ruta (ej. Ruta Norte).", "err")
+        else:
+            db.session.add(r)
+            db.session.commit()
+            flash("Ruta guardada.", "ok")
+            return redirect(url_for("ruta_detalle", rid=r.id))
+    return render_template("ruta_form.html", r=r, DIAS=DIAS,
+                           preventistas=Usuario.query.filter(Usuario.activo.is_(True),
+                                                             Usuario.rol.in_(["preventista", "admin"])).all())
+
+
+@app.route("/rutas/<int:rid>")
+@requiere("admin")
+def ruta_detalle(rid):
+    r = get_or_404(Ruta, rid)
+    clientes = r.clientes_orden()
+    hoy = ahora()
+    hace30 = hoy - timedelta(days=30)
+    ventas30 = defaultdict(float)
+    for v in Venta.query.filter(Venta.fecha >= hace30, Venta.estado != "anulada",
+                                Venta.cliente_id.in_([c.id for c in clientes] or [0])).all():
+        ventas30[v.cliente_id] += v.neto
+    disponibles = Cliente.query.filter(Cliente.activo.is_(True), or_(Cliente.ruta_id.is_(None), Cliente.ruta_id != r.id)) \
+        .order_by(Cliente.nombre).all()
+    return render_template("ruta_detalle.html", r=r, clientes=clientes, ventas30=ventas30, disponibles=disponibles,
+                           tramos=maps_tramos(clientes), lugar=maps_lugar, puntos=ruta_json(clientes),
+                           sin_ubicacion=sum(1 for c in clientes if not c.destino_maps))
+
+
+@app.route("/rutas/<int:rid>/clientes", methods=["POST"])
+@requiere("admin")
+def ruta_clientes(rid):
+    r = get_or_404(Ruta, rid)
+    accion = request.form.get("accion")
+    clientes = r.clientes_orden()
+    if accion == "agregar":
+        ids = [int(x) for x in request.form.getlist("cliente_id") if x.isdigit()]
+        n_ = len(clientes)
+        for c in Cliente.query.filter(Cliente.id.in_(ids or [0])).all():
+            n_ += 1
+            c.ruta_id, c.orden_ruta = r.id, n_
+        flash(f"{len(ids)} cliente(s) agregados a la ruta.", "ok")
+    elif accion in ("subir", "bajar", "quitar"):
+        cid = int(request.form.get("cid") or 0)
+        idx = next((i for i, c in enumerate(clientes) if c.id == cid), None)
+        if idx is not None:
+            if accion == "quitar":
+                clientes[idx].ruta_id = None
+                clientes.pop(idx)
+            else:
+                j = idx - 1 if accion == "subir" else idx + 1
+                if 0 <= j < len(clientes):
+                    clientes[idx], clientes[j] = clientes[j], clientes[idx]
+        for i, c in enumerate(clientes, 1):
+            c.orden_ruta = i
+    elif accion == "cercania":
+        for i, c in enumerate(ordenar_por_cercania(clientes), 1):
+            c.orden_ruta = i
+        flash("Ruta ordenada por cercanía desde el local. Los clientes sin ubicación quedaron al final.", "ok")
+    db.session.commit()
+    return redirect(url_for("ruta_detalle", rid=rid) + "#paradas")
+
+
+@app.route("/preventa/reporte")
+@requiere("admin")
+def preventa_reporte():
+    desde, hasta = periodo()
+    ini, fin = rango_dt(desde, hasta)
+    visitas = Visita.query.filter(Visita.fecha >= ini, Visita.fecha < fin).all()
+    pedidos = Pedido.query.filter(Pedido.origen == "preventa", Pedido.fecha >= ini, Pedido.fecha < fin).all()
+    ventas = Venta.query.filter(Venta.origen == "preventa", Venta.estado != "anulada", Venta.fecha >= ini,
+                                Venta.fecha < fin).all()
+    por = defaultdict(lambda: {"visitas": 0, "con_pedido": 0, "pedidos": 0, "valor_pedidos": 0.0, "ventas": 0.0,
+                               "utilidad": 0.0, "motivos": defaultdict(int)})
+    for v in visitas:
+        d = por[v.usuario.nombre if v.usuario else "—"]
+        d["visitas"] += 1
+        d["con_pedido"] += v.resultado == "pedido"
+        d["motivos"][v.resultado] += 1
+    for p in pedidos:
+        if p.estado != "cancelado":
+            d = por[p.vendedor.nombre if p.vendedor else "—"]
+            d["pedidos"] += 1
+            d["valor_pedidos"] += p.total
+    for v in ventas:
+        d = por[v.vendedor.nombre if v.vendedor else "—"]
+        d["ventas"] += v.neto
+        d["utilidad"] += v.ganancia
+    por_ruta = defaultdict(lambda: {"visitas": 0, "pedidos": 0, "valor": 0.0})
+    for v in visitas:
+        k = v.ruta.nombre if v.ruta else "Sin ruta"
+        por_ruta[k]["visitas"] += 1
+        por_ruta[k]["pedidos"] += v.resultado == "pedido"
+    for p in pedidos:
+        if p.estado != "cancelado":
+            k = p.cliente.ruta.nombre if p.cliente and p.cliente.ruta else "Sin ruta"
+            por_ruta[k]["valor"] += p.total
+    # clientes de ruta que no compran hace más de 30 días
+    hoy = ahora()
+    en_ruta = Cliente.query.filter(Cliente.activo.is_(True), Cliente.ruta_id.isnot(None)).all()
+    ultima = dict(db.session.query(Venta.cliente_id, db.func.max(Venta.fecha)).filter(Venta.estado != "anulada")
+                  .group_by(Venta.cliente_id).all())
+    dormidos = sorted([(c, (hoy - ultima[c.id]).days if c.id in ultima else None) for c in en_ruta
+                       if c.id not in ultima or (hoy - ultima[c.id]).days > 30],
+                      key=lambda x: -(x[1] if x[1] is not None else 9999))[:40]
+    return render_template("preventa_reporte.html", desde=desde, hasta=hasta, por=sorted(por.items()),
+                           por_ruta=sorted(por_ruta.items()), dormidos=dormidos, resultados=RESULTADOS_VISITA,
+                           total_visitas=len(visitas), total_pedidos=sum(1 for p in pedidos if p.estado != "cancelado"),
+                           total_ventas=sum(v.neto for v in ventas))
+
+
 # ========================================================= tienda pública
 def precio_tienda(p):
     return p.precio_detal
@@ -1628,10 +2019,8 @@ def tienda():
     if cat:
         query = query.filter(Producto.categoria_id == cat)
     if q:
-        for palabra in q.split()[:6]:
-            like = f"%{palabra}%"
-            query = query.filter(or_(Producto.nombre.ilike(like), Producto.codigo.ilike(like), Producto.marca.ilike(like),
-                                     Producto.compatibilidad.ilike(like), Producto.referencia.ilike(like)))
+        for palabra in normalizar(q).split()[:6]:
+            query = query.filter(Producto.busqueda.like(f"%{palabra}%"))
     orden = request.args.get("orden", "")
     if orden == "menor":
         query = query.order_by(Producto.precio_detal)

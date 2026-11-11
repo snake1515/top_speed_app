@@ -8,7 +8,7 @@ import json
 import secrets
 from datetime import timedelta
 
-from models import (MOTIVOS_AJUSTE, Ajuste, AjusteItem, Cliente, Compra, CompraItem, Cotizacion,
+from models import (RESULTADOS_VISITA, Visita, MOTIVOS_AJUSTE, Ajuste, AjusteItem, Cliente, Compra, CompraItem, Cotizacion,
                     Devolucion, MedioPago, MovCaja, Movimiento, PagoCompra, PagoVenta, Pedido,
                     PedidoItem, Producto, Turno, Venta, VentaItem, ahora, config, db, siguiente)
 
@@ -295,13 +295,15 @@ def registrar_venta(usuario, items, pagos, cliente=None, cliente_nombre="", clie
         credito = False
 
     v = Venta(numero=siguiente("sig_venta"), token=secrets.token_urlsafe(16), cliente=cliente,
-              cliente_nombre=(cliente.nombre if cliente else cliente_nombre or "").strip()[:140] or None,
-              cliente_doc=(cliente.documento if cliente else cliente_doc or "").strip()[:30] or None,
-              cliente_tel=(cliente.telefono if cliente else cliente_tel or "").strip()[:40] or None,
+              cliente_nombre=((cliente.nombre if cliente else cliente_nombre) or "").strip()[:140] or None,
+              cliente_doc=((cliente.documento if cliente else cliente_doc) or "").strip()[:30] or None,
+              cliente_tel=((cliente.telefono if cliente else cliente_tel) or "").strip()[:40] or None,
               lista=lista if lista in ("detal", "mayor", "taller") else "detal", bruto=bruto, descuento=descuento,
               total=total, credito=credito, estado="credito" if credito else "pagada",
-              origen="tienda" if pedido else "pos", pedido_id=pedido.id if pedido else None,
-              nota=(nota or "").strip()[:300] or None, turno_id=turno.id, usuario_id=usuario.id)
+              origen=("preventa" if pedido.es_preventa else "tienda") if pedido else "pos",
+              pedido_id=pedido.id if pedido else None,
+              nota=(nota or "").strip()[:300] or None, turno_id=turno.id, usuario_id=usuario.id,
+              vendedor_id=(pedido.vendedor_id if pedido and pedido.vendedor_id else usuario.id))
     if credito and cliente:
         v.vence = ahora().date() + timedelta(days=cliente.plazo_dias or 30)
     db.session.add(v)
@@ -675,8 +677,8 @@ def guardar_cotizacion(usuario, items, cliente=None, cliente_nombre="", cliente_
         raise ErrorNegocio("El carrito está vacío.")
     prods = {p.id: p for p in Producto.query.filter(Producto.id.in_([x[0] for x in limpios])).all()}
     c = Cotizacion(numero=siguiente("sig_cotizacion"), cliente=cliente,
-                   cliente_nombre=(cliente.nombre if cliente else cliente_nombre or "").strip()[:140] or None,
-                   cliente_tel=(cliente.telefono if cliente else cliente_tel or "").strip()[:40] or None,
+                   cliente_nombre=((cliente.nombre if cliente else cliente_nombre) or "").strip()[:140] or None,
+                   cliente_tel=((cliente.telefono if cliente else cliente_tel) or "").strip()[:40] or None,
                    lista=lista, descuento=round(max(descuento or 0, 0)), nota=(nota or "").strip()[:300] or None,
                    vigencia_dias=int(vigencia or 8), usuario_id=usuario.id)
     total = 0
@@ -693,3 +695,56 @@ def guardar_cotizacion(usuario, items, cliente=None, cliente_nombre="", cliente_
 
 
 __all__ = ["ErrorNegocio", "Cliente"]
+
+
+# ================================================================ preventa
+def registrar_visita(usuario, cliente, resultado, nota="", lat=None, lng=None, pedido=None):
+    if resultado not in RESULTADOS_VISITA:
+        raise ErrorNegocio("Elige el resultado de la visita.")
+    v = Visita(usuario_id=usuario.id, cliente_id=cliente.id, ruta_id=cliente.ruta_id, resultado=resultado,
+               nota=(nota or "").strip()[:300] or None, pedido_id=pedido.id if pedido else None,
+               lat=lat, lng=lng)
+    db.session.add(v)
+    return v
+
+
+def crear_pedido_preventa(usuario, cliente, items, nota="", lat=None, lng=None):
+    """Pedido tomado en el local del cliente. El precio sale de la lista del cliente (no lo pone el preventista)."""
+    if cliente is None or not cliente.activo:
+        raise ErrorNegocio("Elige el cliente.")
+    pedidos = {}
+    for it in items or []:
+        try:
+            pid, q = int(it["producto_id"]), float(it["cantidad"])
+        except (KeyError, TypeError, ValueError):
+            raise ErrorNegocio("Hay una línea inválida en el pedido.")
+        if q <= 0:
+            raise ErrorNegocio("Las cantidades deben ser mayores a 0.")
+        pedidos[pid] = pedidos.get(pid, 0) + q
+    if not pedidos:
+        raise ErrorNegocio("El pedido está vacío.")
+    prods = bloquear(list(pedidos))
+    reservado = reservado_por_producto()
+    errores, p_items, total = [], [], 0.0
+    for pid, q in pedidos.items():
+        p = prods.get(pid)
+        if p is None or not p.activo:
+            raise ErrorNegocio("Uno de los repuestos ya no está disponible.")
+        disp = (p.stock or 0) - reservado.get(pid, 0)
+        if q > disp + TOL:
+            errores.append(f"De «{p.nombre}» solo hay {cant(max(disp, 0))} disponibles.")
+            continue
+        precio = p.precio(cliente.lista)
+        p_items.append(PedidoItem(producto=p, codigo=p.codigo, nombre=p.nombre, cantidad=q, precio=precio))
+        total += q * precio
+    if errores:
+        raise ErrorNegocio(errores)
+    ped = Pedido(numero=siguiente("sig_pedido"), token=secrets.token_urlsafe(16), origen="preventa",
+                 cliente_id=cliente.id, vendedor_id=usuario.id, lista=cliente.lista, nombre=cliente.nombre[:140],
+                 telefono="".join(ch for ch in (cliente.telefono or "") if ch.isdigit())[:20],
+                 documento=cliente.documento, entrega="domicilio", direccion=cliente.direccion,
+                 ciudad=cliente.barrio, nota=(nota or "").strip()[:400] or None, total=round(total), items=p_items)
+    db.session.add(ped)
+    db.session.flush()
+    registrar_visita(usuario, cliente, "pedido", nota, lat, lng, ped)
+    return ped

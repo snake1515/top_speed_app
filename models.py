@@ -1,4 +1,4 @@
-"""Modelos de Top Speed: repuestos de moto, POS, caja, inventario con costo promedio,
+"""Modelos de Moto Speed: repuestos de moto, POS, caja, inventario con costo promedio,
 cartera, tienda online, nómina, gastos.
 
 Todas las tablas usan el prefijo ts_ para poder compartir una base de Supabase con otras apps.
@@ -8,11 +8,19 @@ from zoneinfo import ZoneInfo
 
 from flask_login import UserMixin
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import event
 from sqlalchemy.orm import deferred
 from werkzeug.security import check_password_hash, generate_password_hash
 
 db = SQLAlchemy()
 TZ = ZoneInfo("America/Bogota")
+
+
+def normalizar(texto):
+    """minúsculas y sin tildes: «Bujía» → «bujia»."""
+    import unicodedata
+    t = unicodedata.normalize("NFKD", str(texto or "").lower())
+    return "".join(ch for ch in t if not unicodedata.combining(ch))
 
 
 def ahora():
@@ -24,6 +32,16 @@ ROLES = {
     "admin": "Administrador",
     "cajero": "Cajero / vendedor",
     "bodega": "Bodega",
+    "preventista": "Preventista (ventas en ruta)",
+}
+DIAS = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"]
+RESULTADOS_VISITA = {
+    "pedido": "Hizo pedido",
+    "no_compro": "No compró",
+    "tiene_stock": "Tiene surtido",
+    "sin_dinero": "Sin dinero / después",
+    "cerrado": "Local cerrado",
+    "volver": "Volver otro día",
 }
 TIPOS_MEDIO = {"efectivo": "Efectivo", "transferencia": "Transferencia", "tarjeta": "Tarjeta / datáfono", "otro": "Otro"}
 LISTAS_PRECIO = {"detal": "Detal", "mayor": "Por mayor", "taller": "Mecánico / taller"}
@@ -86,6 +104,10 @@ class Usuario(UserMixin, db.Model):
         return self.rol == "admin" or self.rol in roles
 
     @property
+    def es_preventista(self):
+        return self.rol == "preventista"
+
+    @property
     def ve_costos(self):
         return self.rol in ("admin", "bodega")
 
@@ -94,7 +116,7 @@ class Config(db.Model):
     """Una sola fila con los datos del negocio y los parámetros."""
     __tablename__ = "ts_config"
     id = db.Column(db.Integer, primary_key=True)
-    nombre = db.Column(db.String(120), nullable=False, default="Top Speed")
+    nombre = db.Column(db.String(120), nullable=False, default="Moto Speed")
     eslogan = db.Column(db.String(160), default="Repuestos para tu moto")
     nit = db.Column(db.String(30))
     direccion = db.Column(db.String(200))
@@ -107,6 +129,8 @@ class Config(db.Model):
     logo_mime = db.Column(db.String(40))
     logo_v = db.Column(db.Integer, default=0)
     ancho_ticket = db.Column(db.Integer, default=80)  # 58 u 80 mm
+    lat = db.Column(db.Float)   # ubicación del local: punto de partida de las rutas
+    lng = db.Column(db.Float)
     # impuestos y precios
     cobra_iva = db.Column(db.Boolean, nullable=False, default=False)
     iva_defecto = db.Column(db.Float, nullable=False, default=19.0)
@@ -195,6 +219,11 @@ class Producto(db.Model):
     imagen_mime = db.Column(db.String(40))
     imagen_v = db.Column(db.Integer, nullable=False, default=0)
     creado = db.Column(db.DateTime, default=ahora)
+    busqueda = db.Column(db.Text)  # texto sin tildes para buscar (se llena solo)
+
+    def actualizar_busqueda(self):
+        self.busqueda = normalizar(" ".join(str(x) for x in (self.codigo, self.codigo_barras, self.nombre, self.marca,
+                                                             self.referencia, self.compatibilidad, self.ubicacion) if x))
 
     def precio(self, lista="detal"):
         p = {"detal": self.precio_detal, "mayor": self.precio_mayor, "taller": self.precio_taller}.get(lista)
@@ -249,6 +278,12 @@ class Cliente(db.Model):
     email = db.Column(db.String(120))
     direccion = db.Column(db.String(200))
     lista = db.Column(db.String(10), nullable=False, default="detal")
+    barrio = db.Column(db.String(80))
+    lat = db.Column(db.Float)
+    lng = db.Column(db.Float)
+    ruta_id = db.Column(db.Integer, db.ForeignKey("ts_rutas.id"), index=True)
+    ruta = db.relationship("Ruta", backref=db.backref("clientes", lazy="dynamic"))
+    orden_ruta = db.Column(db.Integer, default=0)
     cupo = db.Column(db.Float, nullable=False, default=0)
     plazo_dias = db.Column(db.Integer, nullable=False, default=30)
     notas = db.Column(db.String(300))
@@ -258,6 +293,59 @@ class Cliente(db.Model):
     @property
     def lista_nombre(self):
         return LISTAS_PRECIO.get(self.lista, self.lista)
+
+    @property
+    def tiene_ubicacion(self):
+        return self.lat is not None and self.lng is not None
+
+    @property
+    def destino_maps(self):
+        """Texto que Google Maps entiende: coordenadas si las hay, si no la dirección."""
+        if self.tiene_ubicacion:
+            return f"{self.lat:.6f},{self.lng:.6f}"
+        partes = [self.direccion, self.barrio, config().ciudad]
+        return ", ".join(x for x in partes if x)
+
+
+class Ruta(db.Model):
+    """Recorrido de un preventista: locales en orden de visita."""
+    __tablename__ = "ts_rutas"
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(80), nullable=False)
+    dia = db.Column(db.Integer)  # 0 = lunes … 6 = domingo; vacío = cualquier día
+    usuario_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
+    usuario = db.relationship("Usuario")
+    notas = db.Column(db.String(300))
+    activa = db.Column(db.Boolean, nullable=False, default=True)
+
+    @property
+    def dia_nombre(self):
+        return DIAS[self.dia] if self.dia is not None and 0 <= self.dia < 7 else "Cualquier día"
+
+    def clientes_orden(self):
+        return self.clientes.filter_by(activo=True).order_by(Cliente.orden_ruta, Cliente.nombre).all()
+
+
+class Visita(db.Model):
+    """Registro de cada parada del preventista: si hubo pedido o por qué no."""
+    __tablename__ = "ts_visitas"
+    id = db.Column(db.Integer, primary_key=True)
+    fecha = db.Column(db.DateTime, nullable=False, default=ahora, index=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"), nullable=False, index=True)
+    usuario = db.relationship("Usuario")
+    cliente_id = db.Column(db.Integer, db.ForeignKey("ts_clientes.id"), nullable=False, index=True)
+    cliente = db.relationship("Cliente")
+    ruta_id = db.Column(db.Integer, db.ForeignKey("ts_rutas.id"))
+    ruta = db.relationship("Ruta")
+    resultado = db.Column(db.String(15), nullable=False)
+    nota = db.Column(db.String(300))
+    pedido_id = db.Column(db.Integer)
+    lat = db.Column(db.Float)
+    lng = db.Column(db.Float)
+
+    @property
+    def resultado_nombre(self):
+        return RESULTADOS_VISITA.get(self.resultado, self.resultado)
 
 
 class Turno(db.Model):
@@ -423,6 +511,8 @@ class Venta(db.Model):
     turno = db.relationship("Turno")
     usuario_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"), index=True)
     usuario = db.relationship("Usuario", foreign_keys=[usuario_id])
+    vendedor_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"), index=True)  # quien hizo la venta (preventista o cajero)
+    vendedor = db.relationship("Usuario", foreign_keys=[vendedor_id])
     anulada_fecha = db.Column(db.DateTime)
     anulada_motivo = db.Column(db.String(255))
     items = db.relationship("VentaItem", backref="venta", cascade="all, delete-orphan", order_by="VentaItem.id")
@@ -549,10 +639,16 @@ class CotizacionItem(db.Model):
 
 
 class Pedido(db.Model):
-    """Pedido de la tienda online. Reserva el stock hasta que se confirma o vence."""
+    """Pedido de la tienda online o de un preventista. Reserva el stock hasta que se confirma o vence."""
     __tablename__ = "ts_pedidos"
     id = db.Column(db.Integer, primary_key=True)
     numero = db.Column(db.Integer, nullable=False)
+    origen = db.Column(db.String(10), default="web")  # web / preventa
+    cliente_id = db.Column(db.Integer, db.ForeignKey("ts_clientes.id"))
+    cliente = db.relationship("Cliente")
+    vendedor_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
+    vendedor = db.relationship("Usuario")
+    lista = db.Column(db.String(10), default="detal")
     token = db.Column(db.String(40), unique=True, nullable=False)
     fecha = db.Column(db.DateTime, nullable=False, default=ahora, index=True)
     nombre = db.Column(db.String(140), nullable=False)
@@ -572,7 +668,11 @@ class Pedido(db.Model):
 
     @property
     def folio(self):
-        return f"W-{self.numero:05d}"
+        return f"{'P' if self.origen == 'preventa' else 'W'}-{self.numero:05d}"
+
+    @property
+    def es_preventa(self):
+        return self.origen == "preventa"
 
 
 class PedidoItem(db.Model):
@@ -654,6 +754,12 @@ class Gasto(db.Model):
     usuario = db.relationship("Usuario")
 
 
+@event.listens_for(Producto, "before_insert")
+@event.listens_for(Producto, "before_update")
+def _busqueda_producto(mapper, conn, p):
+    p.actualizar_busqueda()
+
+
 def config():
     """Fila única de configuración (la crea si no existe)."""
     c = db.session.get(Config, 1)
@@ -674,7 +780,9 @@ def siguiente(campo):
 
 def semilla():
     """Datos mínimos al instalar: configuración, efectivo y transferencias comunes, categorías."""
-    config()
+    cfg = config()
+    if cfg.nombre and "top speed" in cfg.nombre.lower():  # cambio de marca
+        cfg.nombre = "Moto Speed"
     if not MedioPago.query.first():
         for i, (nom, tipo) in enumerate([("Efectivo", "efectivo"), ("Nequi", "transferencia"),
                                          ("Daviplata", "transferencia"), ("Bancolombia", "transferencia"),
@@ -685,4 +793,26 @@ def semilla():
                     "Suspensión", "Llantas y neumáticos", "Lubricantes", "Filtros", "Carburación e inyección",
                     "Embrague", "Carrocería y plásticos", "Accesorios", "Tornillería", "Herramientas"]:
             db.session.add(Categoria(nombre=nom))
+    for p in Producto.query.filter(Producto.busqueda.is_(None)).all():
+        p.actualizar_busqueda()
+    db.session.commit()
+
+
+def migrar():
+    """Agrega columnas nuevas a tablas que ya existían (create_all no lo hace)."""
+    from sqlalchemy import inspect, text
+    insp = inspect(db.engine)
+    tablas = set(insp.get_table_names())
+    for tabla in db.metadata.sorted_tables:
+        if tabla.name not in tablas:
+            continue
+        existentes = {c["name"] for c in insp.get_columns(tabla.name)}
+        for col in tabla.columns:
+            if col.name in existentes:
+                continue
+            tipo = col.type.compile(dialect=db.engine.dialect)
+            db.session.execute(text(f'ALTER TABLE {tabla.name} ADD COLUMN {col.name} {tipo}'))
+            defecto = col.default.arg if col.default is not None and not callable(col.default.arg) else None
+            if defecto is not None:
+                db.session.execute(text(f"UPDATE {tabla.name} SET {col.name} = :v"), {"v": defecto})
     db.session.commit()

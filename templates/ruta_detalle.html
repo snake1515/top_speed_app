@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}{{ r.nombre }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>{{ r.nombre }}</h1><p>{{ r.dia_nombre }} · {{ r.usuario.nombre if r.usuario else 'sin preventista' }} · {{ clientes|length }} locales</p></div>
+  <div class="actions">
+    {% for t in tramos %}<a class="btn" href="{{ t.url }}" target="_blank" rel="noopener">🗺 Ver en Google Maps{% if tramos|length > 1 %} ({{ t.desde }}–{{ t.hasta }}){% endif %}</a>{% endfor %}
+    <a class="btn sec" href="{{ url_for('ruta_form', rid=r.id) }}">Editar</a>
+  </div>
+</div>
+{% if sin_ubicacion %}<div class="flash warn">{{ sin_ubicacion }} local(es) no tienen dirección ni ubicación: no aparecen en Google Maps. Edita el cliente o pídele al preventista que toque «📍 Guardar ubicación» cuando esté allá.</div>{% endif %}
+<div class="grid g-main">
+  <div>
+    <div class="card">{% with alto=380 %}{% include "_mapa.html" %}{% endwith %}{% if not puntos %}<p class="empty">El mapa aparece cuando los clientes tengan ubicación GPS.</p>{% endif %}</div>
+    <div class="card" id="paradas">
+      <div class="card-head"><h2>Paradas en orden</h2>
+        <form method="post" action="{{ url_for('ruta_clientes', rid=r.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="accion" value="cercania"><button class="btn sm dark">Ordenar por cercanía</button></form></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>Cliente</th><th>Dirección</th><th class="num">Compras 30 días</th><th></th></tr></thead>
+        <tbody>{% for c in clientes %}<tr>
+          <td><b>{{ loop.index }}</b></td>
+          <td><a href="{{ url_for('cliente_detalle', cid=c.id) }}"><b>{{ c.nombre }}</b></a><br><small class="muted">{{ c.telefono or '' }} · {{ c.lista_nombre }}</small></td>
+          <td>{{ c.direccion or '' }}{% if c.barrio %}<br><small class="muted">{{ c.barrio }}</small>{% endif %} {% if c.tiene_ubicacion %}<span class="badge ok">GPS</span>{% elif c.destino_maps %}<span class="badge">dirección</span>{% else %}<span class="badge warn">sin ubicación</span>{% endif %}
+            {% if c.destino_maps %}<br><a href="{{ lugar(c) }}" target="_blank" rel="noopener"><small>Ver en el mapa ↗</small></a>{% endif %}</td>
+          <td class="num">{{ ventas30[c.id]|pesos if ventas30[c.id] else '—' }}</td>
+          <td style="white-space:nowrap">{% for acc, txt in [('subir', '↑'), ('bajar', '↓'), ('quitar', '✕')] %}<form class="inline" method="post" action="{{ url_for('ruta_clientes', rid=r.id) }}" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="accion" value="{{ acc }}"><input type="hidden" name="cid" value="{{ c.id }}"><button class="btn ghost sm" title="{{ acc }}">{{ txt }}</button></form>{% endfor %}</td></tr>
+        {% else %}<tr><td colspan="5" class="empty">Agrega clientes a la ruta.</td></tr>{% endfor %}</tbody>
+      </table></div>
+    </div>
+  </div>
+  <form class="card" method="post" action="{{ url_for('ruta_clientes', rid=r.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="accion" value="agregar">
+    <h2 style="margin-bottom:8px">Agregar clientes</h2>
+    <input class="input" placeholder="Filtrar…" oninput="const q=this.value.toLowerCase();document.querySelectorAll('.cli-opt').forEach(l=>l.style.display=l.textContent.toLowerCase().includes(q)?'':'none')" style="margin-bottom:8px">
+    <div style="max-height:420px;overflow-y:auto">
+      {% for c in disponibles %}<label class="check cli-opt" style="font-weight:500;padding:5px 0"><input type="checkbox" name="cliente_id" value="{{ c.id }}"> {{ c.nombre }} <small class="muted">{{ c.barrio or '' }}{% if c.ruta %} · en {{ c.ruta.nombre }}{% endif %}</small></label>
+      {% else %}<p class="muted">No hay más clientes. <a href="{{ url_for('cliente_form') }}">Crea uno</a>.</p>{% endfor %}
+    </div>
+    <button class="btn" style="margin-top:10px">Agregar a la ruta</button>
+    <p class="hint">Si el cliente estaba en otra ruta, se cambia a esta.</p>
+  </form>
+</div>
+{% endblock %}

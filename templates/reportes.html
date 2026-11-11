@@ -12,7 +12,7 @@
   <div class="kpi hl"><div class="lbl">Ganancia neta</div><div class="val {{ 'pos' if r.neta >= 0 else 'neg' }}">{{ r.neta|pesos }}</div><div class="sub">después de gastos y nómina</div></div>
   <div class="kpi"><div class="lbl">Ventas netas</div><div class="val">{{ r.ventas_netas|pesos }}</div><div class="sub">{{ r.num_ventas }} ventas · ticket {{ r.ticket_promedio|pesos }}</div></div>
   <div class="kpi"><div class="lbl">Utilidad bruta</div><div class="val">{{ r.utilidad_bruta|pesos }}</div><div class="sub">margen {{ r.margen|round(1) }} %</div></div>
-  <div class="kpi"><div class="lbl">Ventas por la tienda web</div><div class="val">{{ tienda|pesos }}</div><div class="sub">{{ ((tienda / r.ventas_netas * 100) if r.ventas_netas else 0)|round(1) }} % del total</div></div>
+  <div class="kpi"><div class="lbl">Tienda web + preventa</div><div class="val">{{ (tienda + preventa)|pesos }}</div><div class="sub">web {{ tienda|pesos }} · ruta {{ preventa|pesos }}</div></div>
 </div>
 <div class="grid g-main">
   <div>
@@ -77,8 +77,8 @@
   const serie = {{ serie|tojson }};
   new Chart(document.getElementById('graf'), {
     data: { labels: serie.map(s => s[0]), datasets: [
-      { type: 'bar', label: 'Ventas', data: serie.map(s => s[1]), backgroundColor: '#121418', borderRadius: 4 },
-      { type: 'line', label: 'Utilidad bruta', data: serie.map(s => s[2]), borderColor: '#e3262f', backgroundColor: '#e3262f', tension: .3, pointRadius: 2 }] },
+      { type: 'bar', label: 'Ventas', data: serie.map(s => s[1]), backgroundColor: '#0b0a07', borderRadius: 4 },
+      { type: 'line', label: 'Utilidad bruta', data: serie.map(s => s[2]), borderColor: '#ffc400', backgroundColor: '#ffc400', borderWidth: 3, tension: .3, pointRadius: 2 }] },
     options: { maintainAspectRatio: false, plugins: { legend: { position: 'bottom' }, tooltip: { callbacks: { label: c => c.dataset.label + ': ' + COP(c.raw) } } },
       scales: { y: { ticks: { callback: v => COP(v) } }, x: { grid: { display: false } } } } });
 </script>

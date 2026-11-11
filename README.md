@@ -1,8 +1,8 @@
-# Top Speed — POS, inventario y tienda online para repuestos de moto
+# Moto Speed — POS, inventario, preventa y tienda online para repuestos de moto
 
 App web para un almacén de repuestos de moto: **punto de venta con cuadre de caja**, **inventario con costo promedio ponderado y kardex**, compras a proveedores, cartera, nómina, gastos, reportes de ganancia y una **tienda online enlazada al mismo inventario**.
 
-Hecha con Flask + PostgreSQL (Supabase), desplegable en Render. Todas las tablas usan el prefijo `ts_`, así que puede compartir base con otras apps.
+Hecha con Flask + PostgreSQL (Supabase), desplegable en Render. Todas las tablas usan el prefijo `ts_`, así que puede compartir base con otras apps. Si ya tenías la versión anterior desplegada, al reiniciar se agregan solas las columnas nuevas y el nombre pasa a Moto Speed.
 
 ## Módulos
 
@@ -17,7 +17,8 @@ Hecha con Flask + PostgreSQL (Supabase), desplegable en Render. Todas las tablas
 | **Tienda online** | Catálogo público en la raíz del sitio con buscador por repuesto o moto, categorías, carrito y pedido. **Precios y stock salen del mismo inventario**. Los pedidos **apartan** el stock (48 h configurables) y llegan a «Pedidos web»; al confirmarlos se cobran en el POS y ahí se descuentan |
 | **Nómina** | Sueldo fijo, comisión sobre ventas del usuario del POS, o mixto; aportes, prestaciones, auxilio de transporte; desprendible imprimible; pago opcional desde la caja |
 | **Gastos y reportes** | Estado de resultados (ventas − costo − gastos − nómina − pérdidas = ganancia neta), más vendidos, «plata quieta» (stock sin rotación), ventas por vendedor y por medio de pago, Excel |
-| **Usuarios** | Administrador (todo), Cajero/vendedor (POS, caja, ventas, clientes; no ve costos ni puede vender por debajo del costo) y Bodega (repuestos, compras, ajustes, kardex) |
+| **Preventa en ruta** | Rol **Preventista** que trabaja desde el celular: «Mi ruta de hoy» con los locales en orden, botón para abrir la ruta completa en **Google Maps** (sale desde el local, con las paradas que faltan), cómo llegar a cada local, llamar o escribir por WhatsApp, guardar la ubicación GPS del local, **tomar pedidos** con el precio de ese cliente (mayor/taller) o registrar por qué no hubo pedido. Los pedidos apartan el stock y se cobran al despachar en el POS. El administrador arma las rutas (día, preventista, orden de visita, «ordenar por cercanía»), y ve el reporte de visitas, efectividad, ventas por preventista y por ruta, y clientes dormidos. La comisión del preventista sale de sus pedidos despachados |
+| **Usuarios** | Administrador (todo), Cajero/vendedor (POS, caja, ventas, clientes; no ve costos ni puede vender por debajo del costo), Bodega (repuestos, compras, ajustes, kardex) y Preventista (su ruta y sus pedidos) |
 
 > Los recibos son soporte de venta; **no reemplazan la factura electrónica DIAN**. La nómina es una ayuda de control; valida la planilla PILA con tu contador.
 
@@ -41,10 +42,11 @@ Hecha con Flask + PostgreSQL (Supabase), desplegable en Render. Todas las tablas
 
 ### 3. Primeros pasos en la app
 1. Entra a `https://TU-APP.onrender.com/login` con el usuario administrador.
-2. **Configuración** → datos del negocio, logo, WhatsApp (ahí llegan los pedidos de la tienda), medios de pago con su número de cuenta, impresora de 58 u 80 mm.
+2. **Configuración** → datos del negocio, ubicación del local (botón «📍 Estoy aquí», es el punto de partida de las rutas), logo, WhatsApp (ahí llegan los pedidos de la tienda), medios de pago con su número de cuenta, impresora de 58 u 80 mm.
 3. **Repuestos** → créalos uno por uno o descarga la plantilla e **importa desde Excel** (con stock inicial y costo).
 4. **Usuarios** → crea los cajeros y, si pagas comisión, enlázalos en **Empleados**.
 5. **Caja y cuadre** → abre la caja con la base y empieza a vender en **Vender (POS)**.
+6. **Preventa** → crea usuarios con rol Preventista, arma las **Rutas** y agrega los locales con su ubicación.
 
 La tienda queda en la raíz del sitio (`https://TU-APP.onrender.com/`). Se puede apagar desde Configuración.
 

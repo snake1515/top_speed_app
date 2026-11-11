@@ -105,7 +105,7 @@ def excel(desde, hasta, cfg):
     wb = Workbook()
     titulo = Font(bold=True, size=14)
     neg = Font(bold=True, color="FFFFFF")
-    relleno = PatternFill("solid", fgColor="16181D")
+    relleno = PatternFill("solid", fgColor="0B0A07")
     moneda = '"$" #,##0'
 
     def hoja(ws, encabezados, filas, formatos=None):

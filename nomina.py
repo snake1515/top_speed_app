@@ -20,12 +20,13 @@ VACACIONES = 4.17
 
 
 def ventas_del_periodo(empleado, desde, hasta):
-    """Ventas netas sin IVA hechas por el usuario del empleado en el periodo."""
+    """Ventas netas sin IVA hechas por el empleado (como cajero o preventista) en el periodo."""
     if not empleado.usuario_id:
         return 0.0
     ini = datetime.combine(desde, datetime.min.time())
     fin = datetime.combine(hasta + timedelta(days=1), datetime.min.time())
-    vs = Venta.query.filter(Venta.usuario_id == empleado.usuario_id, Venta.estado != "anulada",
+    vendedor = db.func.coalesce(Venta.vendedor_id, Venta.usuario_id)
+    vs = Venta.query.filter(vendedor == empleado.usuario_id, Venta.estado != "anulada",
                             Venta.fecha >= ini, Venta.fecha < fin).all()
     return sum(v.neto - ((v.iva or 0) - (v.iva_devuelto or 0)) for v in vs)
 

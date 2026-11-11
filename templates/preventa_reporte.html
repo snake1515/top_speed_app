@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Reporte de preventa{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Reporte de preventa</h1><p>Del {{ desde|f }} al {{ hasta|f }}</p></div><div class="actions"><a class="btn sec" href="{{ url_for('preventa_mis_pedidos', desde=desde, hasta=hasta) }}">Ver pedidos</a><a class="btn sec" href="{{ url_for('rutas') }}">Rutas</a></div></div>
+<form class="filters card"><div class="field"><label>Desde</label><input class="input" type="date" name="desde" value="{{ desde }}"></div><div class="field"><label>Hasta</label><input class="input" type="date" name="hasta" value="{{ hasta }}"></div><button class="btn dark">Ver</button></form>
+<div class="kpis">
+  <div class="kpi hl"><div class="lbl">Ventas de preventa</div><div class="val">{{ total_ventas|pesos }}</div><div class="sub">despachadas y cobradas</div></div>
+  <div class="kpi"><div class="lbl">Visitas</div><div class="val">{{ total_visitas }}</div></div>
+  <div class="kpi"><div class="lbl">Pedidos</div><div class="val">{{ total_pedidos }}</div></div>
+  <div class="kpi"><div class="lbl">Efectividad</div><div class="val">{{ ((total_pedidos / total_visitas * 100) if total_visitas else 0)|round|int }} %</div><div class="sub">pedidos ÷ visitas</div></div>
+</div>
+<div class="card">
+  <h2 style="margin-bottom:8px">Por preventista</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Preventista</th><th class="num">Visitas</th><th class="num">Pedidos</th><th class="num">Efectividad</th><th class="num">Valor pedidos</th><th class="num">Ventas</th><th class="num">Utilidad</th><th>Sin pedido por…</th></tr></thead>
+    <tbody>{% for nom, d in por %}<tr><td><b>{{ nom }}</b></td><td class="num">{{ d.visitas }}</td><td class="num">{{ d.pedidos }}</td>
+      <td class="num">{{ ((d.con_pedido / d.visitas * 100) if d.visitas else 0)|round|int }} %</td><td class="num">{{ d.valor_pedidos|pesos }}</td><td class="num">{{ d.ventas|pesos }}</td><td class="num">{{ d.utilidad|pesos }}</td>
+      <td><small>{% for k, nn in d.motivos.items() if k != 'pedido' %}{{ resultados[k] }}: {{ nn }}{{ ' · ' if not loop.last }}{% endfor %}</small></td></tr>
+    {% else %}<tr><td colspan="8" class="empty">Sin actividad en ese periodo.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+<div class="grid g2">
+  <div class="card"><h2 style="margin-bottom:8px">Por ruta</h2>
+    {% for nom, d in por_ruta %}<div class="sum-row"><span><b>{{ nom }}</b> <small class="muted">{{ d.visitas }} visitas · {{ d.pedidos }} pedidos</small></span><b>{{ d.valor|pesos }}</b></div>{% else %}<p class="muted">Sin datos.</p>{% endfor %}</div>
+  <div class="card"><h2 style="margin-bottom:4px">Clientes dormidos</h2><p class="muted" style="margin-top:0">En ruta y sin comprar hace más de 30 días.</p>
+    {% for c, d in dormidos %}<div class="sum-row"><a href="{{ url_for('cliente_detalle', cid=c.id) }}">{{ c.nombre }}</a><small>{{ c.ruta.nombre }} · {{ ('hace ' ~ d ~ ' días') if d is not none else 'nunca ha comprado' }}</small></div>{% else %}<p class="muted">Todos compran. 👌</p>{% endfor %}</div>
+</div>
+{% endblock %}
