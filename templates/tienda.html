@@ -7,7 +7,7 @@
     <h1>{{ cfg.eslogan or 'Repuestos para tu moto' }}</h1>
     <p>{{ cfg.tienda_mensaje or '' }}</p>
   </div>
-  <img class="mascota" src="{{ url_for('static', filename='mascota.svg', v=STATIC_V) }}" alt="Mascota de {{ cfg.nombre }}">
+  <img class="mascota" src="{{ url_for('static', filename='mascota.webp', v=STATIC_V) }}" alt="Mascota de {{ cfg.nombre }}">
 </section>
 {% endif %}
 <div class="s-layout">
