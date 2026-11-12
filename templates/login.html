@@ -20,12 +20,20 @@
     .hero::before, .hero::after { content: ""; position: absolute; left: -10%; right: -10%; height: 60px; transform: skewY(-12deg); }
     .hero::before { top: 18%; background: var(--accent); opacity: .9; }
     .hero::after { top: calc(18% + 74px); height: 18px; background: var(--red); }
-    .hero .emblema { position: relative; width: min(300px, 60%); margin: 0 auto 10px; display: block; filter: drop-shadow(0 12px 30px rgba(0,0,0,.6)); }
-    .hero .marca { position: relative; width: min(520px, 100%); }
-    .hero p { color: var(--nav-ink); position: relative; max-width: 420px; }
+    .hero::before, .hero::after { z-index: 0; }
+    .hero .emblema { position: relative; z-index: 2; width: min(300px, 60%); margin: 0 auto 10px; display: block; filter: drop-shadow(0 12px 30px rgba(0,0,0,.6)); }
+    .hero .marca { position: relative; z-index: 2; width: min(520px, 100%); }
+    .hero p { color: var(--nav-ink); position: relative; z-index: 2; max-width: 420px; }
     .box { background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 30px; }
     .box form { width: 100%; max-width: 360px; }
-    @media (max-width: 800px) { body { grid-template-columns: 1fr; } .hero { min-height: 220px; padding: 26px; } .hero h1 { font-size: 2.3rem; } }
+    @media (max-width: 800px) {
+      body { grid-template-columns: 1fr; }
+      .hero { min-height: 220px; padding: 26px; }
+      .hero::before { top: 30%; height: 44px; opacity: .55; }
+      .hero::after { top: calc(30% + 56px); height: 12px; opacity: .7; }
+      .hero .emblema { width: min(220px, 55%); }
+      .logo-form { display: none; }
+    }
   </style>
 </head>
 <body>
@@ -37,7 +45,7 @@
   <div class="box">
     <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <img src="{{ url_for('logo', v=cfg.logo_v) }}" alt="" style="width:72px;height:72px;border-radius:50%;object-fit:cover;margin-bottom:12px">
+      <img class="logo-form" src="{{ url_for('logo', v=cfg.logo_v) }}" alt="" style="width:72px;height:72px;border-radius:50%;object-fit:cover;margin-bottom:12px">
       <h2 style="margin-bottom:16px">Ingresar</h2>
       {% with msgs = get_flashed_messages(with_categories=true) %}{% for cat, m in msgs %}<div class="flash {{ cat }}">{{ m }}</div>{% endfor %}{% endwith %}
       {% if sin_usuarios %}<div class="flash warn">Aún no hay usuarios. En Render agrega la variable <b>ADMIN_PASSWORD</b> (y si quieres <b>ADMIN_USER</b>) y reinicia el servicio para crear el administrador.</div>{% endif %}
