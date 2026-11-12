@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=STATIC_V) }}">
-  <link rel="icon" href="{{ url_for('static', filename='favicon.svg', v=STATIC_V) }}">
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon-64.png', v=STATIC_V) }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
   <meta name="theme-color" content="#0b0a07">
   <link rel="manifest" href="/manifest.webmanifest">
@@ -24,12 +24,12 @@
 <input type="checkbox" id="menu-toggle">
 <label for="menu-toggle" class="overlay" aria-hidden="true"></label>
 <header class="topbar">
-  <div class="brand"><img class="brand-logo" src="{{ url_for('logo', v=cfg.logo_v) }}" alt=""><div><b>{{ cfg.nombre }}</b></div></div>
+  <div class="brand"><img class="brand-logo" src="{{ url_for('logo', v=cfg.logo_v, f='c') }}" alt=""><div><b>{{ cfg.nombre }}</b></div></div>
   <label for="menu-toggle" aria-label="Abrir menú">☰</label>
 </header>
 <div class="layout">
   <aside class="sidebar">
-    <div class="brand"><img class="brand-logo" src="{{ url_for('logo', v=cfg.logo_v) }}" alt=""><div><b>{{ cfg.nombre }}</b><small>{{ cfg.eslogan or 'Repuestos para tu moto' }}</small></div></div>
+    <div class="brand"><img class="brand-logo" src="{{ url_for('logo', v=cfg.logo_v, f='c') }}" alt=""><div><b>{{ cfg.nombre }}</b><small>{{ cfg.eslogan or 'Repuestos para tu moto' }}</small></div></div>
     <div class="speed-stripe"></div>
     <nav class="nav">
       {% if current_user.puede('cajero') %}

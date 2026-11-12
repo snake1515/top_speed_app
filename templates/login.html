@@ -5,7 +5,7 @@
   <title>Ingresar · {{ cfg.nombre }}</title>
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;600;700&family=Barlow+Condensed:wght@600;700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=STATIC_V) }}">
-  <link rel="icon" href="{{ url_for('static', filename='favicon.svg', v=STATIC_V) }}">
+  <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon-64.png', v=STATIC_V) }}">
   <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
   <meta name="theme-color" content="#0b0a07">
   <link rel="manifest" href="/manifest.webmanifest">
@@ -21,8 +21,7 @@
     .hero::before { top: 18%; background: var(--accent); opacity: .9; }
     .hero::after { top: calc(18% + 74px); height: 18px; background: var(--red); }
     .hero::before, .hero::after { z-index: 0; }
-    .hero .emblema { position: relative; z-index: 2; width: min(300px, 60%); margin: 0 auto 10px; display: block; filter: drop-shadow(0 12px 30px rgba(0,0,0,.6)); }
-    .hero .marca { position: relative; z-index: 2; width: min(520px, 100%); }
+    .hero .emblema { position: relative; z-index: 2; width: min(480px, 92%); margin: 0 auto 18px; display: block; filter: drop-shadow(0 12px 30px rgba(0,0,0,.6)); }
     .hero p { color: var(--nav-ink); position: relative; z-index: 2; max-width: 420px; }
     .box { background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 30px; }
     .box form { width: 100%; max-width: 360px; }
@@ -31,7 +30,7 @@
       .hero { min-height: 220px; padding: 26px; }
       .hero::before { top: 30%; height: 44px; opacity: .55; }
       .hero::after { top: calc(30% + 56px); height: 12px; opacity: .7; }
-      .hero .emblema { width: min(220px, 55%); }
+      .hero .emblema { width: min(320px, 88%); }
       .logo-form { display: none; }
     }
   </style>
@@ -39,13 +38,12 @@
 <body>
   <div class="hero">
     <img class="emblema" src="{{ url_for('logo', v=cfg.logo_v) }}" alt="">
-    {% include "_marca.html" %}
     <p>Punto de venta, caja, inventario, preventa y tienda online.</p>
   </div>
   <div class="box">
     <form method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <img class="logo-form" src="{{ url_for('logo', v=cfg.logo_v) }}" alt="" style="width:72px;height:72px;border-radius:50%;object-fit:cover;margin-bottom:12px">
+      <img class="logo-form" src="{{ url_for('logo', v=cfg.logo_v, f='c') }}" alt="" style="width:72px;height:72px;border-radius:50%;object-fit:cover;margin-bottom:12px">
       <h2 style="margin-bottom:16px">Ingresar</h2>
       {% with msgs = get_flashed_messages(with_categories=true) %}{% for cat, m in msgs %}<div class="flash {{ cat }}">{{ m }}</div>{% endfor %}{% endwith %}
       {% if sin_usuarios %}<div class="flash warn">Aún no hay usuarios. En Render agrega la variable <b>ADMIN_PASSWORD</b> (y si quieres <b>ADMIN_USER</b>) y reinicia el servicio para crear el administrador.</div>{% endif %}

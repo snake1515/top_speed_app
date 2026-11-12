@@ -3,7 +3,7 @@
 {% if not q and not cat and pagina == 1 %}
 <section class="s-hero">
   <div>
-    {% with mid='hero' %}{% include "_marca.html" %}{% endwith %}
+    <img class="marca" src="{{ url_for('logo', v=cfg.logo_v) }}" alt="{{ cfg.nombre }}">
     <h1>{{ cfg.eslogan or 'Repuestos para tu moto' }}</h1>
     <p>{{ cfg.tienda_mensaje or '' }}</p>
   </div>

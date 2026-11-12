@@ -1,5 +1,5 @@
 // Service worker mínimo: permite instalar Moto Speed como app y muestra un aviso si no hay internet.
-const CACHE = 'motospeed-v1';
+const CACHE = 'motospeed-v2';
 const OFFLINE = '/static/offline.html';
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll([OFFLINE, '/static/logo-192.png'])));

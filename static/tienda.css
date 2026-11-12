@@ -90,7 +90,7 @@ body.shop { background: #f4f4f1; }
 .s-hero { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; }
 .s-hero h1 { color: var(--accent); }
 .s-hero .mascota { position: relative; z-index: 2; width: 170px; height: auto; margin: -14px 50px -40px 0; filter: drop-shadow(0 10px 22px rgba(0,0,0,.55)); }
-.s-hero .marca { position: relative; z-index: 1; width: min(460px, 100%); margin-bottom: 6px; }
+.s-hero .marca { position: relative; z-index: 1; width: min(380px, 100%); margin-bottom: 10px; filter: drop-shadow(0 8px 20px rgba(0,0,0,.5)); }
 .s-card .pr { color: var(--ink); }
 .s-pag span.on { background: var(--nav); color: var(--accent); }
 @media (max-width: 860px) { .s-hero { grid-template-columns: 1fr; } .s-hero .mascota { display: none; } }

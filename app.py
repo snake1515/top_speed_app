@@ -304,7 +304,10 @@ def logo():
         r = send_file(BytesIO(cfg.logo), mimetype=cfg.logo_mime or "image/png")
         r.headers["Cache-Control"] = "public, max-age=2592000"
         return r
-    return redirect(url_for("static", filename="logo.svg"))
+    # Sin logo propio en Configuración: logo oficial de Moto Speed.
+    # ?f=c -> versión cuadrada (para los espacios redondos: menú, login, tienda).
+    archivo = "logo-cuadrado.webp" if request.args.get("f") == "c" else "logo.webp"
+    return redirect(url_for("static", filename=archivo, v=STATIC_V))
 
 
 @app.route("/img/p/<int:pid>")
