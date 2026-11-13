@@ -20,7 +20,7 @@ from sqlalchemy.exc import IntegrityError
 import importador
 import nomina as nom
 import reportes as rpt
-from models import (normalizar, DIAS, RESULTADOS_VISITA, Ruta, Visita, migrar, CATEGORIAS_GASTO, LISTAS_PRECIO, MOTIVOS_AJUSTE, ROLES, TIPOS_MEDIO, TIPOS_MOV,
+from models import (normalizar, DIAS, RESULTADOS_VISITA, Ruta, Visita, CargaMasiva, migrar, CATEGORIAS_GASTO, LISTAS_PRECIO, MOTIVOS_AJUSTE, ROLES, TIPOS_MEDIO, TIPOS_MOV,
                     TIPOS_PAGO_EMP, UNIDADES, Ajuste, Categoria, Cliente, Compra, Cotizacion,
                     Empleado, Gasto, MedioPago, MovCaja, Movimiento, PagoNomina, Pedido, Producto,
                     Proveedor, Turno, Usuario, Venta, ahora, config, db, semilla)
@@ -1082,23 +1082,88 @@ def productos_plantilla():
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
-@app.route("/productos/importar", methods=["GET", "POST"])
+@app.route("/productos/plantilla.csv")
+@requiere("bodega")
+def productos_plantilla_csv():
+    return Response(importador.plantilla_csv(), mimetype="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": "attachment; filename=plantilla_repuestos.csv"})
+
+
+@app.route("/productos/importar")
 @requiere("bodega")
 def productos_importar():
-    if request.method == "POST":
-        archivo = request.files.get("archivo")
-        if not archivo or not archivo.filename.lower().endswith(".xlsx"):
-            flash("Sube el archivo de Excel (.xlsx).", "err")
-            return redirect(url_for("productos_importar"))
-        try:
-            creados, actualizados = importador.importar(archivo, current_user.id)
-            db.session.commit()
-            flash(f"Listo: {creados} repuestos nuevos y {actualizados} actualizados.", "ok")
-            return redirect(url_for("productos"))
-        except ErrorNegocio as e:
-            db.session.rollback()
-            return render_template("importar.html", errores=e.errores)
-    return render_template("importar.html", errores=None)
+    cargas = CargaMasiva.query.order_by(CargaMasiva.id.desc()).limit(15).all()
+    return render_template("importar.html", cargas=cargas, tam_lote=importador.TAM_LOTE)
+
+
+@app.route("/productos/carga/leer-excel", methods=["POST"])
+@requiere("bodega")
+def carga_leer_excel():
+    archivo = request.files.get("archivo")
+    if not archivo or not archivo.filename.lower().endswith(".xlsx"):
+        return jsonify(ok=False, error="Sube un archivo .xlsx o .csv."), 400
+    try:
+        encabezados, filas = importador.leer_excel(archivo)
+    except ErrorNegocio as e:
+        return jsonify(ok=False, error=" ".join(e.errores)), 400
+    return jsonify(ok=True, encabezados=encabezados, filas=filas)
+
+
+def _json_carga():
+    datos = request.get_json(silent=True) or {}
+    carga = db.session.get(CargaMasiva, int(datos.get("carga_id") or 0))
+    if not carga:
+        abort(404)
+    return datos, carga
+
+
+@app.route("/productos/carga/iniciar", methods=["POST"])
+@requiere("bodega")
+def carga_iniciar():
+    datos = request.get_json(silent=True) or {}
+    carga = importador.iniciar_carga(str(datos.get("archivo") or ""), current_user.id)
+    db.session.commit()
+    return jsonify(ok=True, carga_id=carga.id, consecutivo=carga.consecutivo)
+
+
+@app.route("/productos/carga/lote", methods=["POST"])
+@requiere("bodega")
+def carga_lote():
+    datos = request.get_json(silent=True) or {}
+    carga = db.session.query(CargaMasiva).filter_by(id=int(datos.get("carga_id") or 0)).with_for_update().first()
+    if not carga:
+        return jsonify(ok=False, error="La carga no existe; vuelve a empezar."), 404
+    try:
+        r = importador.procesar_lote(carga, datos.get("filas") or [], int(datos.get("indice") or 0),
+                                     current_user.id)
+        db.session.commit()
+    except ErrorNegocio as e:
+        db.session.rollback()
+        return jsonify(ok=False, error=" ".join(e.errores)), 400
+    return jsonify(ok=True, **r)
+
+
+@app.route("/productos/carga/finalizar", methods=["POST"])
+@requiere("bodega")
+def carga_finalizar():
+    datos, carga = _json_carga()
+    r = importador.finalizar_carga(carga)
+    db.session.commit()
+    return jsonify(ok=True, url=url_for("carga_detalle", cid=carga.id), **r)
+
+
+@app.route("/productos/cargas/<int:cid>")
+@requiere("bodega")
+def carga_detalle(cid):
+    return render_template("carga_detalle.html", c=get_or_404(CargaMasiva, cid))
+
+
+@app.route("/productos/cargas/<int:cid>/rechazados.csv")
+@requiere("bodega")
+def carga_rechazados(cid):
+    c = get_or_404(CargaMasiva, cid)
+    return Response(importador.rechazados_csv(c), mimetype="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f"attachment; filename={c.consecutivo}-rechazados.csv"})
 
 
 @app.route("/categorias", methods=["POST"])

@@ -1,30 +1,150 @@
 {% extends "base.html" %}
-{% block title %}Importar repuestos{% endblock %}
+{% block title %}Carga masiva de repuestos{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Importar repuestos desde Excel</h1><p>Para cargar tu catálogo de una vez: códigos, precios, stock inicial y costo.</p></div><a class="btn sec" href="{{ url_for('productos') }}">← Repuestos</a></div>
+<div class="page-head"><div><h1>Carga masiva de repuestos</h1><p>Sube un archivo CSV (o Excel) con tu catálogo. Se procesa por lotes y cada fila se acepta o se rechaza con su motivo.</p></div><a class="btn sec" href="{{ url_for('productos') }}">← Repuestos</a></div>
 <div class="grid g2">
   <div class="card">
-    <h2 style="margin-bottom:10px">1. Descarga la plantilla</h2>
-    <p>Llena una fila por repuesto. Las columnas en rojo son obligatorias. Pasa el mouse por cada título para ver la ayuda.</p>
-    <a class="btn dark" href="{{ url_for('productos_plantilla') }}">⇩ Descargar plantilla</a>
+    <h2 style="margin-bottom:10px">1. Prepara el archivo</h2>
+    <p>Una fila por repuesto. Obligatorias para repuestos nuevos: <b>codigo, nombre, precio_detal</b>.
+      Opcionales: categoria (o grupo), marca, referencia, compatibilidad, ubicacion, codigo_barras, unidad, stock, costo, precio_mayor, precio_taller, stock_minimo, iva, en_tienda.</p>
+    <p class="hint">Separador <b>;</b> o <b>,</b> (se detecta solo). Sirven también los títulos de la plantilla de Excel y las columnas de Stocka (grupo, existencias_bodega, existencias_almacen).</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <a class="btn dark" href="{{ url_for('productos_plantilla_csv') }}">⇩ Plantilla CSV</a>
+      <a class="btn sec" href="{{ url_for('productos_plantilla') }}">⇩ Plantilla Excel</a>
+    </div>
     <ul class="muted" style="margin-top:14px;padding-left:18px">
-      <li>Si el código ya existe, se actualizan nombre, precios y datos (el stock no se toca: para eso usa compras o ajustes).</li>
-      <li>El stock inicial con su costo entra al kardex como «Inventario inicial» y fija el costo promedio.</li>
+      <li>Código nuevo → se crea el repuesto. Si trae stock y costo, entra al kardex como «Inventario inicial» y fija el costo promedio.</li>
+      <li>Código que ya existe → se actualizan los datos que vengan llenos (nombre, precios, ubicación…). El stock <b>no</b> se toca: para eso usa compras o ajustes.</li>
       <li>Las categorías nuevas se crean solas.</li>
     </ul>
   </div>
-  <form class="card" method="post" enctype="multipart/form-data">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="card">
     <h2 style="margin-bottom:10px">2. Sube el archivo</h2>
-    <input class="input" type="file" name="archivo" accept=".xlsx" required>
-    <p class="hint">Se revisa todo antes de guardar: si una fila tiene error no se importa nada y te digo cuál corregir.</p>
-    <button class="btn">Importar</button>
-  </form>
+    <label id="zona" style="display:block;border:2px dashed #d3d3cc;border-radius:12px;padding:26px;text-align:center;cursor:pointer">
+      <div style="font-size:1.8rem">📄</div>
+      <div><b>Arrastra el archivo aquí</b> o toca para elegirlo</div>
+      <div class="hint">.csv o .xlsx</div>
+      <input type="file" id="archivo" accept=".csv,.xlsx,.txt" style="display:none">
+    </label>
+    <p id="elegido" class="hint" style="margin-top:8px"></p>
+    <button class="btn" id="subir" disabled style="margin-top:8px">Subir y procesar</button>
+    <div id="progreso" style="display:none;margin-top:14px">
+      <div style="display:flex;justify-content:space-between"><span id="etiqueta">Preparando…</span><b id="pct">0%</b></div>
+      <div style="height:10px;background:#eee;border-radius:6px;overflow:hidden;margin-top:6px"><div id="barra" style="height:100%;width:0;background:var(--accent);transition:width .3s"></div></div>
+    </div>
+    <div id="resultado" style="margin-top:12px"></div>
+  </div>
 </div>
-{% if errores %}
+
 <div class="card" style="margin-top:16px">
-  <h2 class="neg" style="margin-bottom:8px">No se importó nada. Corrige esto:</h2>
-  <ul>{% for e in errores %}<li>{{ e }}</li>{% endfor %}</ul>
+  <h2 style="margin-bottom:8px">Cargas anteriores</h2>
+  {% if cargas %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Carga</th><th>Fecha</th><th>Archivo</th><th class="num">Nuevos</th><th class="num">Actualizados</th><th class="num">Rechazados</th><th>Estado</th></tr></thead>
+    <tbody>{% for c in cargas %}<tr>
+      <td><a href="{{ url_for('carga_detalle', cid=c.id) }}">{{ c.consecutivo }}</a></td><td>{{ c.fecha|fh }}</td><td>{{ c.archivo }}</td>
+      <td class="num">{{ c.creados }}</td><td class="num">{{ c.actualizados }}</td><td class="num">{{ c.total_rechazados }}</td>
+      <td>{{ 'Completa' if c.estado == 'completo' else 'Incompleta' }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="muted">Aún no hay cargas.</p>{% endif %}
 </div>
-{% endif %}
+
+<script>
+const CSRF = "{{ csrf_token() }}", LOTE = {{ tam_lote }};
+const $ = id => document.getElementById(id);
+const zona = $('zona'), input = $('archivo'), btn = $('subir');
+function elegir() { const f = input.files[0]; $('elegido').textContent = f ? '📄 ' + f.name : ''; btn.disabled = !f; $('resultado').innerHTML = ''; }
+input.addEventListener('change', elegir);
+zona.addEventListener('dragover', e => { e.preventDefault(); zona.style.borderColor = 'var(--accent)'; });
+zona.addEventListener('dragleave', () => zona.style.borderColor = '#d3d3cc');
+zona.addEventListener('drop', e => { e.preventDefault(); zona.style.borderColor = '#d3d3cc'; if (e.dataTransfer.files[0]) { const dt = new DataTransfer(); dt.items.add(e.dataTransfer.files[0]); input.files = dt.files; elegir(); } });
+
+async function post(url, datos) {
+  const r = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': CSRF}, body: JSON.stringify(datos)});
+  let j = {}; try { j = await r.json(); } catch (e) { throw new Error('El servidor no respondió bien (' + r.status + ')'); }
+  if (!j.ok) throw new Error(j.error || (j.errores || []).join(' ') || 'Error');
+  return j;
+}
+function decodificar(buf) {
+  try { return new TextDecoder('utf-8', {fatal: true}).decode(buf); }
+  catch (e) { return new TextDecoder('windows-1252').decode(buf); }   // archivos guardados desde Excel en Windows
+}
+function parsearCSV(texto) {
+  texto = texto.replace(/^﻿/, '');
+  const primera = texto.split(/\r?\n/)[0];
+  const cuenta = c => primera.split(c).length;
+  const sep = cuenta(';') >= cuenta(',') && cuenta(';') >= cuenta('\t') ? ';' : (cuenta('\t') > cuenta(',') ? '\t' : ',');
+  const filas = []; let fila = [], campo = '', comillas = false;
+  for (let i = 0; i < texto.length; i++) {
+    const ch = texto[i];
+    if (comillas) {
+      if (ch === '"') { if (texto[i + 1] === '"') { campo += '"'; i++; } else comillas = false; }
+      else campo += ch;
+    } else if (ch === '"') comillas = true;
+    else if (ch === sep) { fila.push(campo); campo = ''; }
+    else if (ch === '\n' || ch === '\r') { if (ch === '\r' && texto[i + 1] === '\n') i++; fila.push(campo); filas.push(fila); fila = []; campo = ''; }
+    else campo += ch;
+  }
+  if (campo !== '' || fila.length) { fila.push(campo); filas.push(fila); }
+  const enc = (filas.shift() || []).map(h => h.trim());
+  const salida = [];
+  filas.forEach((cols, n) => {
+    if (!cols.some(c => c.trim() !== '')) return;
+    const o = {_fila: n + 2}; enc.forEach((h, k) => { if (h) o[h] = (cols[k] || '').trim(); });
+    salida.push(o);
+  });
+  return {enc, filas: salida};
+}
+function clave(t) { return t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[*%]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''); }
+const ALIAS_COD = ['codigo', 'cod', 'codigo_interno', 'sku', 'procodigo'];
+
+function avance(p, txt) { $('barra').style.width = p + '%'; $('pct').textContent = p + '%'; if (txt) $('etiqueta').textContent = txt; }
+
+btn.addEventListener('click', async () => {
+  const f = input.files[0]; if (!f) return;
+  btn.disabled = true; $('progreso').style.display = 'block'; $('resultado').innerHTML = ''; avance(0, 'Leyendo el archivo…');
+  try {
+    let datos;
+    if (f.name.toLowerCase().endsWith('.xlsx')) {
+      const fd = new FormData(); fd.append('archivo', f); fd.append('csrf_token', CSRF);
+      const r = await fetch("{{ url_for('carga_leer_excel') }}", {method: 'POST', body: fd, headers: {'X-CSRF-Token': CSRF}});
+      const j = await r.json(); if (!j.ok) throw new Error(j.error || 'No pude leer el Excel');
+      datos = {enc: j.encabezados, filas: j.filas};
+    } else {
+      datos = parsearCSV(decodificar(await f.arrayBuffer()));
+    }
+    const colCod = datos.enc.find(h => ALIAS_COD.includes(clave(h)));
+    if (!colCod) throw new Error('No encuentro la columna «codigo». Revisa los títulos (primera fila) o usa la plantilla.');
+    // Marcar códigos repetidos en el archivo (se rechazan y se usa la primera aparición)
+    const vistos = {};
+    datos.filas.forEach(o => { const c = String(o[colCod] || '').trim().toLowerCase(); if (!c) return; if (vistos[c]) o._dup = vistos[c]; else vistos[c] = o._fila; });
+    const filas = datos.filas;
+    if (!filas.length) throw new Error('El archivo no tiene filas.');
+
+    const ini = await post("{{ url_for('carga_iniciar') }}", {archivo: f.name});
+    const total = Math.ceil(filas.length / LOTE);
+    let creados = 0, actualizados = 0, rechazados = 0, error = null;
+    for (let i = 0; i < total; i++) {
+      avance(Math.round(i / total * 90), `Lote ${i + 1} de ${total} (${ini.consecutivo})…`);
+      let intento = 0;
+      while (true) {
+        try {
+          const r = await post("{{ url_for('carga_lote') }}", {carga_id: ini.carga_id, indice: i, filas: filas.slice(i * LOTE, (i + 1) * LOTE)});
+          creados += r.creados; actualizados += r.actualizados; rechazados += r.rechazados; break;
+        } catch (e) { if (++intento >= 2) { error = `Se detuvo en el lote ${i + 1}: ${e.message}`; break; } await new Promise(s => setTimeout(s, 2000)); }
+      }
+      if (error) break;
+    }
+    avance(95, 'Cerrando la carga…');
+    const fin = await post("{{ url_for('carga_finalizar') }}", {carga_id: ini.carga_id});
+    avance(100, error ? 'Terminó con un problema' : '¡Completado!');
+    $('resultado').innerHTML = `<div class="flash ${error ? 'err' : 'ok'}">${error ? error + '<br>Lo que alcanzó a procesarse sí quedó guardado.<br>' : ''}
+      <b>${fin.consecutivo}</b>: ${fin.creados} nuevos · ${fin.actualizados} actualizados · ${fin.rechazados} rechazados</div>
+      <a class="btn dark" href="${fin.url}">Ver comprobante${fin.rechazados ? ' y rechazados' : ''}</a>`;
+  } catch (e) {
+    avance(0, 'Error'); $('resultado').innerHTML = `<div class="flash err">${e.message}</div>`;
+  }
+  btn.disabled = false;
+});
+</script>
 {% endblock %}

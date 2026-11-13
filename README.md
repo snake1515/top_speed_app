@@ -10,7 +10,7 @@ Hecha con Flask + PostgreSQL (Supabase), desplegable en Render. Todas las tablas
 |---|---|
 | **POS** | Busca por código, código de barras (lector USB), nombre, marca o moto. Precio detal, por mayor o taller (se aplica solo al elegir el cliente). Descuento, pago en **efectivo, transferencia (Nequi, Daviplata, Bancolombia, Bre-B…) o mixto**, cálculo de cambio, venta a crédito. Ticket de 58/80 mm y recibo por WhatsApp con enlace. Atajos: F1 buscar, F2 cobrar |
 | **Caja y cuadre** | Apertura con base, entradas y salidas de dinero (domicilio, almuerzo…), cierre con **arqueo por billetes y monedas**: el sistema dice cuánto efectivo debe haber y cuánto entró por cada transferencia, y registra sobrante/faltante con observación. Historial de cierres imprimible |
-| **Inventario** | Ficha del repuesto con compatibilidad de motos, ubicación en bodega, stock mínimo y foto. Cada **compra suma** y recalcula el **costo promedio ponderado**; cada **venta resta** y guarda el costo de ese momento (la ganancia es real). Ajustes (conteo, daño, garantía, uso interno), **kardex** por repuesto y general. Importar catálogo desde Excel |
+| **Inventario** | Ficha del repuesto con compatibilidad de motos, ubicación en bodega, stock mínimo y foto. Cada **compra suma** y recalcula el **costo promedio ponderado**; cada **venta resta** y guarda el costo de ese momento (la ganancia es real). Ajustes (conteo, daño, garantía, uso interno), **kardex** por repuesto y general. **Carga masiva por CSV o Excel** por lotes (como Stocka): consecutivo CSV-0001, lotes CSV-0001-A…, filas rechazadas con su motivo y comprobante |
 | **Compras y proveedores** | Varias líneas por compra, de contado (opcionalmente desde la caja) o a crédito con plazo; pagos parciales y cuentas por pagar |
 | **Ventas, devoluciones y cartera** | Detalle de cada venta, abonos, **devolución parcial** (el repuesto vuelve al inventario a su costo y el dinero sale de la caja o se descuenta de la deuda), anulación con reembolso. Cartera por cliente con recordatorio por WhatsApp |
 | **Cotizaciones** | Se arman en el POS y se convierten en venta con un clic. Imprimibles y por WhatsApp |
@@ -43,7 +43,7 @@ Hecha con Flask + PostgreSQL (Supabase), desplegable en Render. Todas las tablas
 ### 3. Primeros pasos en la app
 1. Entra a `https://TU-APP.onrender.com/login` con el usuario administrador.
 2. **Configuración** → datos del negocio, ubicación del local (botón «📍 Estoy aquí», es el punto de partida de las rutas), logo, WhatsApp (ahí llegan los pedidos de la tienda), medios de pago con su número de cuenta, impresora de 58 u 80 mm.
-3. **Repuestos** → créalos uno por uno o descarga la plantilla e **importa desde Excel** (con stock inicial y costo).
+3. **Repuestos** → créalos uno por uno o usa **Carga masiva (CSV)**: descarga la plantilla, llénala y súbela; se procesa por lotes y te muestra qué filas se rechazaron y por qué.
 4. **Usuarios** → crea los cajeros y, si pagas comisión, enlázalos en **Empleados**.
 5. **Caja y cuadre** → abre la caja con la base y empieza a vender en **Vender (POS)**.
 6. **Preventa** → crea usuarios con rol Preventista, arma las **Rutas** y agrega los locales con su ubicación.

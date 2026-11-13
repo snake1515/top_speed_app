@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Carga {{ c.consecutivo }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Carga masiva {{ c.consecutivo }}</h1><p>{{ c.fecha|fh }} · {{ c.archivo }} · {{ c.usuario.nombre if c.usuario else '' }}</p></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap" class="no-print"><button class="btn sec" onclick="print()">🖨 Imprimir / PDF</button><a class="btn sec" href="{{ url_for('productos_importar') }}">← Carga masiva</a></div></div>
+{% if c.estado != 'completo' %}<div class="flash err">Esta carga no terminó (se cerró la página o se cortó la conexión). Lo procesado sí quedó guardado; puedes subir de nuevo el archivo: los códigos que ya entraron solo se actualizan.</div>{% endif %}
+<div class="grid g3">
+  <div class="card" style="margin-top:0"><div class="muted">Repuestos nuevos</div><div style="font-size:1.8rem;font-weight:700">{{ c.creados }}</div></div>
+  <div class="card" style="margin-top:0"><div class="muted">Actualizados</div><div style="font-size:1.8rem;font-weight:700">{{ c.actualizados }}</div></div>
+  <div class="card" style="margin-top:0"><div class="muted">Rechazados</div><div style="font-size:1.8rem;font-weight:700" class="{{ 'neg' if c.total_rechazados }}">{{ c.total_rechazados }}</div></div>
+</div>
+<div class="card" style="margin-top:16px">
+  <h2 style="margin-bottom:8px">Lotes</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Lote</th><th class="num">Filas</th><th class="num">Nuevos</th><th class="num">Actualizados</th><th class="num">Rechazados</th></tr></thead>
+    <tbody>{% for l in c.lotes %}<tr><td>{{ l.consecutivo }}</td><td class="num">{{ l.filas }}</td><td class="num">{{ l.creados }}</td><td class="num">{{ l.actualizados }}</td><td class="num">{{ l.rechazados }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <p class="hint">El stock inicial de los repuestos nuevos aparece en el kardex con el número del lote.</p>
+</div>
+{% if c.rechazados %}
+<div class="card" style="margin-top:16px">
+  <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2>Filas rechazadas</h2><a class="btn sec sm no-print" href="{{ url_for('carga_rechazados', cid=c.id) }}">⇩ Descargar para corregir</a></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Fila</th><th>Código</th><th>Nombre</th><th>Motivo</th></tr></thead>
+    <tbody>{% for r in c.rechazados %}<tr><td>{{ r.fila or '' }}</td><td>{{ r.codigo }}</td><td>{{ r.nombre }}</td><td>{{ r.motivo }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endif %}
+{% endblock %}

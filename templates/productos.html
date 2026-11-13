@@ -4,7 +4,7 @@
 <div class="page-head">
   <div><h1>Repuestos</h1><p>{{ total }} repuesto(s){% if current_user.ve_costos %} · inventario al costo {{ total_valor|pesos }}{% endif %}</p></div>
   {% if current_user.puede('bodega') %}<div class="actions">
-    <a class="btn sec" href="{{ url_for('productos_importar') }}">Importar Excel</a>
+    <a class="btn sec" href="{{ url_for('productos_importar') }}">Carga masiva (CSV)</a>
     <a class="btn sec" href="{{ url_for('compra_nueva') }}">⇣ Registrar compra</a>
     <a class="btn" href="{{ url_for('producto_form') }}">＋ Repuesto</a></div>{% endif %}
 </div>
@@ -29,6 +29,6 @@
     {% if current_user.ve_costos %}<td class="num">{{ p.costo_promedio|pesos }}</td>{% endif %}
     <td class="num">{{ p.precio_detal|pesos }}</td><td class="num">{{ p.precio_mayor|pesos if p.precio_mayor else '—' }}</td><td class="num">{{ p.precio_taller|pesos if p.precio_taller else '—' }}</td>
     {% if current_user.ve_costos %}<td class="num">{% if p.margen_detal is not none and p.costo_promedio %}<span class="{{ 'neg' if p.margen_detal < 10 }}">{{ p.margen_detal|round|int }} %</span>{% endif %}</td>{% endif %}
-  </tr>{% else %}<tr><td colspan="10" class="empty">No hay repuestos aquí. {% if current_user.puede('bodega') %}<a href="{{ url_for('producto_form') }}">Crea el primero</a> o <a href="{{ url_for('productos_importar') }}">impórtalos desde Excel</a>.{% endif %}</td></tr>{% endfor %}</tbody>
+  </tr>{% else %}<tr><td colspan="10" class="empty">No hay repuestos aquí. {% if current_user.puede('bodega') %}<a href="{{ url_for('producto_form') }}">Crea el primero</a> o <a href="{{ url_for('productos_importar') }}">cárgalos con un archivo CSV</a>.{% endif %}</td></tr>{% endfor %}</tbody>
 </table></div>{% if total > productos|length %}<p class="muted">Mostrando {{ productos|length }} de {{ total }}. Usa la búsqueda para encontrar el resto.</p>{% endif %}</div>
 {% endblock %}

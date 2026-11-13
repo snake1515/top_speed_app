@@ -67,6 +67,7 @@ TIPOS_MOV = {
     "ajuste_entrada": "Ajuste (entrada)",
     "ajuste_salida": "Ajuste (salida)",
     "anula_ajuste": "Anulación de ajuste",
+    "carga": "Carga masiva",
 }
 CATEGORIAS_GASTO = ["Arriendo", "Servicios públicos", "Internet y teléfono", "Transporte y domicilios",
                     "Publicidad", "Mantenimiento del local", "Papelería y empaques", "Impuestos",
@@ -156,6 +157,7 @@ class Config(db.Model):
     sig_cotizacion = db.Column(db.Integer, nullable=False, default=1)
     sig_pedido = db.Column(db.Integer, nullable=False, default=1)
     sig_ajuste = db.Column(db.Integer, nullable=False, default=1)
+    sig_carga = db.Column(db.Integer, nullable=False, default=1)
 
 
 class MedioPago(db.Model):
@@ -442,6 +444,70 @@ class PagoCompra(db.Model):
     desde_caja = db.Column(db.Boolean, nullable=False, default=False)
     mov_caja_id = db.Column(db.Integer)
     usuario_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
+
+
+class CargaMasiva(db.Model):
+    """Carga de archivo (CSV o Excel) por lotes, como en Stocka: un registro padre CSV-0001
+    y un lote hijo por cada bloque de filas (CSV-0001-A, CSV-0001-B…)."""
+    __tablename__ = "ts_cargas"
+    id = db.Column(db.Integer, primary_key=True)
+    numero = db.Column(db.Integer, nullable=False)
+    fecha = db.Column(db.DateTime, nullable=False, default=ahora, index=True)
+    archivo = db.Column(db.String(200))
+    estado = db.Column(db.String(15), nullable=False, default="en_progreso")  # en_progreso / completo
+    creados = db.Column(db.Integer, nullable=False, default=0)
+    actualizados = db.Column(db.Integer, nullable=False, default=0)
+    rechazados_json = db.Column(db.Text, nullable=False, default="[]")
+    usuario_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
+    usuario = db.relationship("Usuario")
+    lotes = db.relationship("CargaLote", backref="carga", order_by="CargaLote.indice",
+                            cascade="all, delete-orphan")
+
+    @property
+    def consecutivo(self):
+        return f"CSV-{self.numero:04d}"
+
+    @property
+    def rechazados(self):
+        import json
+        try:
+            return json.loads(self.rechazados_json or "[]")
+        except ValueError:
+            return []
+
+    @property
+    def total_rechazados(self):
+        return len(self.rechazados)
+
+
+class CargaLote(db.Model):
+    __tablename__ = "ts_cargas_lotes"
+    id = db.Column(db.Integer, primary_key=True)
+    carga_id = db.Column(db.Integer, db.ForeignKey("ts_cargas.id"), nullable=False, index=True)
+    indice = db.Column(db.Integer, nullable=False)
+    fecha = db.Column(db.DateTime, nullable=False, default=ahora)
+    filas = db.Column(db.Integer, nullable=False, default=0)
+    creados = db.Column(db.Integer, nullable=False, default=0)
+    actualizados = db.Column(db.Integer, nullable=False, default=0)
+    rechazados = db.Column(db.Integer, nullable=False, default=0)
+
+    @property
+    def letra(self):
+        return letra_lote(self.indice)
+
+    @property
+    def consecutivo(self):
+        return f"{self.carga.consecutivo}-{self.letra}"
+
+
+def letra_lote(i):
+    """0→A … 25→Z, 26→AA, 27→AB…"""
+    s = ""
+    i += 1
+    while i:
+        i, r = divmod(i - 1, 26)
+        s = chr(65 + r) + s
+    return s
 
 
 class Ajuste(db.Model):

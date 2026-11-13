@@ -1,7 +1,19 @@
-"""Importar repuestos desde Excel: plantilla, validación fila por fila e importación todo-o-nada."""
+"""Carga masiva de repuestos desde CSV o Excel, por lotes, como en Stocka.
+
+Flujo (lo maneja el navegador):
+  1. iniciar  → crea la carga padre CSV-0001.
+  2. lote     → procesa un bloque de filas (CSV-0001-A, -B…): cada fila se acepta o se rechaza
+                con su motivo; las buenas se guardan aunque otras fallen.
+  3. finalizar → cierra la carga con los totales y queda el comprobante con los rechazados.
+"""
 from io import BytesIO
 
-from models import Categoria, Producto, db
+import json
+import unicodedata
+
+from sqlalchemy.exc import IntegrityError
+
+from models import CargaLote, CargaMasiva, Categoria, Producto, config, db, letra_lote, siguiente
 from services import ErrorNegocio, entrada
 
 COLUMNAS = [
@@ -56,112 +68,288 @@ def _num(v, defecto=0.0):
         return float(v)
     s = str(v).strip().replace("$", "").replace(" ", "")
     if "," in s and "." in s:
-        s = s.replace(".", "").replace(",", ".")
-    elif "," in s:
-        s = s.replace(",", ".")
-    elif s.count(".") > 1:
-        s = s.replace(".", "")
+        if s.rfind(",") > s.rfind("."):
+            s = s.replace(".", "").replace(",", ".")   # 1.250,50
+        else:
+            s = s.replace(",", "")                      # 1,250.50
+    elif s.count(".") > 1 or s.count(",") > 1:
+        s = s.replace(".", "").replace(",", "")
+    elif "." in s or "," in s:
+        sep = "." if "." in s else ","
+        ent, dec = s.split(sep)
+        s = ent + dec if len(dec) == 3 and ent not in ("", "0", "-0") else ent + "." + dec  # 129.000 = 129000
     try:
         return float(s)
     except ValueError:
         raise ValueError(f"«{v}» no es un número")
 
 
-def importar(archivo, usuario_id):
-    """Devuelve (creados, actualizados). Si hay cualquier error no se guarda nada."""
-    from openpyxl import load_workbook
+TAM_LOTE = 200
 
+# Nombres de columna aceptados (se comparan sin tildes, sin mayúsculas, sin «*»).
+ALIAS = {
+    "codigo": ["codigo", "cod", "codigo_interno", "sku", "procodigo"],
+    "nombre": ["nombre", "descripcion", "producto", "nombre_del_producto"],
+    "categoria": ["categoria", "grupo", "linea"],
+    "marca": ["marca"],
+    "referencia": ["referencia", "referencia_fabricante", "ref", "prorefe"],
+    "compatibilidad": ["compatibilidad", "compatible_con", "aplica_para", "motos"],
+    "ubicacion": ["ubicacion", "proubica", "estante"],
+    "codigo_barras": ["codigo_barras", "codigo_de_barras", "barras", "ean", "procodbar"],
+    "unidad": ["unidad", "medida"],
+    "stock": ["stock", "stock_inicial", "existencias", "cantidad", "inventario"],
+    "costo": ["costo", "costo_unitario", "procosto", "costo_promedio"],
+    "precio_detal": ["precio_detal", "precio", "precio_venta", "proprecio", "pvp"],
+    "precio_mayor": ["precio_mayor", "precio_por_mayor", "proprecio2"],
+    "precio_taller": ["precio_taller", "proprecio3"],
+    "stock_minimo": ["stock_minimo", "minimo", "prominstk"],
+    "iva": ["iva", "iva_pct", "proivapor"],
+    "en_tienda": ["en_tienda", "en_tienda_si_no", "tienda", "publicar"],
+}
+_MAPA = {a: k for k, lista in ALIAS.items() for a in lista}
+_SUMA_STOCK = ("existencias_bodega", "existencias_almacen")  # formato Stocka
+
+
+def clave_columna(titulo):
+    t = unicodedata.normalize("NFKD", str(titulo or "")).encode("ascii", "ignore").decode().lower()
+    t = "".join(ch if ch.isalnum() else "_" for ch in t.replace("*", "").replace("%", ""))
+    while "__" in t:
+        t = t.replace("__", "_")
+    return t.strip("_")
+
+
+def normalizar_fila(fila):
+    """Convierte una fila {titulo_original: valor} a las claves internas."""
+    d, extra = {}, 0.0
+    for titulo, valor in fila.items():
+        if titulo == "_fila" or titulo == "_dup":
+            d[titulo] = valor
+            continue
+        k = clave_columna(titulo)
+        v = "" if valor is None else str(valor).strip()
+        if v.lower() in ("nan", "none", "null"):
+            v = ""
+        if k in _SUMA_STOCK:
+            try:
+                extra += _num(v)
+            except ValueError:
+                pass
+            d.setdefault("_suma", True)
+            continue
+        campo = _MAPA.get(k)
+        if campo and (campo not in d or d[campo] == "" or
+                      (campo == "categoria" and d[campo].isdigit() and v and not v.isdigit())):
+            d[campo] = v
+    if d.pop("_suma", False) and not d.get("stock"):
+        d["stock"] = str(extra)
+    return d
+
+
+def plantilla_csv():
+    enc = [c[0] for c in COLUMNAS]
+    ej = ["EJEMPLO-001", "Kit de arrastre 428 (borrar esta fila)", "Transmisión (kit de arrastre)", "Riffel",
+          "KA-428", "Boxer 100, CT 100", "E2-C3", "", "kit", "3", "85000", "129000", "115000", "120000", "2", "0",
+          "SI"]
+    texto = ";".join(enc) + "\r\n" + ";".join(f'"{x}"' if "," in x or ";" in x else x for x in ej) + "\r\n"
+    return ("\ufeff" + texto).encode("utf-8")
+
+
+def leer_excel(archivo):
+    """Lee la primera hoja de un .xlsx y devuelve una lista de dicts {título: valor} (para mandar por lotes)."""
+    from openpyxl import load_workbook
     try:
         wb = load_workbook(archivo, data_only=True, read_only=True)
     except Exception:
-        raise ErrorNegocio("No pude leer el archivo. Sube un Excel (.xlsx) basado en la plantilla.")
-    ws = wb.worksheets[0]
-    filas = list(ws.iter_rows(values_only=True))
-    if not filas:
+        raise ErrorNegocio("No pude leer el Excel. Revisa que sea .xlsx (o guárdalo como CSV).")
+    filas = wb.worksheets[0].iter_rows(values_only=True)
+    try:
+        enc = [str(c or "").strip() for c in next(filas)]
+    except StopIteration:
         raise ErrorNegocio("El archivo está vacío.")
-    enc = [str(c or "").strip().lower() for c in filas[0]]
-    idx = {}
-    for clave, titulo, _ in COLUMNAS:
-        t = titulo.lower()
-        if t in enc:
-            idx[clave] = enc.index(t)
-    if "codigo" not in idx or "nombre" not in idx:
-        raise ErrorNegocio("No encuentro las columnas «Código *» y «Nombre *». Descarga la plantilla y úsala.")
-    errores, datos, vistos = [], [], set()
-    for n, fila in enumerate(filas[1:], start=2):
-        g = lambda k: (fila[idx[k]] if k in idx and idx[k] < len(fila) else None)
-        codigo = str(g("codigo") or "").strip()
-        nombre = str(g("nombre") or "").strip()
-        if not codigo and not nombre:
+    salida = []
+    for n, fila in enumerate(filas, start=2):
+        if not any(c not in (None, "") for c in fila):
             continue
-        if codigo.upper().startswith("EJEMPLO"):
+        d = {"_fila": n}
+        for i, t in enumerate(enc):
+            if t and i < len(fila):
+                v = fila[i]
+                if isinstance(v, float) and v.is_integer():
+                    v = int(v)
+                d[t] = "" if v is None else str(v)
+        salida.append(d)
+    return enc, salida
+
+
+def iniciar_carga(nombre_archivo, usuario_id):
+    c = CargaMasiva(numero=siguiente("sig_carga"), archivo=(nombre_archivo or "archivo.csv")[:200],
+                    usuario_id=usuario_id)
+    db.session.add(c)
+    db.session.flush()
+    return c
+
+
+def _validar(d, existe):
+    """Devuelve (datos, motivo_rechazo)."""
+    codigo = d.get("codigo", "").strip().removesuffix(".0")
+    if not codigo:
+        return None, "Falta el código"
+    if d.get("_dup"):
+        return None, f"El código {codigo} está repetido en el archivo (se usó la fila {d['_dup']})"
+    try:
+        num = {k: (_num(d.get(k)) if d.get(k, "") != "" else None)
+               for k in ("stock", "costo", "precio_detal", "precio_mayor", "precio_taller", "stock_minimo", "iva")}
+    except ValueError as e:
+        return None, str(e)
+    if any(v is not None and v < 0 for v in num.values()):
+        return None, "Hay valores negativos"
+    if num["iva"] is not None and num["iva"] not in (0, 5, 19):
+        return None, "El IVA debe ser 0, 5 o 19"
+    nombre = d.get("nombre", "").strip()
+    if not existe:
+        faltan = []
+        if not nombre:
+            faltan.append("nombre")
+        if not num["precio_detal"]:
+            faltan.append("precio detal")
+        if faltan:
+            return None, "Falta(n): " + ", ".join(faltan)
+        if (num["stock"] or 0) > 0 and not num["costo"]:
+            return None, "Trae stock inicial pero no el costo unitario"
+    datos = {"codigo": codigo[:60], "nombre": nombre[:200], "num": num,
+             "categoria": d.get("categoria", "").strip()[:80],
+             "texto": {k: d.get(k, "").strip()[:n] for k, n in
+                       (("marca", 80), ("referencia", 80), ("compatibilidad", 400), ("ubicacion", 60),
+                        ("unidad", 20)) if d.get(k, "").strip()},
+             "codigo_barras": d.get("codigo_barras", "").strip().removesuffix(".0")[:60],
+             "en_tienda": d.get("en_tienda", "").strip().upper()}
+    if datos["texto"].get("unidad"):
+        datos["texto"]["unidad"] = datos["texto"]["unidad"].lower()
+    return datos, None
+
+
+def _aplicar(datos, p, cats, carga, doc_lote, usuario_id):
+    """Crea o actualiza el repuesto. Devuelve True si es nuevo."""
+    nuevo = p is None
+    if nuevo:
+        p = Producto(codigo=datos["codigo"], stock=0, costo_promedio=0, unidad="unidad",
+                     precio_mayor=0, precio_taller=0, stock_minimo=0, iva_pct=0, en_tienda=True)
+        db.session.add(p)
+    if datos["nombre"]:
+        p.nombre = datos["nombre"]
+    if datos["categoria"]:
+        cat = cats.get(datos["categoria"].lower())
+        if cat is None:
+            cat = Categoria(nombre=datos["categoria"])
+            db.session.add(cat)
+            cats[datos["categoria"].lower()] = cat
+        p.categoria = cat
+    for k, v in datos["texto"].items():
+        setattr(p, k, v)
+    if datos["codigo_barras"]:
+        p.codigo_barras = datos["codigo_barras"]
+    n = datos["num"]
+    for k in ("precio_detal", "precio_mayor", "precio_taller", "stock_minimo"):
+        if n[k] is not None:
+            setattr(p, k, n[k])
+    if n["iva"] is not None:
+        p.iva_pct = n["iva"]
+    if datos["en_tienda"]:
+        p.en_tienda = datos["en_tienda"] not in ("NO", "N", "0", "FALSE", "FALSO")
+    if nuevo:
+        if (n["stock"] or 0) > 0:
+            entrada(p, n["stock"], n["costo"], "inicial", doc_lote, "carga", carga.id, usuario_id,
+                    nota=f"Carga masiva {carga.archivo or ''}", actualizar_ultimo=True)
+        elif n["costo"]:
+            p.ultimo_costo = n["costo"]
+    return nuevo
+
+
+def procesar_lote(carga, filas, indice, usuario_id):
+    """Procesa un bloque de filas. Cada fila queda aceptada o rechazada con su motivo.
+    No hace commit (lo hace la ruta)."""
+    if carga.estado != "en_progreso":
+        raise ErrorNegocio("Esta carga ya se cerró.")
+    if len(filas) > TAM_LOTE * 3:
+        raise ErrorNegocio("El lote es demasiado grande.")
+    doc_lote = f"{carga.consecutivo}-{letra_lote(indice)}"
+    filas = [normalizar_fila(f) for f in filas if isinstance(f, dict)]
+    rechazados, validas = [], []
+    for f in filas:
+        if str(f.get("codigo", "")).upper().startswith("EJEMPLO"):
             continue
-        if not codigo or not nombre:
-            errores.append(f"Fila {n}: falta el código o el nombre.")
-            continue
-        if codigo.lower() in vistos:
-            errores.append(f"Fila {n}: el código {codigo} está repetido en el archivo.")
-            continue
-        vistos.add(codigo.lower())
-        try:
-            d = {"codigo": codigo[:60], "nombre": nombre[:200],
-                 "categoria": str(g("categoria") or "").strip()[:80],
-                 "marca": str(g("marca") or "").strip()[:80] or None,
-                 "referencia": str(g("referencia") or "").strip()[:80] or None,
-                 "compatibilidad": str(g("compatibilidad") or "").strip()[:400] or None,
-                 "ubicacion": str(g("ubicacion") or "").strip()[:60] or None,
-                 "codigo_barras": str(g("codigo_barras") or "").strip().removesuffix(".0")[:60] or None,
-                 "unidad": str(g("unidad") or "unidad").strip().lower()[:20] or "unidad",
-                 "stock": _num(g("stock")), "costo": _num(g("costo")), "precio_detal": _num(g("precio_detal")),
-                 "precio_mayor": _num(g("precio_mayor")), "precio_taller": _num(g("precio_taller")),
-                 "stock_minimo": _num(g("stock_minimo")), "iva": _num(g("iva")),
-                 "en_tienda": str(g("en_tienda") or "SI").strip().upper() not in ("NO", "N", "0", "FALSE")}
-        except ValueError as e:
-            errores.append(f"Fila {n}: {e}.")
-            continue
-        if min(d["stock"], d["costo"], d["precio_detal"], d["precio_mayor"], d["precio_taller"]) < 0:
-            errores.append(f"Fila {n}: hay valores negativos.")
-            continue
-        if d["precio_detal"] <= 0:
-            errores.append(f"Fila {n}: falta el precio detal.")
-            continue
-        if d["stock"] > 0 and d["costo"] <= 0:
-            errores.append(f"Fila {n}: si trae stock inicial también necesita el costo unitario.")
-            continue
-        datos.append(d)
-    if errores:
-        raise ErrorNegocio(errores[:40] + ([f"… y {len(errores) - 40} errores más."] if len(errores) > 40 else []))
-    if not datos:
-        raise ErrorNegocio("No encontré repuestos para importar.")
+        validas.append(f)
+    codigos = {str(f.get("codigo", "")).strip().removesuffix(".0").lower() for f in validas} - {""}
+    existentes = {}
+    lista = list(codigos)
+    for i in range(0, len(lista), 500):
+        for p in Producto.query.filter(db.func.lower(Producto.codigo).in_(lista[i:i + 500])):
+            existentes[p.codigo.lower()] = p
     cats = {c.nombre.lower(): c for c in Categoria.query.all()}
-    existentes = {p.codigo.lower(): p for p in Producto.query.all()}
-    creados = actualizados = 0
-    for d in datos:
-        cat = None
-        if d["categoria"]:
-            cat = cats.get(d["categoria"].lower())
-            if cat is None:
-                cat = Categoria(nombre=d["categoria"])
-                db.session.add(cat)
-                cats[d["categoria"].lower()] = cat
-        p = existentes.get(d["codigo"].lower())
-        nuevo = p is None
-        if nuevo:
-            p = Producto(codigo=d["codigo"], stock=0, costo_promedio=0)
-            db.session.add(p)
-        p.nombre, p.categoria = d["nombre"], cat or p.categoria
-        for k in ("marca", "referencia", "compatibilidad", "ubicacion", "codigo_barras", "unidad",
-                  "precio_detal", "precio_mayor", "precio_taller", "stock_minimo", "en_tienda"):
-            setattr(p, k, d[k])
-        p.iva_pct = d["iva"]
-        db.session.flush()
-        if nuevo:
-            creados += 1
-            if d["stock"] > 0:
-                entrada(p, d["stock"], d["costo"], "inicial", "Importación Excel", "importacion", None, usuario_id,
-                        actualizar_ultimo=True)
-            elif d["costo"]:
-                p.ultimo_costo = d["costo"]
+
+    def rechazar(f, motivo):
+        rechazados.append({"fila": f.get("_fila"), "codigo": f.get("codigo", ""),
+                           "nombre": f.get("nombre", ""), "motivo": motivo, "lote": doc_lote})
+
+    preparados, vistos = [], {}
+    for f in validas:
+        cod = str(f.get("codigo", "")).strip().removesuffix(".0").lower()
+        if cod and cod in vistos and not f.get("_dup"):
+            f["_dup"] = vistos[cod]
+        vistos.setdefault(cod, f.get("_fila"))
+        datos, motivo = _validar(f, cod in existentes)
+        if motivo:
+            rechazar(f, motivo)
         else:
-            actualizados += 1
-    return creados, actualizados
+            preparados.append((f, datos))
+
+    creados = actualizados = 0
+    try:
+        with db.session.begin_nested():
+            for f, datos in preparados:
+                if _aplicar(datos, existentes.get(datos["codigo"].lower()), cats, carga, doc_lote, usuario_id):
+                    creados += 1
+                else:
+                    actualizados += 1
+            db.session.flush()
+    except (IntegrityError, ErrorNegocio):
+        # Algo chocó (otra carga al mismo tiempo, etc.): se reintenta fila por fila.
+        creados = actualizados = 0
+        cats = {c.nombre.lower(): c for c in Categoria.query.all()}
+        for f, datos in preparados:
+            p = Producto.query.filter(db.func.lower(Producto.codigo) == datos["codigo"].lower()).first()
+            try:
+                with db.session.begin_nested():
+                    if _aplicar(datos, p, cats, carga, doc_lote, usuario_id):
+                        creados += 1
+                    else:
+                        actualizados += 1
+                    db.session.flush()
+            except IntegrityError:
+                cats = {c.nombre.lower(): c for c in Categoria.query.all()}
+                rechazar(f, "No se pudo guardar (código o categoría en conflicto)")
+            except ErrorNegocio as e:
+                rechazar(f, " ".join(e.errores))
+
+    db.session.add(CargaLote(carga=carga, indice=indice, filas=len(filas), creados=creados,
+                             actualizados=actualizados, rechazados=len(rechazados)))
+    carga.creados = (carga.creados or 0) + creados
+    carga.actualizados = (carga.actualizados or 0) + actualizados
+    if rechazados:
+        carga.rechazados_json = json.dumps(carga.rechazados + rechazados, ensure_ascii=False)
+    return {"consecutivo_lote": doc_lote, "creados": creados, "actualizados": actualizados,
+            "rechazados": len(rechazados)}
+
+
+def finalizar_carga(carga):
+    carga.estado = "completo"
+    return {"consecutivo": carga.consecutivo, "creados": carga.creados, "actualizados": carga.actualizados,
+            "rechazados": carga.total_rechazados}
+
+
+def rechazados_csv(carga):
+    lineas = ["fila;codigo;nombre;lote;motivo"]
+    for r in carga.rechazados:
+        lineas.append(";".join(str(r.get(k) or "").replace(";", ",").replace("\n", " ")
+                               for k in ("fila", "codigo", "nombre", "lote", "motivo")))
+    return ("\ufeff" + "\r\n".join(lineas) + "\r\n").encode("utf-8")
