@@ -46,33 +46,62 @@
       </table></div>
       <p class="hint">Las transferencias se verifican en la app del banco o Nequi; el efectivo se cuenta al cerrar.</p>
     </div>
+    {% if r.salidas_clase %}
+    <div class="card">
+      <div class="card-head"><h2>Salidas por tipo</h2>{% if current_user.puede('admin') %}<a href="{{ url_for('caja_egresos') }}">Ver egresos del mes</a>{% endif %}</div>
+      <div class="table-wrap"><table><tbody>
+        {% for k, v in r.salidas_clase %}<tr><td>{{ k }}</td><td class="num neg">{{ v|pesos }}</td></tr>{% endfor %}
+      </tbody></table></div>
+    </div>
+    {% endif %}
     <div class="card">
       <h2 style="margin-bottom:8px">Movimientos del turno</h2>
       <div class="table-wrap"><table>
         <thead><tr><th>Hora</th><th>Concepto</th><th>Medio</th><th class="num">Valor</th><th></th></tr></thead>
         <tbody>{% for m in r.movs|sort(attribute='fecha', reverse=true) %}
-          <tr><td>{{ m.fecha.strftime('%I:%M %p') }}</td><td>{{ m.concepto }}<br><small class="muted">{{ m.usuario.nombre if m.usuario else '' }}</small></td><td>{{ m.medio.nombre }}</td>
+          <tr><td>{{ m.fecha.strftime('%I:%M %p') }}</td><td>{% if m.tipo == 'egreso' %}<span class="badge {{ 'warn' if m.origen == 'caja_menor' else ('blue' if m.origen in ('compra', 'proveedor') else '') }}">{{ m.clase }}</span> {% endif %}{{ m.concepto }}{% if m.vale %} · <a href="{{ url_for('caja_vale', mid=m.id) }}">{{ m.folio_vale }}</a>{% endif %}<br><small class="muted">{{ m.usuario.nombre if m.usuario else '' }}{% if m.beneficiario %} · recibió {{ m.beneficiario }}{% endif %}</small></td><td>{{ m.medio.nombre }}</td>
             <td class="num {{ 'pos' if m.tipo == 'ingreso' else 'neg' }}">{{ '+' if m.tipo == 'ingreso' else '−' }}{{ m.valor|pesos }}</td>
-            <td>{% if m.origen == 'manual' and current_user.puede('admin') %}<form method="post" action="{{ url_for('caja_mov_anular', mid=m.id) }}" data-confirm="¿Anular este movimiento?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn ghost sm">✕</button></form>{% endif %}</td></tr>
+            <td>{% if m.origen in ('manual', 'proveedor', 'caja_menor') and current_user.puede('admin') %}<form method="post" action="{{ url_for('caja_mov_anular', mid=m.id) }}" data-confirm="¿Anular este movimiento?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn ghost sm">✕</button></form>{% endif %}</td></tr>
         {% else %}<tr><td colspan="5" class="empty">Sin movimientos todavía.</td></tr>{% endfor %}</tbody>
       </table></div>
     </div>
   </div>
   <div>
-    <form class="card" method="post" action="{{ url_for('caja_movimiento') }}">
+    <form class="card" method="post" action="{{ url_for('caja_movimiento') }}" id="f-mov">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <h2 style="margin-bottom:10px">Entrada o salida de dinero</h2>
       <div class="form-row" style="grid-template-columns:1fr 1fr">
         <label class="check"><input type="radio" name="tipo" value="egreso" checked> Salida</label>
         <label class="check"><input type="radio" name="tipo" value="ingreso"> Entrada</label>
       </div>
-      <div class="field" style="margin-top:8px"><input class="input" name="concepto" placeholder="Concepto: domicilio, almuerzo, base extra…" required></div>
+      <div id="bloque-salida">
+        <div class="field" style="margin-top:8px"><label>Tipo de salida *</label>
+          <select class="input" name="clase" id="clase">
+            <option value="">— Elige —</option>
+            <option value="proveedor">Pago a proveedor</option>
+            <option value="caja_menor">Caja menor</option>
+            <option value="otro">Otra salida (consignación, retiro del dueño…)</option>
+          </select></div>
+        <div id="b-prov" style="display:none">
+          <div class="field"><label>Proveedor *</label><select class="input" name="proveedor_id" id="prov"><option value="">— Elige —</option>{% for p in proveedores %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select>
+            {% if not proveedores %}<div class="hint">No hay proveedores. <a href="{{ url_for('proveedor_form') }}">Crea uno</a>.</div>{% endif %}</div>
+          <div class="field"><label>Abona a la compra (opcional)</label><select class="input" name="compra_id" id="compra"><option value="">Pago sin compra (anticipo u otro)</option>
+            {% for c in compras_pend %}<option value="{{ c.id }}" data-prov="{{ c.proveedor_id or '' }}" data-saldo="{{ c.saldo|round|int }}">C-{{ '%05d'|format(c.numero) }}{% if c.factura %} · Fact. {{ c.factura }}{% endif %} · debe {{ c.saldo|pesos }}</option>{% endfor %}</select>
+            <div class="hint">Si eliges una compra, el pago se descuenta de lo que le debes.</div></div>
+        </div>
+        <div id="b-menor" style="display:none">
+          <div class="field"><label>En qué se gastó *</label><select class="input" name="categoria">{% for c in cats_menor %}<option>{{ c }}</option>{% endfor %}</select></div>
+          <div class="field"><label>Quién recibe la plata</label><input class="input" name="beneficiario" placeholder="Nombre de quien recibe / proveedor del gasto"></div>
+          <div class="hint">Queda como gasto del negocio y se genera un vale numerado para firmar.</div>
+        </div>
+      </div>
+      <div class="field" style="margin-top:8px"><input class="input" name="concepto" id="concepto" placeholder="Concepto / detalle"></div>
       <div class="form-row" style="grid-template-columns:1fr 1fr">
-        <div class="field"><input class="input" name="valor" placeholder="Valor" inputmode="numeric" required></div>
+        <div class="field"><input class="input" name="valor" id="valor-mov" placeholder="Valor" inputmode="numeric" required></div>
         <div class="field"><select class="input" name="medio_id">{% for m in medios %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}</select></div>
       </div>
       <button class="btn dark">Registrar</button>
-      <p class="hint">Para gastos del negocio (arriendo, servicios) usa <a href="{{ url_for('gastos') }}">Gastos</a> y marca «sale de la caja», así cuentan en la ganancia.</p>
+      <p class="hint">Para gastos grandes del negocio (arriendo, servicios) usa <a href="{{ url_for('gastos') }}">Gastos</a>.</p>
     </form>
 
     <form class="card" method="post" action="{{ url_for('caja_cerrar') }}" id="f-cierre" data-confirm="¿Cerrar la caja? Después no se puede reabrir.">
@@ -106,6 +135,22 @@
     el.textContent = (d > 0 ? '+' : '') + COP(d); el.className = d < 0 ? 'neg' : (d > 0 ? 'pos' : '');
   }
   document.querySelectorAll('.den').forEach(i => i.addEventListener('input', contar));
+  (function () {
+    const f = document.getElementById('f-mov'), clase = document.getElementById('clase'), prov = document.getElementById('prov'), compra = document.getElementById('compra');
+    function ver() {
+      const salida = f.tipo.value === 'egreso';
+      document.getElementById('bloque-salida').style.display = salida ? '' : 'none';
+      document.getElementById('b-prov').style.display = salida && clase.value === 'proveedor' ? '' : 'none';
+      document.getElementById('b-menor').style.display = salida && clase.value === 'caja_menor' ? '' : 'none';
+      document.getElementById('concepto').placeholder = !salida ? 'Concepto: base extra, préstamo del dueño…' : clase.value === 'caja_menor' ? 'Detalle: domicilio a cliente, tinto, cinta…' : clase.value === 'proveedor' ? 'Nota del pago (opcional si abonas a una compra)' : 'Concepto';
+      [...compra.options].forEach(o => { if (o.value) o.hidden = prov.value && o.dataset.prov !== prov.value; });
+      if (compra.selectedOptions[0]?.hidden) compra.value = '';
+    }
+    f.querySelectorAll('[name=tipo]').forEach(x => x.addEventListener('change', ver));
+    clase.addEventListener('change', ver); prov.addEventListener('change', ver);
+    compra.addEventListener('change', () => { const o = compra.selectedOptions[0]; if (o && o.value) { prov.value = o.dataset.prov; document.getElementById('valor-mov').value = Number(o.dataset.saldo).toLocaleString('es-CO'); } ver(); });
+    ver();
+  })();
 </script>
 {% endif %}
 {% endblock %}

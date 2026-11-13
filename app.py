@@ -20,7 +20,7 @@ from sqlalchemy.exc import IntegrityError
 import importador
 import nomina as nom
 import reportes as rpt
-from models import (normalizar, DIAS, RESULTADOS_VISITA, Ruta, Visita, CargaMasiva, migrar, CATEGORIAS_GASTO, LISTAS_PRECIO, MOTIVOS_AJUSTE, ROLES, TIPOS_MEDIO, TIPOS_MOV,
+from models import (CATEGORIAS_CAJA_MENOR, normalizar, DIAS, RESULTADOS_VISITA, Ruta, Visita, CargaMasiva, migrar, CATEGORIAS_GASTO, LISTAS_PRECIO, MOTIVOS_AJUSTE, ROLES, TIPOS_MEDIO, TIPOS_MOV,
                     TIPOS_PAGO_EMP, UNIDADES, Ajuste, Categoria, Cliente, Compra, Cotizacion,
                     Empleado, Gasto, MedioPago, MovCaja, Movimiento, PagoNomina, Pedido, Producto,
                     Proveedor, Turno, Usuario, Venta, ahora, config, db, semilla)
@@ -700,7 +700,10 @@ def caja():
     r = resumen_turno(t) if t else None
     ultimo = Turno.query.filter_by(estado="cerrado").order_by(Turno.id.desc()).first()
     medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.orden).all()
-    return render_template("caja.html", t=t, r=r, ultimo=ultimo, medios=medios, denominaciones=DENOMINACIONES)
+    proveedores = Proveedor.query.filter_by(activo=True).order_by(Proveedor.nombre).all()
+    compras_pend = [c for c in Compra.query.filter(Compra.anulada.is_(False)).order_by(Compra.fecha).all() if c.saldo > 0.5]
+    return render_template("caja.html", t=t, r=r, ultimo=ultimo, medios=medios, denominaciones=DENOMINACIONES,
+                           proveedores=proveedores, compras_pend=compras_pend, cats_menor=CATEGORIAS_CAJA_MENOR)
 
 
 @app.route("/caja/abrir", methods=["POST"])
@@ -719,19 +722,34 @@ def caja_abrir():
 @app.route("/caja/movimiento", methods=["POST"])
 @requiere("cajero")
 def caja_movimiento():
-    tipo = request.form.get("tipo")
-    medio = db.session.get(MedioPago, int(request.form.get("medio_id") or 0))
-    concepto = (request.form.get("concepto") or "").strip()
+    f = request.form
+    tipo = f.get("tipo")
+    medio = db.session.get(MedioPago, int(f.get("medio_id") or 0))
+    concepto = (f.get("concepto") or "").strip()
+    vale = None
     try:
         if tipo not in ("ingreso", "egreso"):
             raise ErrorNegocio("Elige si es entrada o salida de dinero.")
         if medio is None:
             raise ErrorNegocio("Elige el medio.")
-        if len(concepto) < 3:
-            raise ErrorNegocio("Escribe el concepto (ej. pago domicilio, almuerzo, base extra).")
-        mov_caja(tipo, n(request.form.get("valor")), medio, concepto, "manual", None, current_user.id)
+        valor = n(f.get("valor"))
+        if tipo == "ingreso":
+            if len(concepto) < 3:
+                raise ErrorNegocio("Escribe el concepto (ej. base extra, préstamo del dueño).")
+            mov_caja("ingreso", valor, medio, concepto, "manual", None, current_user.id)
+        else:
+            prov = db.session.get(Proveedor, int(f.get("proveedor_id") or 0)) if (f.get("proveedor_id") or "").isdigit() else None
+            compra = db.session.get(Compra, int(f.get("compra_id") or 0)) if (f.get("compra_id") or "").isdigit() else None
+            if compra and prov and compra.proveedor_id != prov.id:
+                raise ErrorNegocio("Esa compra es de otro proveedor.")
+            m = services.egreso_caja(current_user, f.get("clase"), valor, medio, concepto, proveedor=prov, compra=compra,
+                                     categoria=f.get("categoria"), beneficiario=f.get("beneficiario"))
+            if m and m.vale:
+                vale = m.id
         db.session.commit()
-        flash("Movimiento registrado.", "ok")
+        flash("Movimiento registrado." + (" Imprime el vale y hazlo firmar." if vale else ""), "ok")
+        if vale:
+            return redirect(url_for("caja_vale", mid=vale))
     except ErrorNegocio as e:
         db.session.rollback()
         errores_flash(e)
@@ -742,13 +760,41 @@ def caja_movimiento():
 @requiere("admin")
 def caja_mov_anular(mid):
     m = get_or_404(MovCaja, mid)
-    if m.origen != "manual" or not m.turno or not m.turno.abierto:
-        flash("Solo se anulan movimientos manuales de la caja abierta.", "err")
-    else:
-        m.anulado = True
+    try:
+        services.anular_egreso(m, current_user)
         db.session.commit()
         flash("Movimiento anulado.", "ok")
+    except ErrorNegocio as e:
+        db.session.rollback()
+        errores_flash(e)
     return redirect(url_for("caja"))
+
+
+@app.route("/caja/vale/<int:mid>")
+@requiere("cajero")
+def caja_vale(mid):
+    m = get_or_404(MovCaja, mid)
+    if m.origen != "caja_menor":
+        abort(404)
+    return render_template("vale_caja_menor.html", m=m)
+
+
+@app.route("/caja/egresos")
+@requiere("admin")
+def caja_egresos():
+    """Salidas de caja discriminadas por tipo en un periodo."""
+    desde, hasta = periodo()
+    ini, fin = rango_dt(desde, hasta)
+    clase = request.args.get("clase", "")
+    movs = (MovCaja.query.filter(MovCaja.tipo == "egreso", MovCaja.anulado.is_(False), MovCaja.fecha >= ini,
+                                 MovCaja.fecha < fin).order_by(MovCaja.fecha.desc()).all())
+    totales = {}
+    for m in movs:
+        totales[m.clase] = totales.get(m.clase, 0) + m.valor
+    if clase:
+        movs = [m for m in movs if m.clase == clase]
+    return render_template("caja_egresos.html", movs=movs, totales=sorted(totales.items(), key=lambda kv: -kv[1]),
+                           clase=clase, desde=desde, hasta=hasta)
 
 
 @app.route("/caja/cerrar", methods=["POST"])
@@ -983,6 +1029,8 @@ def producto_form(pid=None):
     p = get_or_404(Producto, pid) if pid else Producto(unidad="unidad", en_tienda=True, activo=True, stock=0,
                                                        costo_promedio=0, iva_pct=0)
     cfg = config()
+    if not pid and request.method == "GET" and request.args.get("virtual"):
+        p.virtual = True
     if request.method == "POST":
         f = request.form
         nuevo = p.id is None

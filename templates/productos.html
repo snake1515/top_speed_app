@@ -6,6 +6,7 @@
   {% if current_user.puede('bodega') %}<div class="actions">
     <a class="btn sec" href="{{ url_for('productos_importar') }}">Carga masiva (CSV)</a>
     <a class="btn sec" href="{{ url_for('compra_nueva') }}">⇣ Registrar compra</a>
+    <a class="btn sec" href="{{ url_for('producto_form', virtual=1) }}">＋ Repuesto virtual</a>
     <a class="btn" href="{{ url_for('producto_form') }}">＋ Repuesto</a></div>{% endif %}
 </div>
 <form class="filters">

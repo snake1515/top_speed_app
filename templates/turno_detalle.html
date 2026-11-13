@@ -13,6 +13,7 @@
       <div class="sum-row"><span>+ Entradas en efectivo</span><b>{{ d.ingresos|pesos }}</b></div>
       <div class="sum-row"><span>− Salidas en efectivo</span><b>{{ d.egresos|pesos }}</b></div>
     {% endfor %}
+    {% if r.salidas_clase %}<div style="margin:6px 0 6px 14px">{% for k, v in r.salidas_clase %}<div class="sum-row"><small class="muted">{{ k }}</small><small>{{ v|pesos }}</small></div>{% endfor %}</div>{% endif %}
     <div class="sum-row big"><span>Debía haber</span><span>{{ (t.efectivo_esperado if t.efectivo_esperado is not none else r.efectivo_esperado)|pesos }}</span></div>
     {% if t.efectivo_contado is not none %}
     <div class="sum-row"><span>Contado</span><b>{{ t.efectivo_contado|pesos }}</b></div>
@@ -38,7 +39,7 @@
   <h2 style="margin-bottom:8px">Movimientos</h2>
   <div class="table-wrap"><table>
     <thead><tr><th>Hora</th><th>Concepto</th><th>Medio</th><th>Usuario</th><th class="num">Valor</th></tr></thead>
-    <tbody>{% for m in r.movs|sort(attribute='fecha') %}<tr><td>{{ m.fecha|fh }}</td><td>{{ m.concepto }}</td><td>{{ m.medio.nombre }}</td><td>{{ m.usuario.nombre if m.usuario else '' }}</td>
+    <tbody>{% for m in r.movs|sort(attribute='fecha') %}<tr><td>{{ m.fecha|fh }}</td><td>{% if m.tipo == 'egreso' %}<small class="muted">{{ m.clase }} ·</small> {% endif %}{{ m.concepto }}{% if m.vale %} · <a href="{{ url_for('caja_vale', mid=m.id) }}">{{ m.folio_vale }}</a>{% endif %}</td><td>{{ m.medio.nombre }}</td><td>{{ m.usuario.nombre if m.usuario else '' }}</td>
       <td class="num {{ 'pos' if m.tipo == 'ingreso' else 'neg' }}">{{ '+' if m.tipo == 'ingreso' else '−' }}{{ m.valor|pesos }}</td></tr>{% endfor %}</tbody>
   </table></div>
 </div>

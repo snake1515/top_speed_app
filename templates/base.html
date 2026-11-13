@@ -79,6 +79,7 @@
       <a href="{{ url_for('empleados') }}" class="{{ 'on' if ep.startswith('empleado') }}"><span class="ico">♟</span>Empleados</a>
       <a href="{{ url_for('nominas') }}" class="{{ 'on' if ep.startswith('nomina') }}"><span class="ico">✉</span>Nómina</a>
       <a href="{{ url_for('gastos') }}" class="{{ 'on' if ep.startswith('gasto') }}"><span class="ico">↯</span>Gastos</a>
+      <a href="{{ url_for('caja_egresos') }}" class="{{ 'on' if ep == 'caja_egresos' }}"><span class="ico">⇥</span>Egresos de caja</a>
       <a href="{{ url_for('usuarios') }}" class="{{ 'on' if ep.startswith('usuario') }}"><span class="ico">⚿</span>Usuarios</a>
       <a href="{{ url_for('configuracion') }}" class="{{ 'on' if ep == 'configuracion' }}"><span class="ico">⚒</span>Configuración</a>
       <a href="{{ url_for('tienda') }}" target="_blank"><span class="ico">↗</span>Ver tienda online</a>

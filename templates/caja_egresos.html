@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Egresos de caja{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Egresos de caja</h1><p>Salidas de dinero discriminadas: pagos a proveedores, caja menor, gastos, nómina, devoluciones y otras.</p></div>
+  <a class="btn sec" href="{{ url_for('caja') }}">← Caja</a></div>
+<form class="filters">
+  <label>Desde <input class="input" type="date" name="desde" value="{{ desde }}"></label>
+  <label>Hasta <input class="input" type="date" name="hasta" value="{{ hasta }}"></label>
+  <input type="hidden" name="clase" value="{{ clase }}">
+  <button class="btn dark">Ver</button>
+</form>
+<div class="kpis">
+  {% for k, v in totales %}<a class="kpi {{ 'hl' if clase == k }}" href="{{ url_for('caja_egresos', desde=desde, hasta=hasta, clase=k) }}" style="text-decoration:none;color:inherit"><div class="lbl">{{ k }}</div><div class="val">{{ v|pesos }}</div></a>{% endfor %}
+  {% if not totales %}<div class="kpi"><div class="lbl">Sin egresos</div><div class="val">$ 0</div></div>{% endif %}
+</div>
+<div class="card">
+  <div class="card-head"><h2>{{ clase or 'Todos los egresos' }}</h2>{% if clase %}<a href="{{ url_for('caja_egresos', desde=desde, hasta=hasta) }}">Ver todos</a>{% endif %}</div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Fecha</th><th>Tipo</th><th>Concepto</th><th>Proveedor / recibe</th><th>Medio</th><th class="num">Valor</th></tr></thead>
+    <tbody>{% for m in movs %}<tr><td>{{ m.fecha|fh }}</td><td>{{ m.clase }}</td>
+      <td>{{ m.concepto }}{% if m.vale %} · <a href="{{ url_for('caja_vale', mid=m.id) }}">{{ m.folio_vale }}</a>{% endif %}</td>
+      <td>{{ m.proveedor.nombre if m.proveedor else (m.beneficiario or '') }}</td><td>{{ m.medio.nombre }}</td><td class="num">{{ m.valor|pesos }}</td></tr>
+    {% else %}<tr><td colspan="6" class="empty">No hay egresos en este periodo.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endblock %}

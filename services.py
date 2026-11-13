@@ -8,7 +8,7 @@ import json
 import secrets
 from datetime import timedelta
 
-from models import (RESULTADOS_VISITA, Visita, MOTIVOS_AJUSTE, Ajuste, AjusteItem, Cliente, Compra, CompraItem, Cotizacion,
+from models import (CATEGORIAS_CAJA_MENOR, CLASE_EGRESO, Gasto, RESULTADOS_VISITA, Visita, MOTIVOS_AJUSTE, Ajuste, AjusteItem, Cliente, Compra, CompraItem, Cotizacion,
                     Devolucion, MedioPago, MovCaja, Movimiento, PagoCompra, PagoVenta, Pedido,
                     PedidoItem, Producto, Turno, Venta, VentaItem, ahora, config, db, siguiente)
 
@@ -146,7 +146,13 @@ def resumen_turno(t):
         k = (m.origen, m.tipo)
         por_origen[k] = por_origen.get(k, 0) + m.valor
     ventas = Venta.query.filter(Venta.turno_id == t.id, Venta.estado != "anulada").all()
+    salidas = {}
+    for m in movs:
+        if m.tipo == "egreso":
+            salidas[m.clase] = salidas.get(m.clase, 0) + m.valor
+    orden = list(dict.fromkeys(CLASE_EGRESO.values()))
     return {
+        "salidas_clase": sorted(salidas.items(), key=lambda kv: orden.index(kv[0]) if kv[0] in orden else 99),
         "medios": sorted(medios.values(), key=lambda d: (not d["medio"].es_efectivo, d["medio"].orden)),
         "efectivo_esperado": round(esperado),
         "ingresos": sum(d["ingresos"] for d in medios.values()),
@@ -193,6 +199,60 @@ def anular_mov_caja(mov_id, usuario_id, concepto):
         return
     contrario = "egreso" if m.tipo == "ingreso" else "ingreso"
     mov_caja(contrario, m.valor, m.medio, concepto, "reverso", m.ref_id, usuario_id)
+
+
+def egreso_caja(usuario, clase, valor, medio, concepto, proveedor=None, compra=None, categoria=None,
+                beneficiario=""):
+    """Salida de dinero discriminada: pago a proveedor, caja menor u otra salida."""
+    concepto = (concepto or "").strip()
+    if clase == "proveedor":
+        if compra is not None:
+            if compra.anulada or compra.saldo <= 0.5:
+                raise ErrorNegocio("Esa compra ya no tiene saldo pendiente.")
+            m = pagar_compra(compra, usuario, valor, medio, True)
+            if concepto:
+                m.concepto = (m.concepto + " · " + concepto)[:200]
+            return m
+        if proveedor is None:
+            raise ErrorNegocio("Elige el proveedor al que le pagas.")
+        if len(concepto) < 3:
+            raise ErrorNegocio("Escribe el concepto del pago (ej. anticipo pedido de llantas).")
+        m = mov_caja("egreso", valor, medio, f"Pago a {proveedor.nombre}: {concepto}", "proveedor", None, usuario.id)
+        m.proveedor_id = proveedor.id
+        return m
+    if clase == "caja_menor":
+        if categoria not in CATEGORIAS_CAJA_MENOR:
+            raise ErrorNegocio("Elige en qué se gastó la caja menor.")
+        if len(concepto) < 3:
+            raise ErrorNegocio("Escribe el detalle del gasto de caja menor.")
+        g = Gasto(categoria=f"Caja menor · {categoria}"[:60], descripcion=concepto[:200], valor=round(valor),
+                  medio=medio, usuario_id=usuario.id)
+        db.session.add(g)
+        db.session.flush()
+        m = mov_caja("egreso", valor, medio, f"Caja menor · {categoria}: {concepto}", "caja_menor", g.id, usuario.id)
+        m.categoria = categoria
+        m.beneficiario = (beneficiario or "").strip()[:120] or None
+        m.vale = siguiente("sig_vale")
+        g.mov_caja_id = m.id
+        return m
+    if clase == "otro":
+        if len(concepto) < 3:
+            raise ErrorNegocio("Escribe el concepto (ej. consignación al banco, retiro del dueño).")
+        return mov_caja("egreso", valor, medio, concepto, "manual", None, usuario.id)
+    raise ErrorNegocio("Elige el tipo de salida: pago a proveedor, caja menor u otra.")
+
+
+def anular_egreso(m, usuario):
+    if m.anulado:
+        raise ErrorNegocio("Ese movimiento ya estaba anulado.")
+    if m.origen not in ("manual", "proveedor", "caja_menor") or not m.turno or not m.turno.abierto:
+        raise ErrorNegocio("Aquí solo se anulan entradas y salidas manuales, pagos a proveedor sin compra y caja menor "
+                           "de la caja abierta. Los pagos de compras se anulan desde la compra.")
+    m.anulado = True
+    if m.origen == "caja_menor" and m.ref_id:
+        g = db.session.get(Gasto, m.ref_id)
+        if g:
+            g.anulado = True
 
 
 def cerrar_turno(t, usuario, contado, denominaciones, nota=""):
@@ -563,6 +623,9 @@ def pagar_compra(c, usuario, valor, medio, desde_caja):
     c.pagos.append(PagoCompra(valor=valor, medio=medio, desde_caja=bool(mov), mov_caja_id=mov.id if mov else None,
                               usuario_id=usuario.id))
     c.pagado = (c.pagado or 0) + valor
+    if mov:
+        mov.proveedor_id = c.proveedor_id
+    return mov
 
 
 def anular_compra(c, usuario):

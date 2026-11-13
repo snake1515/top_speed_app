@@ -69,6 +69,12 @@ TIPOS_MOV = {
     "anula_ajuste": "Anulación de ajuste",
     "carga": "Carga masiva",
 }
+CATEGORIAS_CAJA_MENOR = ["Transporte y domicilios", "Mensajería", "Aseo y cafetería", "Papelería", "Alimentación",
+                         "Mantenimiento menor", "Herramienta menor", "Otros"]
+# cómo se llama cada salida de caja según su origen (para discriminar los egresos)
+CLASE_EGRESO = {"compra": "Pago a proveedor", "proveedor": "Pago a proveedor", "caja_menor": "Caja menor",
+                "gasto": "Gasto del negocio", "nomina": "Nómina", "devolucion": "Devolución a cliente",
+                "reverso": "Reversos", "manual": "Otras salidas"}
 CATEGORIAS_GASTO = ["Arriendo", "Servicios públicos", "Internet y teléfono", "Transporte y domicilios",
                     "Publicidad", "Mantenimiento del local", "Papelería y empaques", "Impuestos",
                     "Contador", "Comisiones bancarias", "Otros"]
@@ -158,6 +164,7 @@ class Config(db.Model):
     sig_pedido = db.Column(db.Integer, nullable=False, default=1)
     sig_ajuste = db.Column(db.Integer, nullable=False, default=1)
     sig_carga = db.Column(db.Integer, nullable=False, default=1)
+    sig_vale = db.Column(db.Integer, nullable=False, default=1)
 
 
 class MedioPago(db.Model):
@@ -410,6 +417,20 @@ class MovCaja(db.Model):
     anulado = db.Column(db.Boolean, nullable=False, default=False)
     usuario_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
     usuario = db.relationship("Usuario")
+    # discriminación de egresos
+    proveedor_id = db.Column(db.Integer, db.ForeignKey("ts_proveedores.id"))
+    proveedor = db.relationship("Proveedor")
+    categoria = db.Column(db.String(60))      # caja menor
+    beneficiario = db.Column(db.String(120))  # quien recibe la plata (vale de caja menor)
+    vale = db.Column(db.Integer)              # consecutivo del vale de caja menor
+
+    @property
+    def clase(self):
+        return CLASE_EGRESO.get(self.origen, "Otras salidas") if self.tipo == "egreso" else "Entrada"
+
+    @property
+    def folio_vale(self):
+        return f"VCM-{self.vale:04d}" if self.vale else ""
 
 
 class Compra(db.Model):
