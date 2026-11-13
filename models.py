@@ -192,6 +192,9 @@ class Proveedor(db.Model):
     activo = db.Column(db.Boolean, nullable=False, default=True)
 
 
+DISP_VIRTUAL = 99  # unidades que se muestran disponibles para un producto de la bodega virtual
+
+
 class Producto(db.Model):
     __tablename__ = "ts_productos"
     id = db.Column(db.Integer, primary_key=True)
@@ -222,6 +225,10 @@ class Producto(db.Model):
     imagen_v = db.Column(db.Integer, nullable=False, default=0)
     creado = db.Column(db.DateTime, default=ahora)
     busqueda = db.Column(db.Text)  # texto sin tildes para buscar (se llena solo)
+    # Bodega virtual: se vende como si hubiera, pero no hay unidades físicas. Usa un costo virtual
+    # hasta que se compre de verdad; ahí pasa al inventario real con costo promedio.
+    virtual = db.Column(db.Boolean, nullable=False, default=False)
+    costo_virtual = db.Column(db.Float, nullable=False, default=0)
 
     def actualizar_busqueda(self):
         self.busqueda = normalizar(" ".join(str(x) for x in (self.codigo, self.codigo_barras, self.nombre, self.marca,
@@ -236,15 +243,25 @@ class Producto(db.Model):
         return max(self.stock or 0, 0) * (self.costo_promedio or 0)
 
     @property
+    def costo_ref(self):
+        """Costo con el que se calcula la ganancia: el virtual si no hay unidades reales."""
+        return (self.costo_virtual or 0) if self.virtual else (self.costo_promedio or 0)
+
+    def disponible(self, reservado=None):
+        if self.virtual:
+            return DISP_VIRTUAL
+        return max((self.stock or 0) - (reservado or {}).get(self.id, 0), 0)
+
+    @property
     def bajo_minimo(self):
-        return (self.stock_minimo or 0) > 0 and (self.stock or 0) <= self.stock_minimo
+        return not self.virtual and (self.stock_minimo or 0) > 0 and (self.stock or 0) <= self.stock_minimo
 
     @property
     def margen_detal(self):
         if not self.precio_detal:
             return None
         base = self.precio_detal / (1 + (self.iva_pct or 0) / 100)
-        return (base - (self.costo_promedio or 0)) / base * 100 if base else None
+        return (base - self.costo_ref) / base * 100 if base else None
 
 
 class Movimiento(db.Model):
@@ -626,6 +643,9 @@ class VentaItem(db.Model):
     iva_pct = db.Column(db.Float, nullable=False, default=0)
     costo_unitario = db.Column(db.Float, nullable=False, default=0)
     devuelto = db.Column(db.Float, nullable=False, default=0)
+    # bodega virtual: unidades vendidas que aún no existen físicamente y su costo estimado
+    por_surtir = db.Column(db.Float, nullable=False, default=0)
+    costo_estimado = db.Column(db.Float, nullable=False, default=0)
 
     @property
     def neto_unitario(self):

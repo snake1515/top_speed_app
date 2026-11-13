@@ -6,7 +6,8 @@
   <div class="card">
     <h2 style="margin-bottom:10px">1. Prepara el archivo</h2>
     <p>Una fila por repuesto. Obligatorias para repuestos nuevos: <b>codigo, nombre, precio_detal</b>.
-      Opcionales: categoria (o grupo), marca, referencia, compatibilidad, ubicacion, codigo_barras, unidad, stock, costo, precio_mayor, precio_taller, stock_minimo, iva, en_tienda.</p>
+      Opcionales: categoria (o grupo), marca, referencia, compatibilidad, ubicacion, codigo_barras, unidad, stock, costo, precio_mayor, precio_taller, stock_minimo, iva, en_tienda, virtual.</p>
+    <p class="hint"><b>Bodega virtual:</b> pon <b>virtual = SI</b> en los repuestos que vas a vender sin tenerlos. En esas filas el <b>costo</b> es el costo virtual y el stock va vacío.</p>
     <p class="hint">Separador <b>;</b> o <b>,</b> (se detecta solo). Sirven también los títulos de la plantilla de Excel y las columnas de Stocka (grupo, existencias_bodega, existencias_almacen).</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
       <a class="btn dark" href="{{ url_for('productos_plantilla_csv') }}">⇩ Plantilla CSV</a>
@@ -16,6 +17,7 @@
       <li>Código nuevo → se crea el repuesto. Si trae stock y costo, entra al kardex como «Inventario inicial» y fija el costo promedio.</li>
       <li>Código que ya existe → se actualizan los datos que vengan llenos (nombre, precios, ubicación…). El stock <b>no</b> se toca: para eso usa compras o ajustes.</li>
       <li>Las categorías nuevas se crean solas.</li>
+      <li>virtual = SI → entra a la bodega virtual: stock 0, se vende como disponible y la ganancia usa el costo virtual hasta que lo compres de verdad.</li>
     </ul>
   </div>
   <div class="card">

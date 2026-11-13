@@ -32,7 +32,7 @@ const CLI = {{ c.id }}, LISTA = '{{ c.lista }}';
 let carrito = [], res = [], t, gps = null;
 if (navigator.geolocation) navigator.geolocation.getCurrentPosition(p => gps = p.coords, () => {}, { timeout: 8000 });
 function pintar() {
-  $('carrito').innerHTML = carrito.length ? carrito.map((it, i) => `<div class="ci"><div><div class="nm">${esc(it.p.nombre)}</div><div class="cd">${esc(it.p.codigo)} · ${COP(it.p.precio)} c/u · disp. ${NUM(it.p.disp)}</div></div>
+  $('carrito').innerHTML = carrito.length ? carrito.map((it, i) => `<div class="ci"><div><div class="nm">${esc(it.p.nombre)}</div><div class="cd">${esc(it.p.codigo)} · ${COP(it.p.precio)} c/u · ${it.p.virtual ? 'disponible' : 'disp. ' + NUM(it.p.disp)}</div></div>
     <div class="tot">${COP(it.q * it.p.precio)}</div>
     <div class="ctl"><button class="qty-btn" data-i="${i}" data-d="-1" type="button">−</button><input class="input" data-i="${i}" value="${NUM(it.q)}" inputmode="decimal"><button class="qty-btn" data-i="${i}" data-d="1" type="button">+</button>
     ${it.q > it.p.disp ? '<span class="badge err">no alcanza</span>' : ''}<button class="btn ghost sm" data-x="${i}" type="button">✕</button></div></div>`).join('') : '<p class="empty">Busca y agrega repuestos.</p>';
@@ -48,7 +48,7 @@ $('buscar').addEventListener('input', () => { clearTimeout(t); const q = $('busc
   t = setTimeout(async () => { res = await buscar(q);
     $('resultados').innerHTML = res.length ? res.map((p, i) => `<div class="res" data-i="${i}"><img class="thumb" src="${p.img || '{{ url_for('static', filename='sin-foto.svg') }}'}" alt="">
       <div style="min-width:0"><div class="nm">${esc(p.nombre)}</div><div class="meta">${esc(p.codigo)}${p.compat ? ' · 🏍 ' + esc(p.compat) : ''}</div></div>
-      <div><div class="pr">${COP(p.precio)}</div><div class="st ${p.disp <= 0 ? 'neg' : 'muted'}">${p.disp <= 0 ? 'Agotado' : 'Disp. ' + NUM(p.disp)}</div></div></div>`).join('') : '<p class="empty">Sin resultados.</p>'; }, 200); });
+      <div><div class="pr">${COP(p.precio)}</div><div class="st ${p.disp <= 0 ? 'neg' : 'muted'}">${p.disp <= 0 ? 'Agotado' : (p.virtual ? 'Disponible' : 'Disp. ' + NUM(p.disp))}</div></div></div>`).join('') : '<p class="empty">Sin resultados.</p>'; }, 200); });
 $('resultados').addEventListener('click', e => { const el = e.target.closest('.res'); if (!el) return; const p = res[el.dataset.i];
   if (p.disp <= 0) { alert('Ese repuesto está agotado.'); return; }
   const ex = carrito.find(it => it.p.id === p.id); if (ex) ex.q++; else carrito.unshift({ p, q: 1 }); pintar(); $('buscar').select(); });

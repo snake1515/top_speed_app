@@ -42,8 +42,16 @@
         <div class="note" id="sug" style="display:none"></div>
         {% endif %}
       </div>
-      {% if not p.id %}
       <div class="card">
+        <h2 style="margin-bottom:4px">Bodega virtual</h2>
+        <p class="muted" style="margin-top:0">Para repuestos que vendes como si los tuvieras, pero que no existen físicamente. Stock 0, se muestran disponibles en el POS, la tienda y la preventa, y la ganancia se calcula con el costo virtual. Cuando los compres de verdad pasan solos al inventario real con costo promedio.</p>
+        {% set es_virtual = (f.get('virtual') if f else p.virtual) %}
+        <label class="check"><input type="checkbox" name="virtual" value="1" id="chk-virtual" {{ 'checked' if es_virtual }} {{ 'disabled' if p.id and not p.virtual and (p.stock or 0) > 0 }}> Está en la bodega virtual</label>
+        {% if p.id and not p.virtual and (p.stock or 0) > 0 %}<div class="hint">Tiene {{ p.stock|cant }} unidades reales; solo un repuesto en 0 puede volver a la bodega virtual.</div>{% endif %}
+        <div class="field" id="campo-cv" style="margin-top:10px;{{ '' if es_virtual else 'display:none' }}"><label>Costo virtual *</label><input class="input" name="costo_virtual" id="cv" value="{{ (f.get('costo_virtual') if f else ((p.costo_virtual|round|int) if p.costo_virtual else '')) or '' }}" inputmode="numeric"><div class="hint">Lo que te costaría comprarlo (precio del proveedor).</div></div>
+      </div>
+      {% if not p.id %}
+      <div class="card" id="card-stock-ini">
         <h2 style="margin-bottom:4px">Stock inicial (opcional)</h2>
         <p class="muted" style="margin-top:0">Si ya tienes unidades en el local. Las compras siguientes se suman y promedian el costo.</p>
         <div class="form-row">
@@ -78,12 +86,22 @@
 {% endif %}
 {% endblock %}
 {% block scripts %}
+<script>
+  (function () {
+    const chk = document.getElementById('chk-virtual');
+    const tog = () => { document.getElementById('campo-cv').style.display = chk.checked ? '' : 'none';
+      const si = document.getElementById('card-stock-ini'); if (si) si.style.display = chk.checked ? 'none' : ''; if (window.sugerir) sugerir(); };
+    chk && chk.addEventListener('change', tog); chk && tog();
+  })();
+</script>
 {% if current_user.ve_costos %}
 <script>
-  const costoActual = {{ (p.costo_promedio or 0)|round|int }};
+  const costoActual = {{ (p.costo_ref or 0)|round|int }};
   const M = { pd: {{ cfg.margen_detal or 0 }}, pm: {{ cfg.margen_mayor or 0 }}, pt: {{ cfg.margen_taller or 0 }} };
+  window.sugerir = sugerir;
   function sugerir() {
-    const c = num(document.getElementById('ci')?.value) || costoActual;
+    const virt = document.getElementById('chk-virtual')?.checked;
+    const c = (virt ? num(document.getElementById('cv')?.value) : num(document.getElementById('ci')?.value)) || costoActual;
     const box = document.getElementById('sug');
     if (!c) { box.style.display = 'none'; return; }
     const r = v => Math.ceil(v / 500) * 500;
@@ -93,6 +111,7 @@
     document.getElementById('usar-sug').onclick = () => { for (const k in s) document.getElementById(k).value = s[k].toLocaleString('es-CO'); };
   }
   document.getElementById('ci')?.addEventListener('input', sugerir);
+  document.getElementById('cv')?.addEventListener('input', sugerir);
   sugerir();
 </script>
 {% endif %}

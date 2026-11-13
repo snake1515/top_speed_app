@@ -124,8 +124,8 @@ function pintarCarrito() {
   const box = $('carrito');
   if (!carrito.length) { box.innerHTML = '<p class="empty">Busca y agrega repuestos.<br><small>El lector de código de barras también funciona aquí.</small></p>'; }
   else box.innerHTML = carrito.map((it, i) => {
-    const disp = it.p.stock - (it.p.reservado || 0);
-    const alerta = it.cantidad > it.p.stock ? `<span class="badge err">solo hay ${NUM(it.p.stock)}</span>` : (it.cantidad > disp ? `<span class="badge warn">${NUM(it.p.reservado)} apartado(s) web</span>` : '');
+    const disp = it.p.virtual ? Infinity : it.p.stock - (it.p.reservado || 0);
+    const alerta = it.p.virtual ? '<span class="badge blue">virtual</span>' : it.cantidad > it.p.stock ? `<span class="badge err">solo hay ${NUM(it.p.stock)}</span>` : (it.cantidad > disp ? `<span class="badge warn">${NUM(it.p.reservado)} apartado(s) web</span>` : '');
     const bajoCosto = VE_COSTO && it.p.costo && it.precio < it.p.costo ? '<span class="badge err">bajo costo</span>' : '';
     return `<div class="ci">
       <div><div class="nm">${esc(it.p.nombre)}</div><div class="cd">${esc(it.p.codigo)}${it.p.ubicacion ? ' · 📍' + esc(it.p.ubicacion) : ''} ${alerta} ${bajoCosto}</div></div>
@@ -173,7 +173,7 @@ function pintarResultados(lista, titulo = '') {
   resultados = lista; selIdx = 0;
   $('resultados').innerHTML = (titulo ? `<small class="muted">${titulo}</small>` : '') + (lista.length ? lista.map((p, i) => {
     const disp = p.stock - (p.reservado || 0);
-    const st = p.stock <= 0 ? '<span class="neg">Agotado</span>' : `<span class="${disp <= 0 ? 'neg' : 'muted'}">Stock ${NUM(p.stock)}${p.reservado ? ' · ' + NUM(p.reservado) + ' apart.' : ''}</span>`;
+    const st = p.virtual ? '<span class="muted">Bodega virtual</span>' : p.stock <= 0 ? '<span class="neg">Agotado</span>' : `<span class="${disp <= 0 ? 'neg' : 'muted'}">Stock ${NUM(p.stock)}${p.reservado ? ' · ' + NUM(p.reservado) + ' apart.' : ''}</span>`;
     return `<div class="res ${i === 0 ? 'sel' : ''}" data-i="${i}">
       <img class="thumb" src="${p.img || '{{ url_for('static', filename='sin-foto.svg') }}'}" alt="" loading="lazy">
       <div style="min-width:0"><div class="nm">${esc(p.nombre)}</div>

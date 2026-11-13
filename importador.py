@@ -34,6 +34,7 @@ COLUMNAS = [
     ("stock_minimo", "Stock mínimo", "Para la alerta de reposición"),
     ("iva", "IVA %", "0 o 19"),
     ("en_tienda", "En tienda (SI/NO)", "Si se publica en la tienda online"),
+    ("virtual", "Bodega virtual (SI/NO)", "SI = se vende sin tenerlo; el costo es el costo virtual y el stock va vacío"),
 ]
 
 
@@ -53,7 +54,7 @@ def plantilla():
             c.comment = Comment(COLUMNAS[i][2], "Moto Speed")
         ws.column_dimensions[c.column_letter].width = 20
     ws.append(["EJEMPLO-001", "Kit de arrastre 428 (borrar esta fila)", "Transmisión (kit de arrastre)", "Riffel",
-               "KA-428", "Boxer 100, CT 100", "E2-C3", "", "kit", 3, 85000, 129000, 115000, 120000, 2, 0, "SI"])
+               "KA-428", "Boxer 100, CT 100", "E2-C3", "", "kit", 3, 85000, 129000, 115000, 120000, 2, 0, "SI", "NO"])
     ws.freeze_panes = "A2"
     buf = BytesIO()
     wb.save(buf)
@@ -105,6 +106,7 @@ ALIAS = {
     "stock_minimo": ["stock_minimo", "minimo", "prominstk"],
     "iva": ["iva", "iva_pct", "proivapor"],
     "en_tienda": ["en_tienda", "en_tienda_si_no", "tienda", "publicar"],
+    "virtual": ["virtual", "bodega_virtual", "bodega_virtual_si_no", "virtual_si_no", "es_virtual"],
 }
 _MAPA = {a: k for k, lista in ALIAS.items() for a in lista}
 _SUMA_STOCK = ("existencias_bodega", "existencias_almacen")  # formato Stocka
@@ -149,7 +151,7 @@ def plantilla_csv():
     enc = [c[0] for c in COLUMNAS]
     ej = ["EJEMPLO-001", "Kit de arrastre 428 (borrar esta fila)", "Transmisión (kit de arrastre)", "Riffel",
           "KA-428", "Boxer 100, CT 100", "E2-C3", "", "kit", "3", "85000", "129000", "115000", "120000", "2", "0",
-          "SI"]
+          "SI", "NO"]
     texto = ";".join(enc) + "\r\n" + ";".join(f'"{x}"' if "," in x or ";" in x else x for x in ej) + "\r\n"
     return ("\ufeff" + texto).encode("utf-8")
 
@@ -206,6 +208,12 @@ def _validar(d, existe):
     if num["iva"] is not None and num["iva"] not in (0, 5, 19):
         return None, "El IVA debe ser 0, 5 o 19"
     nombre = d.get("nombre", "").strip()
+    v = d.get("virtual", "").strip().upper()
+    virtual = None if not v else v in ("SI", "SÍ", "S", "1", "X", "TRUE", "VERDADERO")
+    if virtual and not existe and not num["costo"]:
+        return None, "Repuesto virtual sin costo (escribe el costo virtual en la columna costo)"
+    if virtual and (num["stock"] or 0) > 0:
+        return None, "Un repuesto virtual no lleva stock (déjalo vacío o en 0)"
     if not existe:
         faltan = []
         if not nombre:
@@ -214,7 +222,7 @@ def _validar(d, existe):
             faltan.append("precio detal")
         if faltan:
             return None, "Falta(n): " + ", ".join(faltan)
-        if (num["stock"] or 0) > 0 and not num["costo"]:
+        if not virtual and (num["stock"] or 0) > 0 and not num["costo"]:
             return None, "Trae stock inicial pero no el costo unitario"
     datos = {"codigo": codigo[:60], "nombre": nombre[:200], "num": num,
              "categoria": d.get("categoria", "").strip()[:80],
@@ -222,7 +230,7 @@ def _validar(d, existe):
                        (("marca", 80), ("referencia", 80), ("compatibilidad", 400), ("ubicacion", 60),
                         ("unidad", 20)) if d.get(k, "").strip()},
              "codigo_barras": d.get("codigo_barras", "").strip().removesuffix(".0")[:60],
-             "en_tienda": d.get("en_tienda", "").strip().upper()}
+             "en_tienda": d.get("en_tienda", "").strip().upper(), "virtual": virtual}
     if datos["texto"].get("unidad"):
         datos["texto"]["unidad"] = datos["texto"]["unidad"].lower()
     return datos, None
@@ -256,7 +264,14 @@ def _aplicar(datos, p, cats, carga, doc_lote, usuario_id):
         p.iva_pct = n["iva"]
     if datos["en_tienda"]:
         p.en_tienda = datos["en_tienda"] not in ("NO", "N", "0", "FALSE", "FALSO")
-    if nuevo:
+    if datos["virtual"] is not None:
+        if datos["virtual"] and (p.stock or 0) > 0:
+            raise ErrorNegocio(f"{p.codigo} tiene unidades reales; no puede pasar a la bodega virtual")
+        p.virtual = datos["virtual"]
+    if p.virtual:
+        if n["costo"]:
+            p.costo_virtual = n["costo"]
+    elif nuevo:
         if (n["stock"] or 0) > 0:
             entrada(p, n["stock"], n["costo"], "inicial", doc_lote, "carga", carga.id, usuario_id,
                     nota=f"Carga masiva {carga.archivo or ''}", actualizar_ultimo=True)

@@ -66,6 +66,7 @@
       {% if current_user.puede('cajero', 'bodega') %}
       <div class="nav-sep">Inventario</div>
       <a href="{{ url_for('productos') }}" class="{{ 'on' if ep.startswith('producto') }}"><span class="ico">⚙</span>Repuestos</a>
+      <a href="{{ url_for('por_surtir') }}" class="{{ 'on' if ep == 'por_surtir' }}"><span class="ico">◌</span>Por surtir (virtual)</a>
       {% endif %}
       {% if current_user.puede('bodega') %}
       <a href="{{ url_for('compras') }}" class="{{ 'on' if ep.startswith('compra') }}"><span class="ico">⇣</span>Compras</a>

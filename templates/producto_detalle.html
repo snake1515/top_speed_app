@@ -5,17 +5,23 @@
   <div style="display:flex;gap:14px;align-items:center">
     <img class="thumb" style="width:72px;height:72px" src="{{ url_for('img_producto', pid=p.id, v=p.imagen_v) if p.imagen_v else url_for('static', filename='sin-foto.svg') }}" alt="">
     <div><h1>{{ p.nombre }}</h1><p><span class="mono">{{ p.codigo }}</span>{% if p.codigo_barras %} · <span class="mono">{{ p.codigo_barras }}</span>{% endif %} · {{ p.categoria.nombre if p.categoria else 'Sin categoría' }}{% if p.marca %} · {{ p.marca }}{% endif %}
-      {% if not p.activo %}<span class="badge err">Inactivo</span>{% endif %}{% if p.en_tienda %} <span class="badge blue">En tienda</span>{% endif %}</p></div>
+      {% if not p.activo %}<span class="badge err">Inactivo</span>{% endif %}{% if p.en_tienda %} <span class="badge blue">En tienda</span>{% endif %}{% if p.virtual %} <span class="badge warn">Bodega virtual</span>{% endif %}</p></div>
   </div>
   {% if current_user.puede('bodega') %}<div class="actions">
     <a class="btn sec" href="{{ url_for('producto_form', pid=p.id) }}">Editar</a>
     <a class="btn sec" href="{{ url_for('ajuste_nuevo', p=p.id) }}">± Ajustar stock</a>
     <a class="btn" href="{{ url_for('compra_nueva', p=p.id) }}">⇣ Comprar</a></div>{% endif %}
 </div>
+{% if p.virtual %}<div class="note" style="margin-bottom:14px"><b>Repuesto de la bodega virtual:</b> se vende como si hubiera unidades, pero no las hay físicamente. Las ventas usan el costo virtual ({{ p.costo_virtual|pesos if current_user.ve_costos else '—' }}) y quedan «por surtir». Cuando lo compres de verdad, pasa al inventario real con costo promedio y las ventas pendientes se surten solas con el costo real.</div>{% endif %}
+{% if pendientes %}<div class="card" style="margin-bottom:14px"><div class="card-head"><h2>Ventas por surtir</h2><span class="muted">vendidas desde la bodega virtual, falta comprarlas</span></div>
+<div class="table-wrap"><table><thead><tr><th>Venta</th><th>Fecha</th><th>Cliente</th><th class="num">Por surtir</th></tr></thead><tbody>
+{% for it in pendientes %}<tr><td><a href="{{ url_for('venta_detalle', vid=it.venta_id) }}">{{ it.venta.folio }}</a></td><td>{{ it.venta.fecha|fh }}</td><td>{{ it.venta.cliente_nombre or '' }}</td><td class="num"><b>{{ it.por_surtir|cant }}</b></td></tr>{% endfor %}
+</tbody></table></div></div>{% endif %}
 <div class="kpis">
-  <div class="kpi hl"><div class="lbl">Stock</div><div class="val">{{ p.stock|cant }} <small style="font-size:1rem">{{ p.unidad }}</small></div><div class="sub">{% if reservado %}{{ reservado|cant }} apartado(s) web · {% endif %}mínimo {{ p.stock_minimo|cant }}</div></div>
+  <div class="kpi hl"><div class="lbl">Stock</div><div class="val">{% if p.virtual %}Virtual{% else %}{{ p.stock|cant }} <small style="font-size:1rem">{{ p.unidad }}</small>{% endif %}</div><div class="sub">{% if reservado %}{{ reservado|cant }} apartado(s) web · {% endif %}mínimo {{ p.stock_minimo|cant }}</div></div>
   {% if current_user.ve_costos %}
-  <div class="kpi"><div class="lbl">Costo promedio</div><div class="val">{{ p.costo_promedio|pesos }}</div><div class="sub">último costo {{ p.ultimo_costo|pesos }}</div></div>
+  {% if p.virtual %}<div class="kpi"><div class="lbl">Costo virtual</div><div class="val">{{ p.costo_virtual|pesos }}</div><div class="sub">se usa hasta que lo compres</div></div>
+  {% else %}<div class="kpi"><div class="lbl">Costo promedio</div><div class="val">{{ p.costo_promedio|pesos }}</div><div class="sub">último costo {{ p.ultimo_costo|pesos }}</div></div>{% endif %}
   <div class="kpi"><div class="lbl">Valor en inventario</div><div class="val">{{ p.valor_inventario|pesos }}</div><div class="sub">margen detal {{ p.margen_detal|round|int if p.margen_detal is not none else '—' }} %</div></div>
   {% endif %}
   <div class="kpi"><div class="lbl">Vendidos 90 días</div><div class="val">{{ vendidos_90|cant }}</div><div class="sub">detal {{ p.precio_detal|pesos }}{% if p.precio_mayor %} · mayor {{ p.precio_mayor|pesos }}{% endif %}{% if p.precio_taller %} · taller {{ p.precio_taller|pesos }}{% endif %}</div></div>

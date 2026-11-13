@@ -24,6 +24,7 @@ from models import (normalizar, DIAS, RESULTADOS_VISITA, Ruta, Visita, CargaMasi
                     TIPOS_PAGO_EMP, UNIDADES, Ajuste, Categoria, Cliente, Compra, Cotizacion,
                     Empleado, Gasto, MedioPago, MovCaja, Movimiento, PagoNomina, Pedido, Producto,
                     Proveedor, Turno, Usuario, Venta, ahora, config, db, semilla)
+import services
 from services import (ErrorNegocio, abrir_turno, anular_ajuste, anular_compra, anular_mov_caja,
                       anular_venta, cant, cerrar_turno, crear_pedido, devolver, guardar_cotizacion,
                       mov_caja, pagar_compra, pedido_vencido, pesos, registrar_abono, registrar_ajuste,
@@ -404,11 +405,11 @@ def panel():
 def producto_json(p, reservado=None, ver_costo=False):
     d = {"id": p.id, "codigo": p.codigo, "barras": p.codigo_barras or "", "nombre": p.nombre,
          "marca": p.marca or "", "compat": p.compatibilidad or "", "ubicacion": p.ubicacion or "",
-         "unidad": p.unidad, "stock": p.stock, "reservado": (reservado or {}).get(p.id, 0),
+         "unidad": p.unidad, "stock": p.stock, "reservado": (reservado or {}).get(p.id, 0), "virtual": bool(p.virtual),
          "detal": p.precio_detal, "mayor": p.precio_mayor or p.precio_detal, "taller": p.precio_taller or p.precio_detal,
          "iva": p.iva_pct, "img": url_for("img_producto", pid=p.id, v=p.imagen_v) if p.imagen_v else ""}
     if ver_costo:
-        d["costo"] = round(p.costo_promedio or 0)
+        d["costo"] = round(p.costo_ref)
         d["ultimo"] = round(p.ultimo_costo or p.costo_promedio or 0)
     return d
 
@@ -963,7 +964,9 @@ def productos():
     if filtro == "bajos":
         lista = [p for p in lista if p.bajo_minimo]
     elif filtro == "agotados":
-        lista = [p for p in lista if (p.stock or 0) <= 0]
+        lista = [p for p in lista if (p.stock or 0) <= 0 and not p.virtual]
+    elif filtro == "virtual":
+        lista = [p for p in lista if p.virtual]
     elif filtro == "sinfoto":
         lista = [p for p in lista if not p.imagen_v]
     total_valor = sum(p.valor_inventario for p in lista)
@@ -976,6 +979,7 @@ def productos():
 @app.route("/productos/<int:pid>/editar", methods=["GET", "POST"])
 @requiere("bodega")
 def producto_form(pid=None):
+    TOL_STOCK = 1e-6
     p = get_or_404(Producto, pid) if pid else Producto(unidad="unidad", en_tienda=True, activo=True, stock=0,
                                                        costo_promedio=0, iva_pct=0)
     cfg = config()
@@ -999,6 +1003,16 @@ def producto_form(pid=None):
         p.destacado = bool(f.get("destacado"))
         p.activo = bool(f.get("activo")) if not nuevo else True
         errores = []
+        quiere_virtual = bool(f.get("virtual"))
+        if quiere_virtual and not p.virtual and (p.stock or 0) > TOL_STOCK:
+            errores.append("Solo un repuesto sin unidades (stock 0) puede pasar a la bodega virtual.")
+        elif quiere_virtual:
+            p.virtual = True
+            p.costo_virtual = max(round(n(f.get("costo_virtual"))), 0)
+            if p.costo_virtual <= 0:
+                errores.append("Escribe el costo virtual (lo que te costaría al comprarlo).")
+        else:
+            p.virtual = False
         with db.session.no_autoflush:
             dup_codigo = p.codigo and Producto.query.filter(Producto.codigo.ilike(p.codigo), Producto.id != (p.id or 0)).first()
             dup_barras = p.codigo_barras and Producto.query.filter(Producto.codigo_barras == p.codigo_barras,
@@ -1014,6 +1028,8 @@ def producto_form(pid=None):
         if dup_barras:
             errores.append("Ese código de barras ya lo tiene otro repuesto.")
         stock_ini, costo_ini = n(f.get("stock_inicial")), n(f.get("costo_inicial"))
+        if quiere_virtual:
+            stock_ini = 0
         if nuevo and stock_ini > 0 and costo_ini <= 0:
             errores.append("Si cargas stock inicial escribe también el costo unitario.")
         foto = request.files.get("foto")
@@ -1061,7 +1077,24 @@ def producto_detalle(pid):
     ini, fin = rango_dt(hoy - timedelta(days=89), hoy)
     vendidos_90 = -sum(m.cantidad for m in movs if m.tipo == "venta" and ini <= m.fecha < fin)
     return render_template("producto_detalle.html", p=p, movs=movs, vendidos_90=vendidos_90,
-                           reservado=reservado_por_producto().get(p.id, 0))
+                           reservado=reservado_por_producto().get(p.id, 0),
+                           pendientes=services.pendientes_por_surtir(p.id))
+
+
+@app.route("/inventario/por-surtir")
+@requiere("cajero", "bodega")
+def por_surtir():
+    """Ventas de la bodega virtual que todavía hay que comprar para entregar."""
+    items = services.pendientes_por_surtir()
+    resumen = {}
+    for it in items:
+        r = resumen.setdefault(it.producto_id, {"p": it.producto, "cantidad": 0.0, "ventas": 0, "costo": 0.0})
+        r["cantidad"] += it.por_surtir
+        r["ventas"] += 1
+        r["costo"] += it.por_surtir * (it.costo_estimado or 0)
+    resumen = sorted(resumen.values(), key=lambda r: r["p"].nombre)
+    return render_template("por_surtir.html", items=items, resumen=resumen,
+                           total_costo=sum(r["costo"] for r in resumen))
 
 
 @app.route("/productos/<int:pid>/foto/borrar", methods=["POST"])
@@ -1862,7 +1895,7 @@ def preventa_productos():
     for p in buscar_productos(request.args.get("q"), 30):
         d = producto_json(p, reservado)
         d["precio"] = p.precio(lista)
-        d["disp"] = max((p.stock or 0) - reservado.get(p.id, 0), 0)
+        d["disp"] = p.disponible(reservado)
         out.append(d)
     return jsonify(out)
 
@@ -2086,8 +2119,9 @@ def tienda():
     cat = request.args.get("cat", type=int)
     pagina = max(request.args.get("p", 1, type=int), 1)
     query = Producto.query.filter(Producto.activo.is_(True), Producto.en_tienda.is_(True), Producto.precio_detal > 0)
+    hay = db.or_(Producto.stock > 0, Producto.virtual.is_(True))
     if not cfg.tienda_muestra_agotados:
-        query = query.filter(Producto.stock > 0)
+        query = query.filter(hay)
     if cat:
         query = query.filter(Producto.categoria_id == cat)
     if q:
@@ -2099,7 +2133,7 @@ def tienda():
     elif orden == "mayor":
         query = query.order_by(Producto.precio_detal.desc())
     else:
-        query = query.order_by(Producto.destacado.desc(), (Producto.stock > 0).desc(), Producto.imagen_v.desc(), Producto.nombre)
+        query = query.order_by(Producto.destacado.desc(), hay.desc(), Producto.imagen_v.desc(), Producto.nombre)
     total = query.count()
     por_pagina = 24
     prods = query.offset((pagina - 1) * por_pagina).limit(por_pagina).all()
@@ -2119,9 +2153,10 @@ def tienda_producto(pid):
     if not cfg.tienda_activa or p is None or not p.activo or not p.en_tienda:
         abort(404)
     reservado = reservado_por_producto()
-    disp = max((p.stock or 0) - reservado.get(p.id, 0), 0)
+    disp = p.disponible(reservado)
     relacionados = (Producto.query.filter(Producto.activo.is_(True), Producto.en_tienda.is_(True), Producto.id != p.id,
-                                          Producto.categoria_id == p.categoria_id, Producto.stock > 0)
+                                          Producto.categoria_id == p.categoria_id,
+                                          db.or_(Producto.stock > 0, Producto.virtual.is_(True)))
                     .order_by(Producto.imagen_v.desc()).limit(8).all()) if p.categoria_id else []
     return render_template("tienda_producto.html", p=p, disp=disp, relacionados=relacionados, reservado=reservado,
                            medios=MedioPago.query.filter_by(activo=True).order_by(MedioPago.orden).all())
@@ -2137,7 +2172,7 @@ def tienda_disponible():
     for p in Producto.query.filter(Producto.id.in_(ids)).all() if ids else []:
         ok = p.activo and p.en_tienda and p.precio_detal > 0
         out[p.id] = {"nombre": p.nombre, "codigo": p.codigo, "precio": p.precio_detal if ok else 0,
-                     "disp": max((p.stock or 0) - reservado.get(p.id, 0), 0) if ok else 0,
+                     "disp": p.disponible(reservado) if ok else 0,
                      "img": url_for("img_producto", pid=p.id, v=p.imagen_v) if p.imagen_v else ""}
     return jsonify(out)
 

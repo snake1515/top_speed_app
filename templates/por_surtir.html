@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Por surtir · bodega virtual{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Por surtir</h1><p>Repuestos de la bodega virtual que ya vendiste y todavía hay que comprar para entregar.</p></div>
+  {% if current_user.puede('bodega') %}<div class="actions"><a class="btn" href="{{ url_for('compra_nueva') }}">⇣ Registrar compra</a></div>{% endif %}</div>
+<div class="note" style="margin-bottom:14px">Cuando registres la compra de estos repuestos, la app entrega solas estas ventas (las más antiguas primero), cambia el costo virtual por el costo real y el repuesto pasa al inventario real con costo promedio.</div>
+{% if resumen %}
+<div class="card" style="margin-bottom:14px">
+  <div class="card-head"><h2>Qué comprar</h2>{% if current_user.ve_costos %}<span class="muted">costo virtual estimado {{ total_costo|pesos }}</span>{% endif %}</div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Código</th><th>Repuesto</th><th class="num">Unidades</th><th class="num">Ventas</th>{% if current_user.ve_costos %}<th class="num">Costo estimado</th>{% endif %}<th></th></tr></thead>
+    <tbody>{% for r in resumen %}<tr>
+      <td class="mono">{{ r.p.codigo }}</td><td><a href="{{ url_for('producto_detalle', pid=r.p.id) }}">{{ r.p.nombre }}</a></td>
+      <td class="num"><b>{{ r.cantidad|cant }}</b></td><td class="num">{{ r.ventas }}</td>
+      {% if current_user.ve_costos %}<td class="num">{{ r.costo|pesos }}</td>{% endif %}
+      <td>{% if current_user.puede('bodega') %}<a class="btn sm sec" href="{{ url_for('compra_nueva', p=r.p.id) }}">Comprar</a>{% endif %}</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+<div class="card">
+  <div class="card-head"><h2>Detalle por venta</h2></div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Venta</th><th>Fecha</th><th>Cliente</th><th>Repuesto</th><th class="num">Por surtir</th></tr></thead>
+    <tbody>{% for it in items %}<tr><td><a href="{{ url_for('venta_detalle', vid=it.venta_id) }}">{{ it.venta.folio }}</a></td><td>{{ it.venta.fecha|fh }}</td>
+      <td>{{ it.venta.cliente_nombre or '' }}{% if it.venta.cliente_tel %}<br><small class="muted">{{ it.venta.cliente_tel }}</small>{% endif %}</td>
+      <td><span class="mono">{{ it.codigo }}</span> {{ it.nombre }}</td><td class="num"><b>{{ it.por_surtir|cant }}</b></td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% else %}
+<div class="card"><p class="empty">No hay nada pendiente por surtir.</p></div>
+{% endif %}
+{% endblock %}

@@ -1,4 +1,4 @@
-{% set disp = [(p.stock or 0) - reservado.get(p.id, 0), 0]|max %}
+{% set disp = p.disponible(reservado) %}
 {% set img = url_for('img_producto', pid=p.id, v=p.imagen_v) if p.imagen_v else url_for('static', filename='sin-foto.svg') %}
 <article class="s-card {{ 'agotado' if disp <= 0 }}">
   <a class="img" href="{{ url_for('tienda_producto', pid=p.id) }}"><img src="{{ img }}" alt="{{ p.nombre }}" loading="lazy">

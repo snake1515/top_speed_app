@@ -71,6 +71,8 @@ def entrada(p, cantidad, costo_unit, tipo, doc, doc_tipo, doc_id, usuario_id, no
         raise ErrorNegocio(f"La cantidad de «{p.nombre}» debe ser mayor a 0.")
     if costo_unit < 0:
         raise ErrorNegocio(f"El costo de «{p.nombre}» no puede ser negativo.")
+    if p.virtual:
+        p.virtual = False   # llegaron unidades reales: sale de la bodega virtual
     p.costo_promedio = round(promedio_ponderado(p.stock, p.costo_promedio, cantidad, costo_unit), 4)
     p.stock = (p.stock or 0) + cantidad
     if actualizar_ultimo:
@@ -255,7 +257,7 @@ def registrar_venta(usuario, items, pagos, cliente=None, cliente_nombre="", clie
         for (pid, pr), q in agrupado.items():
             p = prods[pid]
             factor = (1 - descuento / bruto) if bruto else 1
-            if p.costo_promedio and pr * factor + 0.5 < p.costo_promedio:
+            if p.costo_ref and pr * factor + 0.5 < p.costo_ref:
                 errores.append(f"«{p.nombre}» quedaría por debajo del costo. Solo un administrador puede vender así.")
         if errores:
             raise ErrorNegocio(errores)
@@ -323,11 +325,17 @@ def registrar_venta(usuario, items, pagos, cliente=None, cliente_nombre="", clie
         neto = linea_total - desc_linea
         iva_pct = p.iva_pct if cfg.cobra_iva else 0
         iva_total += neto - neto / (1 + (iva_pct or 0) / 100)
-        costo = salida(p, q, "venta", doc, "venta", v.id, usuario.id, permitir_negativo=cfg.permitir_sin_stock)
+        if p.virtual:
+            # bodega virtual: no hay unidades físicas; queda "por surtir" con el costo virtual
+            costo = p.costo_virtual or 0
+            pend = q
+        else:
+            costo = salida(p, q, "venta", doc, "venta", v.id, usuario.id, permitir_negativo=cfg.permitir_sin_stock)
+            pend = 0
         costo_total += costo * q
         db.session.add(VentaItem(venta_id=v.id, producto=p, codigo=p.codigo, nombre=p.nombre, cantidad=q,
                                  precio=pr, total=linea_total, neto=neto, iva_pct=iva_pct or 0,
-                                 costo_unitario=costo))
+                                 costo_unitario=costo, por_surtir=pend, costo_estimado=costo if pend else 0))
     v.costo = round(costo_total, 2)
     v.iva = round(iva_total)
     # registra el dinero: el efectivo entra neto del cambio
@@ -396,7 +404,8 @@ def anular_venta(venta, usuario, motivo):
         raise ErrorNegocio("La venta se cobró en una caja ya cerrada: abre la caja para registrar el reembolso.")
     prods = bloquear([it.producto_id for it in venta.items])
     for it in venta.items:
-        q = it.cantidad - (it.devuelto or 0)
+        q = it.cantidad - (it.devuelto or 0) - (it.por_surtir or 0)   # lo por surtir nunca salió de bodega
+        it.por_surtir = 0
         if q > TOL:
             entrada(prods[it.producto_id], q, it.costo_unitario, "anula_venta", venta.folio, "venta", venta.id,
                     usuario.id, nota=motivo)
@@ -439,8 +448,11 @@ def devolver(venta, usuario, cantidades, medio, motivo):
         valor += v_l
         iva += v_l - v_l / (1 + (it.iva_pct or 0) / 100)
         costo += it.costo_unitario * q
-        entrada(prods[it.producto_id], q, it.costo_unitario, "devolucion", venta.folio, "venta", venta.id,
-                usuario.id, nota=motivo)
+        pend = min(q, it.por_surtir or 0)   # primero se cancela lo que aún no se había surtido
+        it.por_surtir = (it.por_surtir or 0) - pend
+        if q - pend > TOL:
+            entrada(prods[it.producto_id], q - pend, it.costo_unitario, "devolucion", venta.folio, "venta", venta.id,
+                    usuario.id, nota=motivo)
         it.devuelto = (it.devuelto or 0) + q
         detalle.append({"codigo": it.codigo, "nombre": it.nombre, "cantidad": q, "valor": round(v_l)})
     valor = round(valor)
@@ -500,6 +512,7 @@ def registrar_compra(usuario, proveedor, items, factura="", nota="", fecha=None,
         entrada(p, q, cu, "compra", doc[:60], "compra", c.id, usuario.id, fecha=c.fecha, actualizar_ultimo=True)
         c.items.append(CompraItem(producto=p, cantidad=q, costo_unitario=cu))
         total += q * cu
+        surtir_pendientes(p, usuario.id)
     c.total = round(total)
     pago = pago or {}
     if pago.get("modo") == "credito":
@@ -507,6 +520,32 @@ def registrar_compra(usuario, proveedor, items, factura="", nota="", fecha=None,
     elif c.total > 0:
         pagar_compra(c, usuario, c.total, pago.get("medio") or efectivo(), bool(pago.get("desde_caja")))
     return c
+
+
+def pendientes_por_surtir(producto_id=None):
+    q = (VentaItem.query.join(Venta).filter(VentaItem.por_surtir > TOL, Venta.estado != "anulada")
+         .order_by(Venta.fecha, VentaItem.id))
+    if producto_id:
+        q = q.filter(VentaItem.producto_id == producto_id)
+    return q.all()
+
+
+def surtir_pendientes(p, usuario_id):
+    """Con las unidades que acaban de llegar, entrega las ventas de la bodega virtual que estaban pendientes
+    (las más antiguas primero) y les cambia el costo virtual por el costo real."""
+    surtidas = 0.0
+    for it in pendientes_por_surtir(p.id):
+        n = min(it.por_surtir, p.stock or 0)
+        if n <= TOL:
+            break
+        v = it.venta
+        real = salida(p, n, "venta", v.folio, "venta", v.id, usuario_id, nota="Surtido de venta de bodega virtual")
+        ajuste = n * (real - (it.costo_estimado or 0))
+        it.costo_unitario = (it.costo_unitario or 0) + (ajuste / it.cantidad if it.cantidad else 0)
+        v.costo = round((v.costo or 0) + ajuste, 2)
+        it.por_surtir -= n
+        surtidas += n
+    return surtidas
 
 
 def pagar_compra(c, usuario, valor, medio, desde_caja):
@@ -573,9 +612,10 @@ def registrar_ajuste(usuario, motivo, items, nota=""):
     for pid, q, cu in limpios:
         p = prods[pid]
         if sentido == "entrada":
-            costo = cu if cu > 0 else (p.costo_promedio or p.ultimo_costo or 0)
+            costo = cu if cu > 0 else (p.costo_promedio or p.ultimo_costo or p.costo_virtual or 0)
             entrada(p, q, costo, "inicial" if motivo == "inicial" else "ajuste_entrada", doc, "ajuste", a.id,
                     usuario.id, nota=MOTIVOS_AJUSTE[motivo][0])
+            surtir_pendientes(p, usuario.id)
         else:
             costo = salida(p, q, "ajuste_salida", doc, "ajuste", a.id, usuario.id, nota=MOTIVOS_AJUSTE[motivo][0])
         a.items.append(AjusteItem(producto=p, cantidad=q, costo_unitario=costo))
@@ -636,7 +676,7 @@ def crear_pedido(datos, items):
         p = prods.get(pid)
         if p is None or not p.activo or not p.en_tienda or not p.precio_detal:
             raise ErrorNegocio("Uno de los productos ya no está disponible. Actualiza la página.")
-        disp = (p.stock or 0) - reservado.get(pid, 0)
+        disp = p.disponible(reservado)
         if q > disp + TOL:
             errores.append(f"De «{p.nombre}» solo hay {cant(max(disp, 0))} disponibles.")
             continue
@@ -730,7 +770,7 @@ def crear_pedido_preventa(usuario, cliente, items, nota="", lat=None, lng=None):
         p = prods.get(pid)
         if p is None or not p.activo:
             raise ErrorNegocio("Uno de los repuestos ya no está disponible.")
-        disp = (p.stock or 0) - reservado.get(pid, 0)
+        disp = p.disponible(reservado)
         if q > disp + TOL:
             errores.append(f"De «{p.nombre}» solo hay {cant(max(disp, 0))} disponibles.")
             continue
