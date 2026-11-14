@@ -38,6 +38,18 @@
   </div>
 </div>
 
+<form class="card" style="margin-top:16px" method="post" action="{{ url_for('productos_imagenes_zip') }}" enctype="multipart/form-data">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2 style="margin-bottom:6px">3. Fotos en bloque (ZIP)</h2>
+  <p class="muted" style="margin-top:0">Comprime las fotos en un .zip. Cada foto se debe llamar como el <b>código</b> del repuesto (JKM300244.jpg) o como su <b>referencia</b> (DS01.jpg, P36B.png). Una foto con nombre de referencia se pone en todas las medidas de esa referencia. Se ignoran espacios y guiones.</p>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+    <input class="input" type="file" name="zip" accept=".zip" required style="max-width:340px">
+    <label class="check"><input type="checkbox" name="solo_sin_foto" value="1"> Solo a los que no tienen foto</label>
+    <button class="btn dark">Subir fotos</button>
+  </div>
+  <p class="hint">Máximo 30 MB por ZIP. JPG, PNG o WEBP.</p>
+</form>
+
 <div class="card" style="margin-top:16px">
   <h2 style="margin-bottom:8px">Cargas anteriores</h2>
   {% if cargas %}

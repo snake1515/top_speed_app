@@ -49,7 +49,7 @@ app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(hours=14)
 if os.getenv("RENDER"):
     app.config["SESSION_COOKIE_SECURE"] = True
     app.config["REMEMBER_COOKIE_SECURE"] = True
-app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
+app.config["MAX_CONTENT_LENGTH"] = 30 * 1024 * 1024
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 60 * 60 * 24 * 30
 STATIC_V = (os.getenv("RENDER_GIT_COMMIT") or secrets.token_hex(4))[:8]
 try:
@@ -1175,6 +1175,29 @@ def productos_plantilla_csv():
 def productos_importar():
     cargas = CargaMasiva.query.order_by(CargaMasiva.id.desc()).limit(15).all()
     return render_template("importar.html", cargas=cargas, tam_lote=importador.TAM_LOTE)
+
+
+@app.route("/productos/imagenes-zip", methods=["POST"])
+@requiere("bodega")
+def productos_imagenes_zip():
+    archivo = request.files.get("zip")
+    if not archivo or not archivo.filename.lower().endswith(".zip"):
+        flash("Sube un archivo .zip con las fotos.", "err")
+        return redirect(url_for("productos_importar"))
+    try:
+        r = importador.cargar_imagenes_zip(archivo, procesar_imagen, bool(request.form.get("solo_sin_foto")))
+        db.session.commit()
+    except ErrorNegocio as e:
+        db.session.rollback()
+        errores_flash(e)
+        return redirect(url_for("productos_importar"))
+    flash(f"Fotos cargadas: {r['fotos']} foto(s) puestas en {r['productos']} repuesto(s).", "ok")
+    if r["sin_match"]:
+        flash(f"Sin repuesto con ese código o referencia ({len(r['sin_match'])}): " + ", ".join(r["sin_match"][:30])
+              + ("…" if len(r["sin_match"]) > 30 else ""), "err")
+    if r["malas"]:
+        flash("No se pudieron leer: " + ", ".join(r["malas"][:20]), "err")
+    return redirect(url_for("productos_importar"))
 
 
 @app.route("/productos/carga/leer-excel", methods=["POST"])

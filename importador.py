@@ -9,6 +9,7 @@ Flujo (lo maneja el navegador):
 from io import BytesIO
 
 import json
+import re
 import unicodedata
 
 from sqlalchemy.exc import IntegrityError
@@ -368,3 +369,54 @@ def rechazados_csv(carga):
         lineas.append(";".join(str(r.get(k) or "").replace(";", ",").replace("\n", " ")
                                for k in ("fila", "codigo", "nombre", "lote", "motivo")))
     return ("\ufeff" + "\r\n".join(lineas) + "\r\n").encode("utf-8")
+
+
+def _clave_img(texto):
+    return "".join(ch for ch in unicodedata.normalize("NFKD", str(texto or "")).upper() if ch.isalnum())
+
+
+def cargar_imagenes_zip(archivo, procesar, solo_sin_foto=False):
+    """Fotos en un ZIP: cada archivo se llama como el código o la referencia del repuesto (DS01.jpg, P36B.png,
+    JKM300244.jpg). Una foto con nombre de referencia se pone en todos los repuestos de esa referencia.
+    No hace commit."""
+    import zipfile
+    from io import BytesIO
+    try:
+        z = zipfile.ZipFile(archivo)
+    except zipfile.BadZipFile:
+        raise ErrorNegocio("El archivo no es un ZIP válido.")
+    por_codigo, por_ref = {}, {}
+    for p in Producto.query.filter(Producto.activo.is_(True)).all():
+        por_codigo.setdefault(_clave_img(p.codigo), []).append(p)
+        if p.referencia:
+            por_ref.setdefault(_clave_img(re.sub(r"\(.*?\)", "", p.referencia)), []).append(p)
+    asignadas, sin_match, malas, productos = [], [], [], 0
+    for info in z.infolist():
+        nombre = info.filename.rsplit("/", 1)[-1]
+        if info.is_dir() or nombre.startswith(".") or "." not in nombre:
+            continue
+        base, ext = nombre.rsplit(".", 1)
+        if ext.lower() not in ("jpg", "jpeg", "png", "webp"):
+            continue
+        if info.file_size > 15 * 1024 * 1024:
+            malas.append(nombre)
+            continue
+        k = _clave_img(base)
+        destino = por_codigo.get(k) or por_ref.get(k) or []
+        if solo_sin_foto:
+            destino = [p for p in destino if not p.imagen_v]
+        if not destino:
+            sin_match.append(nombre)
+            continue
+        try:
+            datos = procesar(BytesIO(z.read(info)))
+        except ErrorNegocio:
+            malas.append(nombre)
+            continue
+        for p in destino:
+            p.imagen = datos
+            p.imagen_mime = "image/jpeg"
+            p.imagen_v = (p.imagen_v or 0) + 1
+        productos += len(destino)
+        asignadas.append(nombre)
+    return {"fotos": len(asignadas), "productos": productos, "sin_match": sin_match, "malas": malas}
