@@ -135,7 +135,13 @@
     document.body.appendChild(fr);
   }
   // el cajón se abre cuando el driver de la impresora recibe un trabajo (ver Configuración → Impresora)
-  function abrirCajon() { imprimirEnIframe('{{ url_for('cajon') }}'); }
+  let cajonHasta = 0;
+  function abrirCajon() {
+    // evita varios trabajos seguidos si se toca el botón más de una vez
+    if (Date.now() < cajonHasta) return;
+    cajonHasta = Date.now() + 4000;
+    imprimirEnIframe('{{ url_for('cajon') }}');
+  }
   // confirmación para formularios peligrosos: <form data-confirm="¿Seguro?">
   document.addEventListener('submit', e => { const m = e.target.dataset.confirm; if (m && !confirm(m)) e.preventDefault(); });
   // evita doble envío

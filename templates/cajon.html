@@ -1,6 +1,12 @@
 <!doctype html>
-<html lang="es"><head><meta charset="utf-8"><title>Abrir cajón</title>
-<style>@page { size: {{ cfg.ancho_ticket }}mm 8mm; margin: 0; } html, body { margin: 0; height: 8mm; font-size: 2px; color: #fff; }</style>
-</head><body>.
+<html lang="es"><head><meta charset="utf-8"><title>&#8203;</title>
+<style>
+  /* Trabajo de impresión mínimo: el driver abre el cajón al recibirlo. Mismo tamaño de página que el recibo
+     (alto automático) y sin márgenes, para que no salgan encabezados ni papel en blanco. */
+  @page { size: {{ cfg.ancho_ticket }}mm auto; margin: 0; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  .x { height: 1mm; overflow: hidden; font-size: 1px; line-height: 1px; color: #fff; }
+</style>
+</head><body><div class="x">.</div>
 <script>window.addEventListener('load', () => setTimeout(() => window.print(), 100));</script>
 </body></html>
