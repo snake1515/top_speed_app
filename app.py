@@ -317,9 +317,10 @@ _LOGO_RECIBO = {}
 
 
 def logo_gris(datos):
-    """Logo en grises claros y bien definido para la impresora térmica: si el logo es oscuro se invierte
-    (fondo claro, letras oscuras) y los negros se aclaran a gris."""
-    from PIL import Image, ImageFilter, ImageOps, ImageStat
+    """Logo para impresora térmica: blanco y negro puro (1 bit) al tamaño exacto de impresión (48 mm a 203 dpi
+    = 384 puntos). La térmica no imprime grises, así que se entrega ya en trazo limpio: si el logo es oscuro
+    se invierte (fondo blanco, letras y contornos negros)."""
+    from PIL import Image, ImageOps, ImageStat
     im = Image.open(BytesIO(datos)).convert("RGBA")
     mascara = im.getchannel("A").point(lambda a: 255 if a > 20 else 0)
     fondo = Image.new("RGBA", im.size, "white")
@@ -327,13 +328,12 @@ def logo_gris(datos):
     g = ImageOps.autocontrast(fondo.convert("L"), cutoff=1)
     if ImageStat.Stat(g, mascara).mean[0] < 120:      # logo mayormente oscuro
         g = ImageOps.autocontrast(ImageOps.invert(g), cutoff=1)
-    g = g.point(lambda v: int(60 + 195 * ((v / 255) ** 0.75)))
     g = Image.composite(g, Image.new("L", g.size, 255), mascara)
-    if g.width > 600:
-        g = g.resize((600, round(600 * g.height / g.width)), Image.LANCZOS)
-    g = g.filter(ImageFilter.UnsharpMask(1.2, 70, 2))
+    ancho = 384
+    g = g.resize((ancho, max(1, round(ancho * g.height / g.width))), Image.LANCZOS)
+    bn = g.point(lambda v: 0 if v < 150 else 255).convert("1", dither=Image.Dither.NONE)
     out = BytesIO()
-    g.save(out, "PNG", optimize=True)
+    bn.save(out, "PNG", optimize=True)
     return out.getvalue()
 
 
