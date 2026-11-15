@@ -9,6 +9,7 @@
   .t { width: {{ cfg.ancho_ticket - 6 }}mm; margin: 14px auto; background: #fff; padding: 4mm; box-shadow: 0 2px 12px rgba(0,0,0,.12); }
   .c { text-align: center; } .r { text-align: right; } b { font-weight: 700; }
   .lg { font-size: 1.35em; font-weight: 700; }
+  .dl td { padding: 0; } .dl td.r { padding-left: 6px; word-break: break-word; }
   .negocio { font-size: 1.6em; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; line-height: 1.1; }
   hr { border: 0; border-top: 1px dashed #000; margin: 6px 0; }
   table { width: 100%; border-collapse: collapse; } td { vertical-align: top; padding: 1px 0; }
@@ -25,8 +26,14 @@
   <div class="c negocio">{{ cfg.nombre|upper }}</div>
   <div class="c">{% if cfg.direccion %}{{ cfg.direccion }}{% if cfg.ciudad %}, {{ cfg.ciudad }}{% endif %}<br>{% elif cfg.ciudad %}{{ cfg.ciudad }}<br>{% endif %}{% if cfg.telefono or cfg.whatsapp %}Tel. {{ cfg.telefono or cfg.whatsapp }}{% if cfg.telefono and cfg.whatsapp and cfg.telefono != cfg.whatsapp %} · WhatsApp {{ cfg.whatsapp }}{% endif %}<br>{% endif %}{% if cfg.nit %}NIT {{ cfg.nit }}{% endif %}</div>
   <hr>
-  <div><b>Recibo {{ v.folio }}</b>{% if v.origen == 'tienda' %} · pedido web{% endif %}<br>{{ v.fecha|fh }}<br>Atendió: {{ v.usuario.nombre if v.usuario else '' }}</div>
-  <div><b>Cliente: {{ (v.cliente_nombre or (v.cliente.nombre if v.cliente else '') or 'Consumidor final') }}</b>{% if v.cliente_doc %}<br>CC/NIT: {{ v.cliente_doc }}{% endif %}{% if v.cliente_tel %}<br>Cel: {{ v.cliente_tel }}{% endif %}</div>
+  <table class="dl">
+    <tr><td><b>Recibo</b></td><td class="r"><b>{{ v.folio }}</b>{% if v.origen == 'tienda' %} · web{% endif %}</td></tr>
+    <tr><td>Fecha</td><td class="r">{{ v.fecha|fh }}</td></tr>
+    <tr><td>Atendió</td><td class="r">{{ v.usuario.nombre if v.usuario else '' }}</td></tr>
+    <tr><td><b>Cliente</b></td><td class="r"><b>{{ (v.cliente_nombre or (v.cliente.nombre if v.cliente else '') or 'Consumidor final') }}</b></td></tr>
+    {% if v.cliente_doc %}<tr><td>NIT/CC</td><td class="r">{{ v.cliente_doc }}</td></tr>{% endif %}
+    {% if v.cliente_tel %}<tr><td>Celular</td><td class="r">{{ v.cliente_tel }}</td></tr>{% endif %}
+  </table>
   {% if v.anulada %}<div class="anul">*** VENTA ANULADA ***</div>{% endif %}
   <hr>
   <table>

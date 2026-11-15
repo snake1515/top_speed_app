@@ -394,8 +394,8 @@ def registrar_venta(usuario, items, pagos, cliente=None, cliente_nombre="", clie
 
     v = Venta(numero=siguiente("sig_venta"), token=secrets.token_urlsafe(16), cliente=cliente,
               cliente_nombre=((cliente.nombre if cliente else cliente_nombre) or "").strip()[:140] or None,
-              cliente_doc=((cliente.documento if cliente else cliente_doc) or "").strip()[:30] or None,
-              cliente_tel=((cliente.telefono if cliente else cliente_tel) or "").strip()[:40] or None,
+              cliente_doc=(((cliente.documento if cliente else "") or cliente_doc) or "").strip()[:30] or None,
+              cliente_tel=(((cliente.telefono if cliente else "") or cliente_tel) or "").strip()[:40] or None,
               lista=lista if lista in ("detal", "mayor", "taller") else "detal", bruto=bruto, descuento=descuento,
               total=total, credito=credito, estado="credito" if credito else "pagada",
               origen=("preventa" if pedido.es_preventa else "tienda") if pedido else "pos",

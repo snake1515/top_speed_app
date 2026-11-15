@@ -37,6 +37,7 @@
     <div class="form-row" style="grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px">
       <select class="input" id="lista">{% for k, v in LISTAS_PRECIO.items() %}<option value="{{ k }}">Precio {{ v|lower }}</option>{% endfor %}</select>
       <input class="input" id="cli-tel" placeholder="Celular para el recibo">
+      <input class="input" id="cli-doc" placeholder="Cédula / NIT del cliente" style="grid-column:1 / -1">
     </div>
     <div id="carrito" class="cart-items"></div>
     <div class="sum-row" style="margin-top:8px"><span>Subtotal</span><b id="subtotal">$ 0</b></div>
@@ -129,7 +130,7 @@ function totales() {
   return { sub, desc, total: Math.round(sub - desc) };
 }
 function guardarBorrador() {
-  try { localStorage.setItem(CLAVE, JSON.stringify({ carrito, cliente, lista: $('lista').value, desc: $('descuento').value, tel: $('cli-tel').value })); } catch (e) {}
+  try { localStorage.setItem(CLAVE, JSON.stringify({ carrito, cliente, lista: $('lista').value, desc: $('descuento').value, tel: $('cli-tel').value, doc: $('cli-doc').value })); } catch (e) {}
 }
 function pintarCarrito() {
   const box = $('carrito');
@@ -253,6 +254,7 @@ function usarCliente(c) {
     $('cli-info').textContent = [c.documento, c.saldo > 0 ? 'debe ' + COP(c.saldo) : ''].filter(Boolean).join(' · ');
     $('lista').value = c.lista || 'detal'; $('lista').dispatchEvent(new Event('change'));
     if (c.telefono) $('cli-tel').value = c.telefono;
+    $('cli-doc').value = c.documento || '';
   }
   $('cli-res').innerHTML = ''; guardarBorrador();
 }
@@ -356,7 +358,7 @@ function datosVenta() {
   return {
     items: carrito.map(it => ({ producto_id: it.p.id, cantidad: it.cantidad, precio: it.precio })),
     descuento: t.desc, lista: $('lista').value, cliente_id: cliente ? cliente.id : null,
-    cliente_nombre: cliente ? '' : ($('cli-q').value.trim() || (PRECARGA && PRECARGA.cliente_nombre) || ''), cliente_doc: (PRECARGA && PRECARGA.cliente_doc) || '',
+    cliente_nombre: cliente ? '' : ($('cli-q').value.trim() || (PRECARGA && PRECARGA.cliente_nombre) || ''), cliente_doc: $('cli-doc').value.trim() || (PRECARGA && PRECARGA.cliente_doc) || '',
     cliente_tel: $('cli-tel').value,
     pedido_id: PRECARGA && PRECARGA.tipo === 'pedido' ? PRECARGA.id : null,
     cotizacion_id: PRECARGA && PRECARGA.tipo === 'cotizacion' ? PRECARGA.id : null,
@@ -396,7 +398,7 @@ $('btn-cotizar').addEventListener('click', async () => {
   limpiar(true); location.href = j.url;
 });
 function limpiar(silencioso) {
-  carrito = []; cliente = null; usarCliente(null); $('cli-q').value = ''; $('cli-tel').value = '';
+  carrito = []; cliente = null; usarCliente(null); $('cli-q').value = ''; $('cli-tel').value = ''; $('cli-doc').value = '';
   $('descuento').value = ''; $('lista').value = 'detal'; $('c-nota').value = '';
   try { localStorage.removeItem(CLAVE); } catch (e) {}
   pintarCarrito();
@@ -414,6 +416,7 @@ document.addEventListener('keydown', e => {
     if (PRECARGA.cliente) usarCliente(PRECARGA.cliente);
     $('lista').value = PRECARGA.lista || 'detal';
     if (PRECARGA.cliente_tel) $('cli-tel').value = PRECARGA.cliente_tel;
+    if (PRECARGA.cliente_doc) $('cli-doc').value = PRECARGA.cliente_doc;
     if (!PRECARGA.cliente && PRECARGA.cliente_nombre) { $('cli-q').value = PRECARGA.cliente_nombre; }
     $('descuento').value = PRECARGA.descuento ? Math.round(PRECARGA.descuento).toLocaleString('es-CO') : '';
     $('c-nota').value = PRECARGA.nota || '';
@@ -422,7 +425,7 @@ document.addEventListener('keydown', e => {
     try {
       const b = JSON.parse(localStorage.getItem(CLAVE) || 'null');
       if (b && b.carrito && b.carrito.length) {
-        carrito = b.carrito; $('lista').value = b.lista || 'detal'; $('descuento').value = b.desc || ''; $('cli-tel').value = b.tel || '';
+        carrito = b.carrito; $('lista').value = b.lista || 'detal'; $('descuento').value = b.desc || ''; $('cli-tel').value = b.tel || ''; $('cli-doc').value = b.doc || '';
         if (b.cliente) usarCliente(b.cliente);
       }
     } catch (e) {}
