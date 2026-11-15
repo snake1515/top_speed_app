@@ -469,7 +469,27 @@ def _clave_img(texto):
     return "".join(ch for ch in unicodedata.normalize("NFKD", str(texto or "")).upper() if ch.isalnum())
 
 
-def cargar_imagenes_zip(archivo, procesar, solo_sin_foto=False):
+def _fotos_del_zip(z):
+    out = []
+    for info in z.infolist():
+        nombre = info.filename.rsplit("/", 1)[-1]
+        if info.is_dir() or nombre.startswith(".") or "." not in nombre or info.filename.startswith("__MACOSX"):
+            continue
+        if nombre.rsplit(".", 1)[1].lower() in ("jpg", "jpeg", "png", "webp"):
+            out.append(info)
+    return sorted(out, key=lambda i: i.filename)
+
+
+def contar_imagenes_zip(ruta):
+    import zipfile
+    try:
+        with zipfile.ZipFile(ruta) as z:
+            return len(_fotos_del_zip(z))
+    except zipfile.BadZipFile:
+        raise ErrorNegocio("El archivo no es un ZIP válido.")
+
+
+def cargar_imagenes_zip(archivo, procesar, solo_sin_foto=False, desde=0, cuantas=None):
     """Fotos en un ZIP: cada archivo se llama como el código o la referencia del repuesto (DS01.jpg, P36B.png,
     JKM300244.jpg). Una foto con nombre de referencia se pone en todos los repuestos de esa referencia.
     No hace commit."""
@@ -485,13 +505,10 @@ def cargar_imagenes_zip(archivo, procesar, solo_sin_foto=False):
         if p.referencia:
             por_ref.setdefault(_clave_img(re.sub(r"\(.*?\)", "", p.referencia)), []).append(p)
     asignadas, sin_match, malas, productos = [], [], [], 0
-    for info in z.infolist():
+    todas = _fotos_del_zip(z)
+    for info in todas[desde:(desde + cuantas) if cuantas else None]:
         nombre = info.filename.rsplit("/", 1)[-1]
-        if info.is_dir() or nombre.startswith(".") or "." not in nombre:
-            continue
-        base, ext = nombre.rsplit(".", 1)
-        if ext.lower() not in ("jpg", "jpeg", "png", "webp"):
-            continue
+        base = nombre.rsplit(".", 1)[0]
         if info.file_size > 15 * 1024 * 1024:
             malas.append(nombre)
             continue
@@ -513,4 +530,5 @@ def cargar_imagenes_zip(archivo, procesar, solo_sin_foto=False):
             p.imagen_v = (p.imagen_v or 0) + 1
         productos += len(destino)
         asignadas.append(nombre)
-    return {"fotos": len(asignadas), "productos": productos, "sin_match": sin_match, "malas": malas}
+    return {"fotos": len(asignadas), "productos": productos, "sin_match": sin_match, "malas": malas,
+            "total": len(todas)}

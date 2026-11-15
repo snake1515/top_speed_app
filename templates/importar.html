@@ -45,9 +45,14 @@
   <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
     <input class="input" type="file" name="zip" accept=".zip" required style="max-width:340px">
     <label class="check"><input type="checkbox" name="solo_sin_foto" value="1"> Solo a los que no tienen foto</label>
-    <button class="btn dark">Subir fotos</button>
+    <button class="btn dark" id="btn-fotos">Subir fotos</button>
   </div>
-  <p class="hint">Máximo 30 MB por ZIP. JPG, PNG o WEBP.</p>
+  <p class="hint">Máximo 30 MB por ZIP. JPG, PNG o WEBP. Se suben de a poco y ves el avance; no cierres la página hasta que termine.</p>
+  <div id="fotos-prog" style="display:none;margin-top:12px">
+    <div style="display:flex;justify-content:space-between"><span id="fotos-et">Subiendo el ZIP…</span><b id="fotos-pct">0%</b></div>
+    <div style="height:10px;background:#eee;border-radius:6px;overflow:hidden;margin-top:6px"><div id="fotos-barra" style="height:100%;width:0;background:var(--accent);transition:width .3s"></div></div>
+  </div>
+  <div id="fotos-res" style="margin-top:12px"></div>
 </form>
 
 <div class="card" style="margin-top:16px">
@@ -72,6 +77,43 @@ input.addEventListener('change', elegir);
 zona.addEventListener('dragover', e => { e.preventDefault(); zona.style.borderColor = 'var(--accent)'; });
 zona.addEventListener('dragleave', () => zona.style.borderColor = '#d3d3cc');
 zona.addEventListener('drop', e => { e.preventDefault(); zona.style.borderColor = '#d3d3cc'; if (e.dataTransfer.files[0]) { const dt = new DataTransfer(); dt.items.add(e.dataTransfer.files[0]); input.files = dt.files; elegir(); } });
+
+// Fotos en ZIP por partes, con barra de avance
+document.getElementById('fotos').addEventListener('submit', async ev => {
+  ev.preventDefault();
+  const form = ev.target, btn = document.getElementById('btn-fotos'), res = document.getElementById('fotos-res');
+  const zip = form.zip.files[0]; if (!zip) return;
+  const et = document.getElementById('fotos-et'), pct = document.getElementById('fotos-pct'), barra = document.getElementById('fotos-barra');
+  const pon = (p, txt) => { barra.style.width = p + '%'; pct.textContent = p + '%'; et.textContent = txt; };
+  btn.disabled = true; btn.textContent = 'Subiendo…'; res.innerHTML = '';
+  document.getElementById('fotos-prog').style.display = '';
+  let fotos = 0, productos = 0, sin = [], malas = [];
+  try {
+    pon(2, 'Subiendo el ZIP al servidor…');
+    const fd = new FormData(); fd.append('zip', zip); fd.append('csrf_token', CSRF);
+    const r0 = await fetch("{{ url_for('fotos_zip_iniciar') }}", {method: 'POST', body: fd, headers: {'X-CSRF-Token': CSRF}});
+    let ini = {}; try { ini = await r0.json(); } catch (e) { throw new Error('El servidor no respondió (' + r0.status + '). ¿El ZIP pasa de 30 MB?'); }
+    if (!ini.ok) throw new Error(ini.error || 'No pude subir el ZIP');
+    let desde = 0;
+    while (true) {
+      pon(Math.max(5, Math.round(desde / ini.total * 100)), `Poniendo fotos ${Math.min(desde + 1, ini.total)}–${Math.min(desde + ini.lote, ini.total)} de ${ini.total}…`);
+      let j, intento = 0;
+      while (true) {
+        try { j = await post("{{ url_for('fotos_zip_lote') }}", {token: ini.token, desde, solo_sin_foto: form.solo_sin_foto.checked}); break; }
+        catch (e) { if (++intento >= 3) throw e; await new Promise(s => setTimeout(s, 2500)); }
+      }
+      fotos += j.fotos; productos += j.productos; sin = sin.concat(j.sin_match); malas = malas.concat(j.malas);
+      if (j.fin) break;
+      desde = j.siguiente;
+    }
+    pon(100, 'Listo');
+    res.innerHTML = `<div class="flash ok">✔ Fotos cargadas: <b>${fotos}</b> foto(s) puestas en <b>${productos}</b> repuesto(s).</div>`
+      + (sin.length ? `<div class="flash err">Sin repuesto con ese código o referencia (${sin.length}): ${sin.slice(0, 40).join(', ')}</div>` : '')
+      + (malas.length ? `<div class="flash err">No se pudieron leer: ${malas.slice(0, 20).join(', ')}</div>` : '');
+  } catch (e) {
+    res.innerHTML = `<div class="flash err">${e.message}${fotos ? ` (alcanzaron a quedar ${fotos} foto(s) en ${productos} repuesto(s))` : ''}</div>`;
+  } finally { btn.disabled = false; btn.textContent = 'Subir fotos'; }
+});
 
 async function post(url, datos) {
   const r = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-CSRF-Token': CSRF}, body: JSON.stringify(datos)});

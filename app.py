@@ -2,6 +2,7 @@
 reportes y tienda online para un almacén de repuestos de moto."""
 import json
 import os
+import re
 import secrets
 import time
 from collections import defaultdict
@@ -1342,6 +1343,63 @@ def productos_imagenes_zip():
     if r["malas"]:
         flash("No se pudieron leer: " + ", ".join(r["malas"][:20]), "err")
     return redirect(url_for("productos_importar"))
+
+
+# Fotos en ZIP por partes (para que un ZIP grande no se corte por tiempo): se guarda el ZIP un rato en el
+# servidor y se procesan 10 fotos por llamada mostrando el avance.
+FOTOS_LOTE = 10
+
+
+def _ruta_zip(token):
+    import tempfile
+    if not re.fullmatch(r"[a-f0-9]{32}", token or ""):
+        raise ErrorNegocio("Carga de fotos no válida. Vuelve a subir el ZIP.")
+    return os.path.join(tempfile.gettempdir(), f"fotos_{token}.zip")
+
+
+@app.route("/productos/fotos-zip/iniciar", methods=["POST"])
+@requiere("bodega")
+def fotos_zip_iniciar():
+    import uuid
+    archivo = request.files.get("zip")
+    if not archivo or not archivo.filename.lower().endswith(".zip"):
+        return jsonify(ok=False, error="Sube un archivo .zip con las fotos."), 400
+    token = uuid.uuid4().hex
+    ruta = _ruta_zip(token)
+    archivo.save(ruta)
+    try:
+        total = importador.contar_imagenes_zip(ruta)
+    except ErrorNegocio as e:
+        os.remove(ruta)
+        return jsonify(ok=False, error=" ".join(e.errores)), 400
+    if not total:
+        os.remove(ruta)
+        return jsonify(ok=False, error="El ZIP no trae fotos JPG, PNG o WEBP."), 400
+    return jsonify(ok=True, token=token, total=total, lote=FOTOS_LOTE)
+
+
+@app.route("/productos/fotos-zip/lote", methods=["POST"])
+@requiere("bodega")
+def fotos_zip_lote():
+    d = request.get_json(silent=True) or {}
+    try:
+        ruta = _ruta_zip(d.get("token"))
+        if not os.path.exists(ruta):
+            raise ErrorNegocio("El ZIP ya no está en el servidor. Vuelve a subirlo.")
+        desde = max(int(d.get("desde") or 0), 0)
+        with open(ruta, "rb") as fh:
+            r = importador.cargar_imagenes_zip(fh, procesar_imagen, bool(d.get("solo_sin_foto")), desde, FOTOS_LOTE)
+        db.session.commit()
+    except ErrorNegocio as e:
+        db.session.rollback()
+        return jsonify(ok=False, error=" ".join(e.errores)), 400
+    fin = desde + FOTOS_LOTE >= r["total"]
+    if fin:
+        try:
+            os.remove(ruta)
+        except OSError:
+            pass
+    return jsonify(ok=True, fin=fin, siguiente=desde + FOTOS_LOTE, **r)
 
 
 @app.route("/productos/carga/leer-excel", methods=["POST"])
