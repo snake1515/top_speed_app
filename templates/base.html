@@ -147,6 +147,8 @@
   // evita doble envío
   document.addEventListener('submit', e => { if (e.defaultPrevented) return; const b = e.target.querySelector('button[type=submit],button:not([type])'); if (b) setTimeout(() => b.disabled = true, 0); });
 </script>
+{% if IMPRIMIR_AUTO %}<script>window.addEventListener('load', () => imprimirEnIframe({{ IMPRIMIR_AUTO|tojson }}));</script>
+{% elif CAJON_AUTO %}<script>window.addEventListener('load', () => abrirCajon());</script>{% endif %}
 {% block scripts %}{% endblock %}
 <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});</script>
 </body>

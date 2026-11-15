@@ -508,9 +508,15 @@ def anular_venta(venta, usuario, motivo):
     for p in pendientes:
         anular_mov_caja(p.mov_caja_id, usuario.id, f"Reembolso por anulación {venta.folio}")
         p.anulado = True
+    reemb = {}
+    for p in pendientes:
+        nom = p.medio.nombre if p.medio else "Pago"
+        reemb[nom] = reemb.get(nom, 0) + (p.valor or 0)
     venta.estado = "anulada"
     venta.anulada_fecha = ahora()
     venta.anulada_motivo = motivo.strip()[:255]
+    venta.anulada_por_id = usuario.id
+    venta.anulada_reembolso = ";".join(f"{k.replace(';', ',').replace('|', '/')}|{v:.0f}" for k, v in reemb.items() if v)[:255]
     if venta.pedido_id:
         ped = db.session.get(Pedido, venta.pedido_id)
         if ped:

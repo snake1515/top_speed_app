@@ -7,6 +7,7 @@
       {% if v.origen in ('tienda', 'preventa') and v.pedido_id %}· <a href="{{ url_for('pedido_detalle', pid=v.pedido_id) }}">{{ 'pedido de preventa' if v.origen == 'preventa' else 'pedido web' }}</a>{% endif %}</p></div>
   <div class="actions">
     <a class="btn dark" href="{{ url_for('venta_ticket', vid=v.id) }}" onclick="if (!event.ctrlKey) { event.preventDefault(); imprimirEnIframe(this.href); }">🖨 Imprimir ticket</a>
+    {% if v.anulada %}<a class="btn dark" href="{{ url_for('venta_anulacion_ticket', vid=v.id) }}" onclick="if (!event.ctrlKey) { event.preventDefault(); imprimirEnIframe(this.href); }">🖨 Comprobante de anulación</a>{% endif %}
     <a class="btn sec" href="{{ wa }}" target="_blank">Enviar por WhatsApp</a>
   </div>
 </div>

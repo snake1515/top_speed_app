@@ -225,6 +225,8 @@ def contexto():
         extra["TURNO"] = turno_abierto()
         extra["PEDIDOS_PEND"] = Pedido.query.filter_by(estado="pendiente").count()
         extra["MENSAJES_PEND"] = mensajes_sin_leer(current_user).count()
+        extra["IMPRIMIR_AUTO"] = session.pop("imprimir", None)
+        extra["CAJON_AUTO"] = session.pop("abrir_cajon", None)
     return extra
 
 
@@ -645,6 +647,16 @@ def venta_ticket(vid):
     return render_template("ticket.html", v=v, publico=False, auto=request.args.get("imprimir") == "1")
 
 
+@app.route("/ventas/<int:vid>/anulacion")
+@requiere("cajero")
+def venta_anulacion_ticket(vid):
+    v = get_or_404(Venta, vid)
+    if not v.anulada:
+        flash("Esa venta no está anulada.", "err")
+        return redirect(url_for("venta_detalle", vid=vid))
+    return render_template("ticket_anulacion.html", v=v, auto=request.args.get("imprimir") == "1")
+
+
 @app.route("/r/<token>")
 def recibo_publico(token):
     v = Venta.query.filter_by(token=token).first_or_404()
@@ -673,9 +685,15 @@ def venta_abono(vid):
 def venta_anular(vid):
     v = get_or_404(Venta, vid)
     try:
+        efectivo = sum(p.valor for p in v.pagos if not p.anulado and p.medio and p.medio.tipo == "efectivo")
         anular_venta(v, current_user, request.form.get("motivo"))
         db.session.commit()
-        flash(f"Venta {v.folio} anulada: el inventario y la caja quedaron corregidos.", "ok")
+        msg = f"Venta {v.folio} anulada: el inventario y la caja quedaron corregidos."
+        if efectivo > 0:
+            msg += f" Devuelve {pesos(efectivo)} en efectivo del cajón."
+        flash(msg, "ok")
+        # se imprime el comprobante de anulación; al imprimir, el driver abre el cajón
+        session["imprimir"] = url_for("venta_anulacion_ticket", vid=v.id)
     except ErrorNegocio as e:
         db.session.rollback()
         errores_flash(e)
@@ -700,6 +718,8 @@ def venta_devolucion(vid):
         msg = f"Devolución registrada por {pesos(d.valor)}."
         if d.reembolso:
             msg += f" Se le devuelven {pesos(d.reembolso)} en {medio.nombre}."
+            if medio.tipo == "efectivo":
+                session["abrir_cajon"] = True   # se abre el cajón para sacar el reembolso
         flash(msg, "ok")
     except ErrorNegocio as e:
         db.session.rollback()

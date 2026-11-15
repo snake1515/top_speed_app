@@ -701,6 +701,21 @@ class Venta(db.Model):
     vendedor = db.relationship("Usuario", foreign_keys=[vendedor_id])
     anulada_fecha = db.Column(db.DateTime)
     anulada_motivo = db.Column(db.String(255))
+    anulada_por_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
+    anulada_por = db.relationship("Usuario", foreign_keys=[anulada_por_id])
+    anulada_reembolso = db.Column(db.String(255))  # "Efectivo|50000;Nequi|20000": lo que se le devolvió al cliente
+
+    @property
+    def reembolsos(self):
+        out = []
+        for parte in (self.anulada_reembolso or "").split(";"):
+            if "|" in parte:
+                medio, valor = parte.rsplit("|", 1)
+                try:
+                    out.append((medio, float(valor)))
+                except ValueError:
+                    pass
+        return out
     items = db.relationship("VentaItem", backref="venta", cascade="all, delete-orphan", order_by="VentaItem.id")
     pagos = db.relationship("PagoVenta", backref="venta", cascade="all, delete-orphan", order_by="PagoVenta.fecha")
 
