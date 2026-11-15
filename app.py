@@ -1127,6 +1127,35 @@ def productos():
                            reservado=reservado_por_producto())
 
 
+@app.route("/productos/excel")
+@requiere("cajero", "bodega")
+def productos_excel():
+    """Descarga el inventario en Excel (todo, virtual, con inventario, alertas y movimientos)."""
+    import exportar
+    hoy = ahora().date()
+    try:
+        desde = datetime.strptime(request.args.get("desde", ""), "%Y-%m-%d").date()
+    except ValueError:
+        desde = hoy - timedelta(days=90)
+    try:
+        hasta = datetime.strptime(request.args.get("hasta", ""), "%Y-%m-%d").date()
+    except ValueError:
+        hasta = hoy
+    productos = (Producto.query.options(db.joinedload(Producto.categoria)).filter(Producto.activo.is_(True))
+                 .order_by(Producto.codigo_interno, Producto.nombre).all())
+    por_surtir = {}
+    for it in services.pendientes_por_surtir():
+        por_surtir[it.producto_id] = por_surtir.get(it.producto_id, 0) + (it.por_surtir or 0)
+    movs = (Movimiento.query.options(db.joinedload(Movimiento.producto), db.joinedload(Movimiento.usuario))
+            .filter(Movimiento.fecha >= datetime.combine(desde, datetime.min.time()),
+                    Movimiento.fecha < datetime.combine(hasta + timedelta(days=1), datetime.min.time()))
+            .order_by(Movimiento.fecha, Movimiento.id).all())
+    buf = exportar.inventario_excel(productos, reservado_por_producto(), por_surtir, movs, current_user.ve_costos,
+                                    config(), desde, hasta)
+    return send_file(buf, as_attachment=True, download_name=f"inventario_{hoy:%Y%m%d}.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
 @app.route("/productos/nuevo", methods=["GET", "POST"])
 @app.route("/productos/<int:pid>/editar", methods=["GET", "POST"])
 @requiere("bodega")
