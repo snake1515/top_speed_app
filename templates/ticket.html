@@ -10,6 +10,7 @@
   .c { text-align: center; } .r { text-align: right; } b { font-weight: 700; }
   .lg { font-size: 1.35em; font-weight: 700; }
   .dl td { padding: 0; } .dl td.r { padding-left: 6px; word-break: break-word; }
+  .dir { font-size: .92em; white-space: nowrap; }
   .negocio { font-size: 1.6em; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; line-height: 1.1; }
   hr { border: 0; border-top: 1px dashed #000; margin: 6px 0; }
   table { width: 100%; border-collapse: collapse; } td { vertical-align: top; padding: 1px 0; }
@@ -24,7 +25,7 @@
 <div class="t">
   <img class="logo" src="{{ url_for('logo_recibo', v=cfg.logo_v) }}" alt="">
   <div class="c negocio">{{ cfg.nombre|upper }}</div>
-  <div class="c">{% if cfg.direccion %}{{ cfg.direccion }}{% if cfg.ciudad %}, {{ cfg.ciudad }}{% endif %}<br>{% elif cfg.ciudad %}{{ cfg.ciudad }}<br>{% endif %}{% if cfg.telefono or cfg.whatsapp %}Tel. {{ cfg.telefono or cfg.whatsapp }}{% if cfg.telefono and cfg.whatsapp and cfg.telefono != cfg.whatsapp %} · WhatsApp {{ cfg.whatsapp }}{% endif %}<br>{% endif %}{% if cfg.nit %}NIT {{ cfg.nit }}{% endif %}</div>
+  <div class="c">{% if cfg.direccion %}<span class="dir">{{ cfg.direccion }}</span><br>{% endif %}{% if cfg.ciudad %}{{ cfg.ciudad }}<br>{% endif %}{% if cfg.telefono or cfg.whatsapp %}Tel. {{ cfg.telefono or cfg.whatsapp }}{% if cfg.telefono and cfg.whatsapp and cfg.telefono != cfg.whatsapp %} · WhatsApp {{ cfg.whatsapp }}{% endif %}<br>{% endif %}{% if cfg.nit %}NIT {{ cfg.nit }}{% endif %}</div>
   <hr>
   <table class="dl">
     <tr><td><b>Recibo</b></td><td class="r"><b>{{ v.folio }}</b>{% if v.origen == 'tienda' %} · web{% endif %}</td></tr>
