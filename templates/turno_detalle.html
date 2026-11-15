@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-head">
   <div><h1>Caja #{{ t.numero }}</h1><p>Abrió {{ t.usuario.nombre }} · {{ t.apertura|fh }}{% if t.cierre %} · cerró {{ t.cerrado_por.nombre if t.cerrado_por else '' }} · {{ t.cierre|fh }}{% endif %}</p></div>
-  <div class="actions no-print"><button class="btn sec" onclick="window.print()">🖨 Imprimir cuadre</button><a class="btn sec" href="{{ url_for('turnos') }}">← Cierres</a></div>
+  <div class="actions no-print"><a class="btn dark" href="{{ url_for('turno_ticket', tid=t.id) }}" onclick="if (!event.ctrlKey) { event.preventDefault(); imprimirEnIframe(this.href); }">🖨 Imprimir cuadre</a><a class="btn sec" href="{{ url_for('turnos') }}">← Cierres</a></div>
 </div>
 <div class="grid g2">
   <div class="card">
@@ -21,8 +21,14 @@
     {% endif %}
     {% if t.nota_cierre %}<p class="note">{{ t.nota_cierre }}</p>{% endif %}
     {% if denoms %}
-    <h3 style="margin:14px 0 6px">Conteo</h3>
-    {% for d in denominaciones if denoms.get(d|string) %}<div class="sum-row"><span>{{ denoms[d|string] }} × {{ d|pesos }}</span><span>{{ (denoms[d|string] * d)|pesos }}</span></div>{% endfor %}
+    <h3 style="margin:14px 0 6px">Conteo por denominación</h3>
+    {% for titulo, lista in [('Billetes', denominaciones|select('ge', 2000)|list), ('Monedas', denominaciones|select('lt', 2000)|list)] %}
+    <div class="muted" style="margin-top:6px"><b>{{ titulo }}</b></div>
+    {% set ns = namespace(c=0, v=0) %}
+    {% for d in lista %}{% set q = denoms.get(d|string, 0)|int %}{% set ns.c = ns.c + q %}{% set ns.v = ns.v + q * d %}
+    <div class="sum-row"><span>{{ d|pesos }} <small class="muted">× {{ q }}</small></span><span>{{ (q * d)|pesos }}</span></div>{% endfor %}
+    <div class="sum-row"><b>Total {{ titulo|lower }} ({{ ns.c }})</b><b>{{ ns.v|pesos }}</b></div>
+    {% endfor %}
     {% endif %}
   </div>
   <div class="card">

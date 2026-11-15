@@ -955,6 +955,7 @@ def caja_cerrar():
         cerrar_turno(t, current_user, contado, denoms, request.form.get("nota"))
         db.session.commit()
         flash(f"Caja #{t.numero} cerrada.", "ok")
+        session["imprimir"] = url_for("turno_ticket", tid=t.id)   # sale el cuadre impreso (y se abre el cajón)
         return redirect(url_for("turno_detalle", tid=t.id))
     except ErrorNegocio as e:
         db.session.rollback()
@@ -980,6 +981,28 @@ def turno_detalle(tid):
     r = resumen_turno(t)
     return render_template("turno_detalle.html", t=t, r=r, denoms=json.loads(t.denominaciones or "{}"),
                            denominaciones=DENOMINACIONES)
+
+
+BILLETES = [d for d in DENOMINACIONES if d >= 2000]
+MONEDAS = [d for d in DENOMINACIONES if d < 2000]
+
+
+@app.route("/caja/turno/<int:tid>/ticket")
+@requiere("cajero")
+def turno_ticket(tid):
+    """Cuadre de caja para la impresora de tickets, con el conteo discriminado por denominación."""
+    t = get_or_404(Turno, tid)
+    if not current_user.puede("admin") and current_user.id not in (t.usuario_id, t.cerrado_por_id):
+        abort(404)
+    r = resumen_turno(t)
+    denoms = json.loads(t.denominaciones or "{}")
+    cuenta = lambda lista: sum(int(denoms.get(str(d), 0)) for d in lista)
+    valor = lambda lista: sum(int(denoms.get(str(d), 0)) * d for d in lista)
+    return render_template("ticket_cuadre.html", t=t, r=r, denoms=denoms, billetes=BILLETES, monedas=MONEDAS,
+                           cant_billetes=cuenta(BILLETES), cant_monedas=cuenta(MONEDAS),
+                           total_billetes=valor(BILLETES), total_monedas=valor(MONEDAS),
+                           esperado=t.efectivo_esperado if t.efectivo_esperado is not None else r["efectivo_esperado"],
+                           ahora=ahora(), auto=request.args.get("imprimir") == "1")
 
 
 # =============================================================== clientes
