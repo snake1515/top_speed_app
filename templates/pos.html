@@ -356,7 +356,7 @@ function datosVenta() {
   return {
     items: carrito.map(it => ({ producto_id: it.p.id, cantidad: it.cantidad, precio: it.precio })),
     descuento: t.desc, lista: $('lista').value, cliente_id: cliente ? cliente.id : null,
-    cliente_nombre: cliente ? '' : (PRECARGA && PRECARGA.cliente_nombre) || '', cliente_doc: (PRECARGA && PRECARGA.cliente_doc) || '',
+    cliente_nombre: cliente ? '' : ($('cli-q').value.trim() || (PRECARGA && PRECARGA.cliente_nombre) || ''), cliente_doc: (PRECARGA && PRECARGA.cliente_doc) || '',
     cliente_tel: $('cli-tel').value,
     pedido_id: PRECARGA && PRECARGA.tipo === 'pedido' ? PRECARGA.id : null,
     cotizacion_id: PRECARGA && PRECARGA.tipo === 'cotizacion' ? PRECARGA.id : null,

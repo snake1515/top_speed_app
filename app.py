@@ -313,6 +313,47 @@ def logo():
     return redirect(url_for("static", filename=archivo, v=STATIC_V))
 
 
+_LOGO_RECIBO = {}
+
+
+def logo_gris(datos):
+    """Logo en grises claros y bien definido para la impresora térmica: si el logo es oscuro se invierte
+    (fondo claro, letras oscuras) y los negros se aclaran a gris."""
+    from PIL import Image, ImageFilter, ImageOps, ImageStat
+    im = Image.open(BytesIO(datos)).convert("RGBA")
+    mascara = im.getchannel("A").point(lambda a: 255 if a > 20 else 0)
+    fondo = Image.new("RGBA", im.size, "white")
+    fondo.alpha_composite(im)
+    g = ImageOps.autocontrast(fondo.convert("L"), cutoff=1)
+    if ImageStat.Stat(g, mascara).mean[0] < 120:      # logo mayormente oscuro
+        g = ImageOps.autocontrast(ImageOps.invert(g), cutoff=1)
+    g = g.point(lambda v: int(60 + 195 * ((v / 255) ** 0.75)))
+    g = Image.composite(g, Image.new("L", g.size, 255), mascara)
+    if g.width > 600:
+        g = g.resize((600, round(600 * g.height / g.width)), Image.LANCZOS)
+    g = g.filter(ImageFilter.UnsharpMask(1.2, 70, 2))
+    out = BytesIO()
+    g.save(out, "PNG", optimize=True)
+    return out.getvalue()
+
+
+@app.route("/logo/recibo")
+def logo_recibo():
+    cfg = config()
+    if cfg.logo:
+        clave = cfg.logo_v or 0
+        if clave not in _LOGO_RECIBO:
+            try:
+                _LOGO_RECIBO.clear()
+                _LOGO_RECIBO[clave] = logo_gris(cfg.logo)
+            except Exception:
+                return redirect(url_for("logo", v=cfg.logo_v))
+        r = send_file(BytesIO(_LOGO_RECIBO[clave]), mimetype="image/png")
+        r.headers["Cache-Control"] = "public, max-age=2592000"
+        return r
+    return redirect(url_for("static", filename="logo-recibo.png", v=STATIC_V))
+
+
 @app.route("/img/p/<int:pid>")
 def img_producto(pid):
     p = db.session.get(Producto, pid)

@@ -9,9 +9,10 @@
   .t { width: {{ cfg.ancho_ticket - 6 }}mm; margin: 14px auto; background: #fff; padding: 4mm; box-shadow: 0 2px 12px rgba(0,0,0,.12); }
   .c { text-align: center; } .r { text-align: right; } b { font-weight: 700; }
   .lg { font-size: 1.35em; font-weight: 700; }
+  .negocio { font-size: 1.6em; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; line-height: 1.1; }
   hr { border: 0; border-top: 1px dashed #000; margin: 6px 0; }
   table { width: 100%; border-collapse: collapse; } td { vertical-align: top; padding: 1px 0; }
-  img.logo { max-width: 38mm; max-height: 22mm; display: block; margin: 0 auto 4px; filter: grayscale(1); }
+  img.logo { max-width: 38mm; max-height: 22mm; display: block; margin: 0 auto 4px;  }
   .acc { text-align: center; margin: 14px; font-family: system-ui, sans-serif; }
   .acc a, .acc button { display: inline-block; margin: 3px; padding: 9px 16px; background: #0b0a07; color: #ffc400; border-radius: 8px; text-decoration: none; border: 0; font: inherit; font-weight: 600; cursor: pointer; }
   .anul { border: 2px solid #000; text-align: center; font-weight: 700; padding: 3px; margin: 4px 0; }
@@ -20,12 +21,12 @@
 </head>
 <body>
 <div class="t">
-  <img class="logo" src="{{ url_for('logo', v=cfg.logo_v) }}" alt="">
-  <div class="c lg">{{ cfg.nombre }}</div>
-  <div class="c">{% if cfg.nit %}NIT {{ cfg.nit }}<br>{% endif %}{% if cfg.direccion %}{{ cfg.direccion }}{% if cfg.ciudad %}, {{ cfg.ciudad }}{% endif %}<br>{% endif %}{% if cfg.telefono or cfg.whatsapp %}Tel {{ cfg.telefono or cfg.whatsapp }}{% endif %}</div>
+  <img class="logo" src="{{ url_for('logo_recibo', v=cfg.logo_v) }}" alt="">
+  <div class="c negocio">{{ cfg.nombre|upper }}</div>
+  <div class="c">{% if cfg.direccion %}{{ cfg.direccion }}{% if cfg.ciudad %}, {{ cfg.ciudad }}{% endif %}<br>{% elif cfg.ciudad %}{{ cfg.ciudad }}<br>{% endif %}{% if cfg.telefono or cfg.whatsapp %}Tel. {{ cfg.telefono or cfg.whatsapp }}{% if cfg.telefono and cfg.whatsapp and cfg.telefono != cfg.whatsapp %} · WhatsApp {{ cfg.whatsapp }}{% endif %}<br>{% endif %}{% if cfg.nit %}NIT {{ cfg.nit }}{% endif %}</div>
   <hr>
   <div><b>Recibo {{ v.folio }}</b>{% if v.origen == 'tienda' %} · pedido web{% endif %}<br>{{ v.fecha|fh }}<br>Atendió: {{ v.usuario.nombre if v.usuario else '' }}</div>
-  {% if v.cliente_nombre %}<div>Cliente: {{ v.cliente_nombre }}{% if v.cliente_doc %}<br>CC/NIT: {{ v.cliente_doc }}{% endif %}</div>{% endif %}
+  <div><b>Cliente: {{ (v.cliente_nombre or (v.cliente.nombre if v.cliente else '') or 'Consumidor final') }}</b>{% if v.cliente_doc %}<br>CC/NIT: {{ v.cliente_doc }}{% endif %}{% if v.cliente_tel %}<br>Cel: {{ v.cliente_tel }}{% endif %}</div>
   {% if v.anulada %}<div class="anul">*** VENTA ANULADA ***</div>{% endif %}
   <hr>
   <table>
