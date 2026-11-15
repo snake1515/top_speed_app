@@ -111,6 +111,8 @@ function parsearCSV(texto) {
 }
 function clave(t) { return t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[*%]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''); }
 const ALIAS_COD = ['codigo', 'cod', 'codigo_proveedor', 'sku', 'procodigo'];
+const ALIAS_INT = ['codigo_interno', 'cod_interno', 'codigo_inventario', 'interno'];
+const ALIAS_NOM = ['nombre', 'descripcion', 'producto', 'nombre_del_producto'];
 
 function avance(p, txt) { $('barra').style.width = p + '%'; $('pct').textContent = p + '%'; if (txt) $('etiqueta').textContent = txt; }
 
@@ -128,10 +130,12 @@ btn.addEventListener('click', async () => {
       datos = parsearCSV(decodificar(await f.arrayBuffer()));
     }
     const colCod = datos.enc.find(h => ALIAS_COD.includes(clave(h)));
-    if (!colCod) throw new Error('No encuentro la columna «codigo». Revisa los títulos (primera fila) o usa la plantilla.');
+    const colInt = datos.enc.find(h => ALIAS_INT.includes(clave(h)));
+    if (!colCod && !colInt && !datos.enc.find(h => ALIAS_NOM.includes(clave(h))))
+      throw new Error('No encuentro las columnas «codigo» o «nombre». Revisa los títulos (primera fila) o usa la plantilla.');
     // Marcar códigos repetidos en el archivo (se rechazan y se usa la primera aparición)
     const vistos = {};
-    datos.filas.forEach(o => { const c = String(o[colCod] || '').trim().toLowerCase(); if (!c) return; if (vistos[c]) o._dup = vistos[c]; else vistos[c] = o._fila; });
+    if (colCod) datos.filas.forEach(o => { const c = String(o[colCod] || '').trim().toLowerCase(); if (!c) return; if (vistos[c]) o._dup = vistos[c]; else vistos[c] = o._fila; });
     const filas = datos.filas;
     if (!filas.length) throw new Error('El archivo no tiene filas.');
 

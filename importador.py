@@ -97,7 +97,7 @@ ALIAS = {
     "categoria": ["categoria", "grupo", "linea"],
     "marca": ["marca"],
     "referencia": ["referencia", "referencia_fabricante", "ref", "prorefe"],
-    "compatibilidad": ["compatibilidad", "compatible_con", "aplica_para", "motos"],
+    "compatibilidad": ["compatibilidad", "compatible_con", "aplica_para", "motos", "compatibilidad_medida"],
     "ubicacion": ["ubicacion", "proubica", "estante"],
     "codigo_barras": ["codigo_barras", "codigo_de_barras", "barras", "ean", "procodbar"],
     "unidad": ["unidad", "medida"],
@@ -108,8 +108,9 @@ ALIAS = {
     "precio_taller": ["precio_taller", "proprecio3"],
     "stock_minimo": ["stock_minimo", "minimo", "prominstk"],
     "iva": ["iva", "iva_pct", "proivapor"],
-    "en_tienda": ["en_tienda", "en_tienda_si_no", "tienda", "publicar"],
-    "virtual": ["virtual", "bodega_virtual", "bodega_virtual_si_no", "virtual_si_no", "es_virtual"],
+    "en_tienda": ["en_tienda", "en_tienda_si_no", "tienda", "publicar", "en_tienda_web"],
+    "virtual": ["virtual", "bodega_virtual", "bodega_virtual_si_no", "virtual_si_no", "es_virtual", "bodega"],
+    "costo_virtual": ["costo_virtual"],
 }
 _MAPA = {a: k for k, lista in ALIAS.items() for a in lista}
 _SUMA_STOCK = ("existencias_bodega", "existencias_almacen")  # formato Stocka
@@ -166,14 +167,23 @@ def leer_excel(archivo):
         wb = load_workbook(archivo, data_only=True, read_only=True)
     except Exception:
         raise ErrorNegocio("No pude leer el Excel. Revisa que sea .xlsx (o guárdalo como CSV).")
-    filas = wb.worksheets[0].iter_rows(values_only=True)
-    try:
-        enc = [str(c or "").strip() for c in next(filas)]
-    except StopIteration:
+    hoja = wb["Inventario"] if "Inventario" in wb.sheetnames else wb.worksheets[0]
+    todas = list(hoja.iter_rows(values_only=True))
+    if not todas:
         raise ErrorNegocio("El archivo está vacío.")
+    # la fila de títulos es la primera (de las 10 primeras) que tenga una columna conocida de código o nombre
+    inicio = 0
+    for i, fila in enumerate(todas[:10]):
+        claves = {_MAPA.get(clave_columna(c)) for c in fila if c not in (None, "")}
+        if claves & {"codigo", "codigo_interno", "nombre"}:
+            inicio = i
+            break
+    enc = [str(c or "").strip() for c in todas[inicio]]
     salida = []
-    for n, fila in enumerate(filas, start=2):
+    for n, fila in enumerate(todas[inicio + 1:], start=inicio + 2):
         if not any(c not in (None, "") for c in fila):
+            continue
+        if str(fila[0] or "").strip().lower().startswith("totales"):
             continue
         d = {"_fila": n}
         for i, t in enumerate(enc):
@@ -198,7 +208,7 @@ def _validar(d, existe):
     """Devuelve (datos, motivo_rechazo)."""
     codigo = d.get("codigo", "").strip().removesuffix(".0")
     if not codigo:
-        return None, "Falta el código"
+        return None, "Falta el código (o el nombre, si es un repuesto nuevo)"
     if d.get("_dup"):
         return None, f"El código {codigo} está repetido en el archivo (se usó la fila {d['_dup']})"
     try:
@@ -212,7 +222,13 @@ def _validar(d, existe):
         return None, "El IVA debe ser 0, 5 o 19"
     nombre = d.get("nombre", "").strip()
     v = d.get("virtual", "").strip().upper()
-    virtual = None if not v else v in ("SI", "SÍ", "S", "1", "X", "TRUE", "VERDADERO")
+    virtual = None if not v else v in ("SI", "SÍ", "S", "1", "X", "TRUE", "VERDADERO", "VIRTUAL")
+    if virtual and d.get("costo_virtual", "") not in ("", "0"):
+        try:
+            if _num(d["costo_virtual"]) > 0:
+                num["costo"] = _num(d["costo_virtual"])
+        except ValueError:
+            pass
     if virtual and not existe and not num["costo"]:
         return None, "Repuesto virtual sin costo (escribe el costo virtual en la columna costo)"
     if virtual and (num["stock"] or 0) > 0:
@@ -234,7 +250,8 @@ def _validar(d, existe):
                         ("unidad", 20)) if d.get(k, "").strip()},
              "codigo_barras": d.get("codigo_barras", "").strip().removesuffix(".0")[:60],
              "en_tienda": d.get("en_tienda", "").strip().upper(), "virtual": virtual,
-             "codigo_interno": d.get("codigo_interno", "").strip().removesuffix(".0")[:20]}
+             "codigo_interno": d.get("codigo_interno", "").strip().removesuffix(".0")[:20],
+             "auto": bool(d.get("_auto"))}
     if datos["texto"].get("unidad"):
         datos["texto"]["unidad"] = datos["texto"]["unidad"].lower()
     return datos, None
@@ -278,6 +295,10 @@ def _aplicar(datos, p, cats, carga, doc_lote, usuario_id, internos=None):
         db.session.add(p)
     with db.session.no_autoflush:
         (internos or _CodigosInternos()).tomar(p, datos.get("codigo_interno", ""))
+        if nuevo and datos.get("auto"):   # sin código de proveedor: se usa el interno
+            p.codigo = p.codigo_interno
+            if Producto.query.filter(db.func.lower(Producto.codigo) == p.codigo.lower(), Producto.id.isnot(None)).first():
+                p.codigo = f"MS-{p.codigo_interno}"
     if datos["nombre"]:
         p.nombre = datos["nombre"]
     if datos["categoria"]:
@@ -329,6 +350,19 @@ def procesar_lote(carga, filas, indice, usuario_id):
         if str(f.get("codigo", "")).upper().startswith("EJEMPLO"):
             continue
         validas.append(f)
+    # Filas sin código de proveedor: si traen código interno se busca por él; si no, es un repuesto nuevo
+    # y se le pone el código interno como código.
+    sin_cod = [f for f in validas if not str(f.get("codigo", "")).strip()]
+    if sin_cod:
+        ints = {str(f.get("codigo_interno", "")).strip().removesuffix(".0") for f in sin_cod} - {""}
+        por_int = {p.codigo_interno: p for p in Producto.query.filter(Producto.codigo_interno.in_(ints))} if ints else {}
+        for f in sin_cod:
+            ci = str(f.get("codigo_interno", "")).strip().removesuffix(".0")
+            if ci in por_int:
+                f["codigo"] = por_int[ci].codigo
+            elif str(f.get("nombre", "")).strip():
+                f["codigo"] = f"__auto_{carga.id}_{indice}_{f.get('_fila')}"
+                f["_auto"] = True
     codigos = {str(f.get("codigo", "")).strip().removesuffix(".0").lower() for f in validas} - {""}
     existentes = {}
     lista = list(codigos)
@@ -338,7 +372,7 @@ def procesar_lote(carga, filas, indice, usuario_id):
     cats = {c.nombre.lower(): c for c in Categoria.query.all()}
 
     def rechazar(f, motivo):
-        rechazados.append({"fila": f.get("_fila"), "codigo": f.get("codigo", ""),
+        rechazados.append({"fila": f.get("_fila"), "codigo": "" if f.get("_auto") else f.get("codigo", ""),
                            "nombre": f.get("nombre", ""), "motivo": motivo, "lote": doc_lote})
 
     preparados, vistos = [], {}
