@@ -93,7 +93,9 @@ TAM_LOTE = 200
 ALIAS = {
     "codigo": ["codigo", "cod", "codigo_proveedor", "sku", "procodigo"],
     "codigo_interno": ["codigo_interno", "cod_interno", "codigo_inventario", "interno"],
-    "nombre": ["nombre", "descripcion", "producto", "nombre_del_producto"],
+    "nombre": ["nombre", "producto", "nombre_del_producto"],
+    "descripcion": ["descripcion", "descripcion_tienda", "detalle"],
+    "activo": ["activo"],
     "categoria": ["categoria", "grupo", "linea"],
     "marca": ["marca"],
     "referencia": ["referencia", "referencia_fabricante", "ref", "prorefe"],
@@ -148,6 +150,8 @@ def normalizar_fila(fila):
             d[campo] = v
     if d.pop("_suma", False) and not d.get("stock"):
         d["stock"] = str(extra)
+    if not d.get("nombre") and d.get("descripcion"):   # archivos que solo traen «descripción» (ej. Stocka)
+        d["nombre"] = d.pop("descripcion")
     return d
 
 
@@ -250,6 +254,8 @@ def _validar(d, existe):
                         ("unidad", 20)) if d.get(k, "").strip()},
              "codigo_barras": d.get("codigo_barras", "").strip().removesuffix(".0")[:60],
              "en_tienda": d.get("en_tienda", "").strip().upper(), "virtual": virtual,
+             "descripcion": d.get("descripcion", "").strip()[:4000] if "descripcion" in d else None,
+             "activo": d.get("activo", "").strip().upper(),
              "codigo_interno": d.get("codigo_interno", "").strip().removesuffix(".0")[:20],
              "auto": bool(d.get("_auto"))}
     if datos["texto"].get("unidad"):
@@ -266,14 +272,8 @@ class _CodigosInternos:
                            .filter(Producto.codigo_interno.isnot(None)).all()}
         self.cfg = None
 
-    def tomar(self, p, pedido=""):
-        if pedido:
-            if pedido in self.usados and pedido != (p.codigo_interno or ""):
-                raise ErrorNegocio(f"El código interno {pedido} ya lo tiene otro repuesto")
-            self.usados.discard(p.codigo_interno)
-            p.codigo_interno = pedido
-            self.usados.add(pedido)
-            return
+    def tomar(self, p):
+        """El código interno lo pone siempre la app y no se cambia (en el archivo solo sirve para identificar)."""
         if (p.codigo_interno or "").strip():
             return
         if self.cfg is None:  # (se llama dentro de no_autoflush)
@@ -294,7 +294,9 @@ def _aplicar(datos, p, cats, carga, doc_lote, usuario_id, internos=None):
                      precio_mayor=0, precio_taller=0, stock_minimo=0, iva_pct=0, en_tienda=True)
         db.session.add(p)
     with db.session.no_autoflush:
-        (internos or _CodigosInternos()).tomar(p, datos.get("codigo_interno", ""))
+        (internos or _CodigosInternos()).tomar(p)
+        if not nuevo and not datos.get("auto") and datos["codigo"] and datos["codigo"] != p.codigo:
+            p.codigo = datos["codigo"]   # se cambió el código de proveedor (fila identificada por código interno)
         if nuevo and datos.get("auto"):   # sin código de proveedor: se usa el interno
             p.codigo = p.codigo_interno
             if Producto.query.filter(db.func.lower(Producto.codigo) == p.codigo.lower(), Producto.id.isnot(None)).first():
@@ -320,6 +322,10 @@ def _aplicar(datos, p, cats, carga, doc_lote, usuario_id, internos=None):
         p.iva_pct = n["iva"]
     if datos["en_tienda"]:
         p.en_tienda = datos["en_tienda"] not in ("NO", "N", "0", "FALSE", "FALSO")
+    if datos["descripcion"] is not None:   # la columna existe: lo que diga (vacía = sin descripción)
+        p.descripcion = datos["descripcion"] or None
+    if datos["activo"]:
+        p.activo = datos["activo"] not in ("NO", "N", "0", "FALSE", "FALSO")
     if datos["virtual"] is not None:
         if datos["virtual"] and (p.stock or 0) > 0:
             raise ErrorNegocio(f"{p.codigo} tiene unidades reales; no puede pasar a la bodega virtual")
@@ -350,20 +356,16 @@ def procesar_lote(carga, filas, indice, usuario_id):
         if str(f.get("codigo", "")).upper().startswith("EJEMPLO"):
             continue
         validas.append(f)
-    # Filas sin código de proveedor: si traen código interno se busca por él; si no, es un repuesto nuevo
-    # y se le pone el código interno como código.
-    sin_cod = [f for f in validas if not str(f.get("codigo", "")).strip()]
-    if sin_cod:
-        ints = {str(f.get("codigo_interno", "")).strip().removesuffix(".0") for f in sin_cod} - {""}
-        por_int = {p.codigo_interno: p for p in Producto.query.filter(Producto.codigo_interno.in_(ints))} if ints else {}
-        for f in sin_cod:
-            ci = str(f.get("codigo_interno", "")).strip().removesuffix(".0")
-            if ci in por_int:
-                f["codigo"] = por_int[ci].codigo
-            elif str(f.get("nombre", "")).strip():
-                f["codigo"] = f"__auto_{carga.id}_{indice}_{f.get('_fila')}"
-                f["_auto"] = True
-    codigos = {str(f.get("codigo", "")).strip().removesuffix(".0").lower() for f in validas} - {""}
+    # ¿A qué repuesto va cada fila? Primero por código interno (no cambia nunca); si no trae, por código
+    # de proveedor. Una fila sin ninguno de los dos pero con nombre es un repuesto nuevo.
+    limpio = lambda v: str(v or "").strip().removesuffix(".0")
+    ints = {limpio(f.get("codigo_interno")) for f in validas} - {""}
+    por_int = {}
+    lista = list(ints)
+    for i in range(0, len(lista), 500):
+        for p in Producto.query.filter(Producto.codigo_interno.in_(lista[i:i + 500])):
+            por_int[p.codigo_interno] = p
+    codigos = {limpio(f.get("codigo")).lower() for f in validas} - {""}
     existentes = {}
     lista = list(codigos)
     for i in range(0, len(lista), 500):
@@ -372,19 +374,40 @@ def procesar_lote(carga, filas, indice, usuario_id):
     cats = {c.nombre.lower(): c for c in Categoria.query.all()}
 
     def rechazar(f, motivo):
-        rechazados.append({"fila": f.get("_fila"), "codigo": "" if f.get("_auto") else f.get("codigo", ""),
+        rechazados.append({"fila": f.get("_fila"), "codigo": limpio(f.get("codigo_interno")) or
+                           ("" if f.get("_auto") else f.get("codigo", "")),
                            "nombre": f.get("nombre", ""), "motivo": motivo, "lote": doc_lote})
 
     preparados, vistos = [], {}
     for f in validas:
-        cod = str(f.get("codigo", "")).strip().removesuffix(".0").lower()
-        if cod and cod in vistos and not f.get("_dup"):
-            f["_dup"] = vistos[cod]
-        vistos.setdefault(cod, f.get("_fila"))
-        datos, motivo = _validar(f, cod in existentes)
+        ci, cod = limpio(f.get("codigo_interno")), limpio(f.get("codigo"))
+        destino = None
+        if ci:
+            destino = por_int.get(ci)
+            if destino is None:
+                rechazar(f, f"El código interno {ci} no existe en la app (para un repuesto nuevo déjalo vacío)")
+                continue
+            if not cod:
+                f["codigo"] = cod = destino.codigo
+            otro = existentes.get(cod.lower())
+            if otro is not None and otro.id != destino.id:
+                rechazar(f, f"El código de proveedor {cod} ya lo tiene el repuesto {otro.codigo_interno or otro.nombre}")
+                continue
+        elif cod:
+            destino = existentes.get(cod.lower())
+        elif str(f.get("nombre", "")).strip():
+            f["codigo"] = f"__auto_{carga.id}_{indice}_{f.get('_fila')}"
+            f["_auto"] = True
+        clave = ("id", destino.id) if destino else ("cod", limpio(f.get("codigo")).lower())
+        if clave in vistos and not f.get("_dup"):
+            f["_dup"] = vistos[clave]
+        vistos.setdefault(clave, f.get("_fila"))
+        datos, motivo = _validar(f, destino is not None)
         if motivo:
             rechazar(f, motivo)
         else:
+            datos["pid"] = destino.id if destino else None
+            datos["_destino"] = destino
             preparados.append((f, datos))
 
     creados = actualizados = 0
@@ -392,8 +415,7 @@ def procesar_lote(carga, filas, indice, usuario_id):
     try:
         with db.session.begin_nested():
             for f, datos in preparados:
-                if _aplicar(datos, existentes.get(datos["codigo"].lower()), cats, carga, doc_lote, usuario_id,
-                            internos):
+                if _aplicar(datos, datos["_destino"], cats, carga, doc_lote, usuario_id, internos):
                     creados += 1
                 else:
                     actualizados += 1
@@ -404,7 +426,8 @@ def procesar_lote(carga, filas, indice, usuario_id):
         cats = {c.nombre.lower(): c for c in Categoria.query.all()}
         internos = _CodigosInternos()
         for f, datos in preparados:
-            p = Producto.query.filter(db.func.lower(Producto.codigo) == datos["codigo"].lower()).first()
+            p = (db.session.get(Producto, datos["pid"]) if datos["pid"] else
+                 Producto.query.filter(db.func.lower(Producto.codigo) == datos["codigo"].lower()).first())
             try:
                 with db.session.begin_nested():
                     if _aplicar(datos, p, cats, carga, doc_lote, usuario_id, internos):

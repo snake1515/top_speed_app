@@ -1,23 +1,23 @@
 {% extends "base.html" %}
 {% block title %}Carga masiva de repuestos{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Carga masiva de repuestos</h1><p>Sube un archivo CSV (o Excel) con tu catálogo. Se procesa por lotes y cada fila se acepta o se rechaza con su motivo.</p></div><a class="btn sec" href="{{ url_for('productos') }}">← Repuestos</a></div>
+<div class="page-head"><div><h1>Carga masiva de repuestos</h1><p>Sube el Excel del inventario (el mismo formato que descargas). Se procesa por lotes y cada fila se acepta o se rechaza con su motivo.</p></div><a class="btn sec" href="{{ url_for('productos') }}">← Repuestos</a></div>
 <div class="grid g2">
   <div class="card">
-    <h2 style="margin-bottom:10px">1. Prepara el archivo</h2>
-    <p>Una fila por repuesto. Obligatorias para repuestos nuevos: <b>codigo, nombre, precio_detal</b>.
-      Opcionales: categoria (o grupo), marca, referencia, compatibilidad, ubicacion, codigo_barras, unidad, stock, costo, precio_mayor, precio_taller, stock_minimo, iva, en_tienda, virtual.</p>
-    <p class="hint"><b>Bodega virtual:</b> pon <b>virtual = SI</b> en los repuestos que vas a vender sin tenerlos. En esas filas el <b>costo</b> es el costo virtual y el stock va vacío.</p>
-    <p class="hint">Separador <b>;</b> o <b>,</b> (se detecta solo). Sirven también los títulos de la plantilla de Excel y las columnas de Stocka (grupo, existencias_bodega, existencias_almacen).</p>
+    <h2 style="margin-bottom:10px">1. Prepara el Excel</h2>
+    <p><b>Para editar lo que ya tienes:</b> descarga el inventario, cambia lo que necesites (nombres, descripción, precios, ubicación, marca, código de proveedor…) y súbelo aquí.</p>
+    <p><b>Para crear repuestos nuevos:</b> agrega filas al final (o usa la plantilla) con <b>Nombre</b> y <b>Precio detal</b>. Deja vacío el <b>Código interno</b>: la app pone el consecutivo.</p>
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
-      <a class="btn dark" href="{{ url_for('productos_plantilla_csv') }}">⇩ Plantilla CSV</a>
-      <a class="btn sec" href="{{ url_for('productos_plantilla') }}">⇩ Plantilla Excel</a>
+      <a class="btn dark" href="{{ url_for('productos_excel') }}">⤓ Descargar inventario actual</a>
+      <a class="btn sec" href="{{ url_for('productos_plantilla') }}">⇩ Plantilla vacía</a>
     </div>
     <ul class="muted" style="margin-top:14px;padding-left:18px">
-      <li>Código nuevo → se crea el repuesto. Si trae stock y costo, entra al kardex como «Inventario inicial» y fija el costo promedio.</li>
-      <li>Código que ya existe → se actualizan los datos que vengan llenos (nombre, precios, ubicación…). El stock <b>no</b> se toca: para eso usa compras o ajustes.</li>
-      <li>Las categorías nuevas se crean solas.</li>
-      <li>virtual = SI → entra a la bodega virtual: stock 0, se vende como disponible y la ganancia usa el costo virtual hasta que lo compres de verdad.</li>
+      <li>El <b>código interno</b> no se cambia nunca: con él la app reconoce cada repuesto (aunque le cambies el código de proveedor o el nombre).</li>
+      <li>Las columnas con título <b>gris</b> son informativas: lo que escribas ahí no cambia nada.</li>
+      <li>El <b>stock</b> de un repuesto que ya existe <b>no</b> se toca al subir: para eso usa Compras o Ajustes. En repuestos nuevos, Stock + Costo promedio entran como «Inventario inicial».</li>
+      <li><b>Bodega = Virtual</b> con <b>Costo virtual</b> → entra a la bodega virtual.</li>
+      <li><b>Activo = NO</b> → el repuesto se archiva. Si borras una fila del Excel, no pasa nada: el repuesto sigue en la app.</li>
+      <li>Las categorías nuevas se crean solas. También se aceptan archivos CSV.</li>
     </ul>
   </div>
   <div class="card">
@@ -25,7 +25,7 @@
     <label id="zona" style="display:block;border:2px dashed #d3d3cc;border-radius:12px;padding:26px;text-align:center;cursor:pointer">
       <div style="font-size:1.8rem">📄</div>
       <div><b>Arrastra el archivo aquí</b> o toca para elegirlo</div>
-      <div class="hint">.csv o .xlsx</div>
+      <div class="hint">Excel (.xlsx) · también .csv</div>
       <input type="file" id="archivo" accept=".csv,.xlsx,.txt" style="display:none">
     </label>
     <p id="elegido" class="hint" style="margin-top:8px"></p>

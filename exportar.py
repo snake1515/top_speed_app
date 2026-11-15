@@ -32,6 +32,7 @@ def _columnas(ve_costos):
         ("Código proveedor", 22, "@", lambda p, x: p.codigo or ""),
         ("Código de barras", 16, "@", lambda p, x: p.codigo_barras or ""),
         ("Nombre", 44, None, lambda p, x: p.nombre),
+        ("Descripción", 40, None, lambda p, x: p.descripcion or ""),
         ("Categoría", 18, None, lambda p, x: p.categoria.nombre if p.categoria else ""),
         ("Marca", 14, None, lambda p, x: p.marca or ""),
         ("Referencia", 14, None, lambda p, x: p.referencia or ""),
@@ -67,12 +68,34 @@ def _columnas(ve_costos):
     return cols
 
 
+# Al volver a subir el Excel estas columnas no cambian nada (son informativas). Encabezado gris.
+SOLO_LECTURA = {
+    "Código interno": "Lo pone la app y no se cambia. Sirve para reconocer el repuesto al subir el archivo. "
+                      "Déjalo vacío en las filas nuevas.",
+    "Estado": "Informativo.", "Apartado web": "Informativo.", "Vendido por surtir": "Informativo.",
+    "Último costo": "Informativo.", "Valor inventario": "Informativo (Stock × Costo promedio).",
+    "Margen detal %": "Informativo.",
+}
+NOTAS = {
+    "Stock": "Solo cuenta en repuestos NUEVOS (inventario inicial). Para corregir existencias usa Ajustes o Compras.",
+    "Costo promedio": "Solo cuenta en repuestos NUEVOS con stock (costo de cada unidad).",
+    "Costo virtual": "Para la bodega virtual: lo que te costaría comprarlo.",
+    "Bodega": "Real o Virtual.",
+    "Código proveedor": "Código de fábrica o del proveedor. Se puede cambiar.",
+    "Activo": "NO = se archiva (deja de salir en la caja y la tienda).",
+}
+
+
 def _encabezado(ws, titulos, anchos, fila=3):
+    from openpyxl.comments import Comment
     borde = Border(bottom=Side(style="thin", color=NEGRO))
     for i, (t, w) in enumerate(zip(titulos, anchos), 1):
         c = ws.cell(row=fila, column=i, value=t)
         c.font = Font(name=F, bold=True, color="FFFFFF")
-        c.fill = PatternFill("solid", fgColor=NEGRO)
+        c.fill = PatternFill("solid", fgColor="7A7A72" if t in SOLO_LECTURA else NEGRO)
+        nota = SOLO_LECTURA.get(t) or NOTAS.get(t)
+        if nota and ws.title != "Movimientos":
+            c.comment = Comment(nota, "Moto Speed")
         c.alignment = Alignment(wrap_text=True, vertical="center")
         c.border = borde
         ws.column_dimensions[get_column_letter(i)].width = w
@@ -155,6 +178,32 @@ def _hoja_movimientos(wb, movimientos, ve_costos, desde, hasta):
     else:
         ws.cell(row=4, column=1, value="(sin movimientos en el periodo)").font = Font(name=F, italic=True, color="666666")
     ws.freeze_panes = "E4"
+
+
+def plantilla(ve_costos=True):
+    """Excel vacío con el mismo formato del que descarga la app (hoja «Inventario»), para subir repuestos."""
+    wb = Workbook()
+    wb.remove(wb.active)
+    cols = _columnas(ve_costos)
+    ws = _hoja_productos(wb, "Inventario", "Moto Speed · Plantilla de repuestos",
+                         "Una fila por repuesto. Obligatorio en nuevos: Nombre y Precio detal. Deja vacío el Código "
+                         "interno: la app lo asigna. Columnas grises = informativas. Borra la fila de ejemplo.",
+                         [], cols, {"reservado": {}, "por_surtir": {}})
+    ej = {"Código proveedor": "EJEMPLO-001", "Nombre": "Kit de arrastre 428 (borrar esta fila)",
+          "Descripción": "Kit completo: piñón, corona y cadena", "Categoría": "Transmisión", "Marca": "Riffel",
+          "Referencia": "KA-428", "Compatibilidad / medida": "Boxer 100, CT 100", "Ubicación": "E2-C3",
+          "Unidad": "kit", "Bodega": "Real", "Stock": 3, "Stock mínimo": 2, "Costo promedio": 85000,
+          "Precio detal": 129000, "Precio mayor": 115000, "Precio taller": 120000, "IVA %": 0,
+          "En tienda web": "SI", "Activo": "SI"}
+    for i, (t, _, fmt, _fn) in enumerate(cols, 1):
+        c = ws.cell(row=4, column=i, value=ej.get(t))
+        c.font = Font(name=F, italic=True, color="666666")
+        if fmt:
+            c.number_format = fmt
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
 
 
 def inventario_excel(productos, reservado, por_surtir, movimientos, ve_costos, cfg, desde, hasta):

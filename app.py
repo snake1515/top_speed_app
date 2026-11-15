@@ -1170,8 +1170,6 @@ def producto_form(pid=None):
         f = request.form
         nuevo = p.id is None
         p.codigo = (f.get("codigo") or "").strip()[:60]
-        if "codigo_interno" in f:
-            p.codigo_interno = (f.get("codigo_interno") or "").strip()[:20] or p.codigo_interno
         p.nombre = (f.get("nombre") or "").strip()[:200]
         p.codigo_barras = (f.get("codigo_barras") or "").strip()[:60] or None
         p.categoria_id = int(f.get("categoria_id")) if (f.get("categoria_id") or "").isdigit() else None
@@ -1304,7 +1302,8 @@ def producto_foto_borrar(pid):
 @app.route("/productos/plantilla")
 @requiere("bodega")
 def productos_plantilla():
-    return send_file(importador.plantilla(), as_attachment=True, download_name="plantilla_repuestos.xlsx",
+    import exportar
+    return send_file(exportar.plantilla(current_user.ve_costos), as_attachment=True, download_name="plantilla_repuestos.xlsx",
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
