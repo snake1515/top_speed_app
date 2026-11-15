@@ -468,6 +468,51 @@ class Mensaje(db.Model):
     leido_por_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
     leido_por = db.relationship("Usuario", foreign_keys=[leido_por_id])
     leido_fecha = db.Column(db.DateTime)
+    # "admin": solo administradores (se marca leído para todos al leerlo uno) · "todos": cada usuario lo lee aparte
+    para = db.Column(db.String(10), nullable=False, default="admin")
+    lecturas = db.relationship("MensajeLectura", lazy="selectin", cascade="all, delete-orphan")
+
+
+class MensajeLectura(db.Model):
+    """Quién leyó cada mensaje enviado a todos los usuarios."""
+    __tablename__ = "ts_mensajes_lecturas"
+    id = db.Column(db.Integer, primary_key=True)
+    mensaje_id = db.Column(db.Integer, db.ForeignKey("ts_mensajes.id"), nullable=False, index=True)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"), nullable=False, index=True)
+    usuario = db.relationship("Usuario")
+    fecha = db.Column(db.DateTime, nullable=False, default=ahora)
+    __table_args__ = (db.UniqueConstraint("mensaje_id", "usuario_id"),)
+
+
+def mensajes_de(usuario):
+    """Mensajes que puede ver el usuario: el admin ve todos; los demás, los enviados a todos."""
+    q = Mensaje.query
+    if usuario.rol != "admin":
+        q = q.filter(Mensaje.para == "todos")
+    return q
+
+
+def mensajes_sin_leer(usuario):
+    leidos = db.session.query(MensajeLectura.mensaje_id).filter(MensajeLectura.usuario_id == usuario.id)
+    return mensajes_de(usuario).filter(
+        or_(Mensaje.autor_id.is_(None), Mensaje.autor_id != usuario.id),
+        ~Mensaje.id.in_(leidos),
+        or_(Mensaje.para == "todos", Mensaje.leido.is_(False)))
+
+
+def marcar_leido(m, usuario):
+    if m.para == "admin" and not m.leido:
+        m.leido, m.leido_por_id, m.leido_fecha = True, usuario.id, ahora()
+    if not MensajeLectura.query.filter_by(mensaje_id=m.id, usuario_id=usuario.id).first():
+        db.session.add(MensajeLectura(mensaje_id=m.id, usuario_id=usuario.id))
+
+
+def leido_por(m, usuario):
+    if m.autor_id == usuario.id:
+        return True
+    if m.para == "admin" and m.leido:
+        return True
+    return any(l.usuario_id == usuario.id for l in m.lecturas)
 
 
 class Compra(db.Model):

@@ -93,7 +93,7 @@
     </details>
     {% endif %}
 
-    {% if current_user.puede('admin') and not v.anulada and not v.devuelto %}
+    {% if current_user.puede('cajero') and not v.anulada and not v.devuelto %}
     <details class="card">
       <summary class="neg">Anular venta</summary>
       <form method="post" action="{{ url_for('venta_anular', vid=v.id) }}" style="margin-top:12px" data-confirm="¿Anular {{ v.folio }}? Los repuestos vuelven al inventario y el dinero sale de la caja.">

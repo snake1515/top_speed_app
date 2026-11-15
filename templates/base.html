@@ -32,6 +32,7 @@
     <div class="brand"><img class="brand-logo" src="{{ url_for('logo', v=cfg.logo_v, f='c') }}" alt=""><div><b>{{ cfg.nombre }}</b><small>{{ cfg.eslogan or 'Repuestos para tu moto' }}</small></div></div>
     <div class="speed-stripe"></div>
     <nav class="nav">
+      <a href="{{ url_for('mensajes') }}" class="{{ 'on' if ep == 'mensajes' }}"><span class="ico">✉</span>Mensajes{% if MENSAJES_PEND %}<span class="cnt">{{ MENSAJES_PEND }}</span>{% endif %}</a>
       {% if current_user.puede('cajero') %}
       <a href="{{ url_for('pos') }}" class="pos-link">▶ Vender (POS)</a>
       <div class="caja-pill {{ '' if TURNO else 'off' }}"><span class="dot"></span>{% if TURNO %}Caja #{{ TURNO.numero }} abierta{% else %}Caja cerrada{% endif %}</div>
@@ -39,7 +40,6 @@
       {% if current_user.puede('admin') %}
       <div class="nav-sep">Negocio</div>
       <a href="{{ url_for('panel') }}" class="{{ 'on' if ep == 'panel' }}"><span class="ico">◧</span>Resumen</a>
-      <a href="{{ url_for('mensajes') }}" class="{{ 'on' if ep == 'mensajes' }}"><span class="ico">✉</span>Mensajes{% if MENSAJES_PEND %}<span class="cnt">{{ MENSAJES_PEND }}</span>{% endif %}</a>
       <a href="{{ url_for('reportes') }}" class="{{ 'on' if ep.startswith('reportes') }}"><span class="ico">▤</span>Reportes</a>
       {% endif %}
       {% if current_user.puede('cajero') %}

@@ -516,6 +516,15 @@ def anular_venta(venta, usuario, motivo):
         if ped:
             ped.estado = "cancelado"
             ped.gestion_nota = f"Venta {venta.folio} anulada: {motivo.strip()[:200]}"
+    # aviso para todos los usuarios (el que anuló no lo recibe)
+    cliente = venta.cliente_nombre or (venta.cliente.nombre if getattr(venta, "cliente", None) else "") or "Consumidor final"
+    db.session.add(Mensaje(
+        tipo="anulacion_venta", para="todos",
+        titulo=f"{usuario.nombre} anuló la venta {venta.folio} por {pesos(venta.total)}",
+        texto=(f"Cliente: {cliente}\nVendida el {venta.fecha.strftime('%d/%m/%Y %I:%M %p')}\n"
+               f"Motivo: {motivo.strip()}\nLos repuestos volvieron al inventario y el dinero salió de la caja.")[:600],
+        url=f"/ventas/{venta.id}", autor_id=usuario.id,
+    ))
 
 
 def devolver(venta, usuario, cantidades, medio, motivo):

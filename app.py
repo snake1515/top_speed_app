@@ -20,7 +20,7 @@ from sqlalchemy.exc import IntegrityError
 import importador
 import nomina as nom
 import reportes as rpt
-from models import (CATEGORIAS_CAJA_MENOR, asignar_codigo_interno, normalizar, DIAS, RESULTADOS_VISITA, Ruta, Visita, CargaMasiva, migrar, CATEGORIAS_GASTO, LISTAS_PRECIO, MOTIVOS_AJUSTE, ROLES, TIPOS_MEDIO, TIPOS_MOV,
+from models import (CATEGORIAS_CAJA_MENOR, asignar_codigo_interno, leido_por, marcar_leido, mensajes_de, mensajes_sin_leer, normalizar, DIAS, RESULTADOS_VISITA, Ruta, Visita, CargaMasiva, migrar, CATEGORIAS_GASTO, LISTAS_PRECIO, MOTIVOS_AJUSTE, ROLES, TIPOS_MEDIO, TIPOS_MOV,
                     TIPOS_PAGO_EMP, UNIDADES, Ajuste, Categoria, Cliente, Compra, Cotizacion,
                     Empleado, Gasto, MedioPago, Mensaje, MovCaja, Movimiento, PagoNomina, Pedido, Producto,
                     Proveedor, Turno, Usuario, Venta, ahora, config, db, semilla)
@@ -224,8 +224,7 @@ def contexto():
     if current_user.is_authenticated:
         extra["TURNO"] = turno_abierto()
         extra["PEDIDOS_PEND"] = Pedido.query.filter_by(estado="pendiente").count()
-        if current_user.puede("admin"):
-            extra["MENSAJES_PEND"] = Mensaje.query.filter_by(leido=False).count()
+        extra["MENSAJES_PEND"] = mensajes_sin_leer(current_user).count()
     return extra
 
 
@@ -670,7 +669,7 @@ def venta_abono(vid):
 
 
 @app.route("/ventas/<int:vid>/anular", methods=["POST"])
-@requiere("admin")
+@requiere("cajero")
 def venta_anular(vid):
     v = get_or_404(Venta, vid)
     try:
@@ -820,32 +819,30 @@ def caja_mov_anular(mid):
     return redirect(request.form.get("volver") or url_for("caja"))
 
 
-# =============================================================== bandeja de mensajes (admin)
+# =============================================================== buzón de mensajes (todos los usuarios)
 @app.route("/mensajes")
-@requiere("admin")
+@login_required
 def mensajes():
     ver = request.args.get("ver", "pendientes")
-    q = Mensaje.query
-    if ver == "pendientes":
-        q = q.filter_by(leido=False)
-    return render_template("mensajes.html", mensajes=q.order_by(Mensaje.fecha.desc()).limit(300).all(), ver=ver)
+    q = mensajes_sin_leer(current_user) if ver == "pendientes" else mensajes_de(current_user)
+    return render_template("mensajes.html", mensajes=q.order_by(Mensaje.fecha.desc()).limit(300).all(), ver=ver,
+                           leido_por=leido_por)
 
 
 @app.route("/mensajes/<int:mid>/leido", methods=["POST"])
-@requiere("admin")
+@login_required
 def mensaje_leido(mid):
-    m = get_or_404(Mensaje, mid)
-    if not m.leido:
-        m.leido, m.leido_por_id, m.leido_fecha = True, current_user.id, ahora()
-        db.session.commit()
+    m = mensajes_de(current_user).filter(Mensaje.id == mid).first_or_404()
+    marcar_leido(m, current_user)
+    db.session.commit()
     return redirect(request.form.get("volver") or url_for("mensajes"))
 
 
 @app.route("/mensajes/leer-todos", methods=["POST"])
-@requiere("admin")
+@login_required
 def mensajes_leer_todos():
-    for m in Mensaje.query.filter_by(leido=False).all():
-        m.leido, m.leido_por_id, m.leido_fecha = True, current_user.id, ahora()
+    for m in mensajes_sin_leer(current_user).all():
+        marcar_leido(m, current_user)
     db.session.commit()
     flash("Bandeja al día.", "ok")
     return redirect(url_for("mensajes"))
