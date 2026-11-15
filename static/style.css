@@ -236,7 +236,27 @@ details summary { cursor: pointer; font-weight: 700; }
   .cart { position: static; }
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+/* ventanas medianas (app instalada en el PC, portátiles con zoom): menú fijo y más compacto */
+@media (max-width: 1024px) and (min-width: 641px) {
+  .layout { grid-template-columns: 190px minmax(0, 1fr); background: linear-gradient(to right, var(--nav) 190px, transparent 190px); }
+  .sidebar { padding: 14px 8px; }
+  .brand { gap: 8px; padding: 2px 4px 14px; }
+  .brand-logo { width: 36px; height: 36px; }
+  .brand b { font-size: .88rem; }
+  .brand small { font-size: .68rem; }
+  .nav a { font-size: .84rem; padding: 6px 8px; gap: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nav a.pos-link { font-size: .98rem; }
+  .nav a.on::before { left: -8px; }
+  .caja-pill { font-size: .74rem; }
+  .main { padding: 18px 16px 60px; }
+}
 @media (max-width: 860px) {
+  .main { padding: 16px 14px 60px; }
+  .g2, .g3, .g-main { grid-template-columns: 1fr; }
+  h1 { font-size: 1.5rem; }
+}
+/* celulares: menú desplegable con ☰ */
+@media (max-width: 640px) {
   .layout { grid-template-columns: 1fr; background: none; }
   .sidebar { position: fixed; left: 0; top: 0; z-index: 40; width: 260px; transform: translateX(-100%); transition: transform .2s; }
   #menu-toggle:checked ~ .layout .sidebar { transform: none; }
@@ -244,9 +264,6 @@ details summary { cursor: pointer; font-weight: 700; }
   .topbar { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--nav); color: #fff; position: sticky; top: 0; z-index: 20; }
   .topbar label { font-size: 1.6rem; cursor: pointer; margin: 0; }
   .topbar .brand { padding: 0; }
-  .main { padding: 16px 14px 60px; }
-  .g2, .g3, .g-main { grid-template-columns: 1fr; }
-  h1 { font-size: 1.5rem; }
 }
 .overlay { display: none; }
 
