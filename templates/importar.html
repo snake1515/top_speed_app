@@ -38,7 +38,7 @@
   </div>
 </div>
 
-<form class="card" style="margin-top:16px" method="post" action="{{ url_for('productos_imagenes_zip') }}" enctype="multipart/form-data">
+<form id="fotos" class="card" style="margin-top:16px;scroll-margin-top:16px" method="post" action="{{ url_for('productos_imagenes_zip') }}" enctype="multipart/form-data">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <h2 style="margin-bottom:6px">3. Fotos en bloque (ZIP)</h2>
   <p class="muted" style="margin-top:0">Comprime las fotos en un .zip. Cada foto se debe llamar como el <b>código</b> del repuesto (JKM300244.jpg) o como su <b>referencia</b> (DS01.jpg, P36B.png). Una foto con nombre de referencia se pone en todas las medidas de esa referencia. Se ignoran espacios y guiones.</p>
