@@ -103,6 +103,23 @@
       <button class="btn dark">Registrar</button>
       <p class="hint">Para gastos grandes del negocio (arriendo, servicios) usa <a href="{{ url_for('gastos') }}">Gastos</a>.</p>
     </form>
+    {% if current_user.puede('admin') %}
+    <form class="card" method="post" action="{{ url_for('caja_ajuste') }}" style="margin-top:16px;border-left:4px solid var(--red)" data-confirm="¿Registrar este ajuste de caja?">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <h2 style="margin-bottom:4px">Ajuste de caja <span class="badge">Solo administrador</span></h2>
+      <p class="hint" style="margin-top:0">Para corregir la caja: sacar dinero de prueba, cuadrar un faltante o sobrante ya revisado.</p>
+      <div class="form-row" style="grid-template-columns:1fr 1fr">
+        <label class="check"><input type="radio" name="tipo" value="egreso" checked> Sacar dinero</label>
+        <label class="check"><input type="radio" name="tipo" value="ingreso"> Meter dinero</label>
+      </div>
+      <div class="field" style="margin-top:8px"><input class="input" name="motivo" required minlength="5" placeholder="Motivo: retiro de dinero de prueba, sobrante del día…"></div>
+      <div class="form-row" style="grid-template-columns:1fr 1fr">
+        <div class="field"><input class="input" name="valor" placeholder="Valor" inputmode="numeric" required></div>
+        <div class="field"><select class="input" name="medio_id">{% for m in medios %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}</select></div>
+      </div>
+      <button class="btn dark">Registrar ajuste</button>
+    </form>
+    {% endif %}
 
     <form class="card" method="post" action="{{ url_for('caja_cerrar') }}" id="f-cierre" data-confirm="¿Cerrar la caja? Después no se puede reabrir.">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -819,6 +819,32 @@ def caja_movimiento():
     return redirect(url_for("caja"))
 
 
+@app.route("/caja/ajuste", methods=["POST"])
+@requiere("admin")
+def caja_ajuste():
+    """Ajuste de caja (solo administrador): saca o mete dinero para corregir la caja (dinero de prueba,
+    faltantes o sobrantes ya revisados). Queda con su motivo en los movimientos y en el cuadre."""
+    f = request.form
+    try:
+        tipo = f.get("tipo")
+        if tipo not in ("ingreso", "egreso"):
+            raise ErrorNegocio("Elige si el ajuste saca o mete dinero.")
+        medio = db.session.get(MedioPago, int(f.get("medio_id") or 0))
+        if medio is None:
+            raise ErrorNegocio("Elige el medio.")
+        motivo = (f.get("motivo") or "").strip()
+        if len(motivo) < 5:
+            raise ErrorNegocio("Escribe el motivo del ajuste (ej. retiro de dinero de prueba).")
+        valor = n(f.get("valor"))
+        mov_caja(tipo, valor, medio, f"Ajuste de caja: {motivo}"[:200], "ajuste", None, current_user.id)
+        db.session.commit()
+        flash(f"Ajuste registrado: {'salen' if tipo == 'egreso' else 'entran'} {pesos(round(valor))} en {medio.nombre}.", "ok")
+    except ErrorNegocio as e:
+        db.session.rollback()
+        errores_flash(e)
+    return redirect(url_for("caja"))
+
+
 @app.route("/caja/movimiento/<int:mid>/anular", methods=["POST"])
 @requiere("cajero")
 def caja_mov_anular(mid):
@@ -935,7 +961,7 @@ def caja_cerrar():
 def turnos():
     q = Turno.query.order_by(Turno.id.desc())
     if not current_user.puede("admin"):
-        q = q.filter(Turno.usuario_id == current_user.id)
+        q = q.filter(or_(Turno.usuario_id == current_user.id, Turno.cerrado_por_id == current_user.id))
     return render_template("turnos.html", turnos=q.limit(120).all())
 
 
@@ -943,7 +969,7 @@ def turnos():
 @requiere("cajero")
 def turno_detalle(tid):
     t = get_or_404(Turno, tid)
-    if not current_user.puede("admin") and t.usuario_id != current_user.id:
+    if not current_user.puede("admin") and current_user.id not in (t.usuario_id, t.cerrado_por_id):
         abort(404)
     r = resumen_turno(t)
     return render_template("turno_detalle.html", t=t, r=r, denoms=json.loads(t.denominaciones or "{}"),

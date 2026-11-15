@@ -74,7 +74,7 @@ CATEGORIAS_CAJA_MENOR = ["Transporte y domicilios", "Mensajería", "Aseo y cafet
 # cómo se llama cada salida de caja según su origen (para discriminar los egresos)
 CLASE_EGRESO = {"compra": "Pago a proveedor", "proveedor": "Pago a proveedor", "caja_menor": "Caja menor",
                 "gasto": "Gasto del negocio", "nomina": "Nómina", "devolucion": "Devolución a cliente",
-                "reverso": "Reversos", "manual": "Otras salidas"}
+                "reverso": "Reversos", "manual": "Otras salidas", "ajuste": "Ajuste de caja"}
 CATEGORIAS_GASTO = ["Arriendo", "Servicios públicos", "Internet y teléfono", "Transporte y domicilios",
                     "Publicidad", "Mantenimiento del local", "Papelería y empaques", "Impuestos",
                     "Contador", "Comisiones bancarias", "Otros"]
@@ -450,7 +450,7 @@ class MovCaja(db.Model):
         return self.origen in ORIGENES_REVERSIBLES and not self.revertido
 
 
-ORIGENES_REVERSIBLES = ("manual", "proveedor", "caja_menor")
+ORIGENES_REVERSIBLES = ("manual", "proveedor", "caja_menor", "ajuste")
 
 
 class Mensaje(db.Model):
