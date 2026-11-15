@@ -209,6 +209,13 @@ details summary { cursor: pointer; font-weight: 700; }
 .res .pr { text-align: right; font-family: var(--cond); font-size: 1.2rem; font-weight: 700; }
 .res .st { font-size: .78rem; text-align: right; }
 .cart { position: sticky; top: 14px; }
+.pos-barra { display: none; }
+.c-items { border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; margin: 8px 0 4px; max-height: 26vh; overflow-y: auto; font-size: .9rem; }
+.c-items .sum-row { gap: 10px; }
+.pos-toast { position: fixed; left: 50%; top: 16px; transform: translate(-50%, -20px); opacity: 0; pointer-events: none; z-index: 70;
+  background: var(--nav); color: #fff; padding: 10px 16px; border-radius: 10px; box-shadow: 0 10px 30px rgba(0, 0, 0, .25);
+  max-width: min(560px, 92vw); font-size: .92rem; transition: opacity .2s, transform .2s; border-left: 4px solid var(--accent); }
+.pos-toast.on { opacity: 1; transform: translate(-50%, 0); }
 .cart-items { max-height: 42vh; overflow-y: auto; margin: 0 -18px; padding: 0 18px; }
 .ci { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; padding: 9px 0; border-bottom: 1px dashed var(--line); }
 .ci .nm { font-weight: 700; font-size: .92rem; line-height: 1.2; }
@@ -234,6 +241,10 @@ details summary { cursor: pointer; font-weight: 700; }
 @media (max-width: 1100px) {
   .pos-wrap { grid-template-columns: 1fr; }
   .cart { position: static; }
+  .pos-barra { display: flex; align-items: center; gap: 10px; position: sticky; bottom: 10px; z-index: 15; margin-top: 12px;
+    background: var(--nav); color: #fff; padding: 10px 12px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, .25); }
+  .pos-barra span { flex: 1; font-size: .85rem; color: var(--nav-ink); }
+  .pos-barra b { font-family: var(--cond); font-size: 1.25rem; color: var(--accent); }
   .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 /* ventanas medianas (app instalada en el PC, portátiles con zoom): menú fijo y más compacto */

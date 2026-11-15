@@ -47,12 +47,20 @@
     </div>
   </aside>
 </div>
+<div class="pos-barra" id="pos-barra">
+  <span id="pb-info">Venta vacía</span>
+  <b id="pb-total">$ 0</b>
+  <button class="btn sec sm" id="pb-ver" type="button">Ver venta ↓</button>
+  <button class="btn sm" id="pb-cobrar" type="button">Cobrar</button>
+</div>
+<div class="pos-toast" id="pos-toast"></div>
 
 <!-- modal de cobro -->
 <div class="modal-bg" id="m-cobro">
   <div class="modal">
     <div class="card-head"><h2>Cobrar</h2><button class="btn ghost" type="button" data-cerrar>✕</button></div>
     <div class="cart-total" id="c-total" style="text-align:left"></div>
+    <div id="c-items" class="c-items"></div>
     <p class="muted" style="margin:2px 0 12px">Toca un medio para agregarlo. Puedes combinar efectivo y transferencia.</p>
     <div class="pay-grid">{% for m in medios %}<button type="button" class="pay-btn" data-medio="{{ m.id }}" data-tipo="{{ m.tipo }}" data-nombre="{{ m.nombre }}">{{ m.nombre }}</button>{% endfor %}</div>
     <div id="pagos"></div>
@@ -142,13 +150,28 @@ function pintarCarrito() {
   const t = totales();
   $('subtotal').textContent = COP(t.sub);
   $('total').textContent = COP(t.total);
+  const und = carrito.reduce((a, it) => a + it.cantidad, 0);
+  $('pb-info').textContent = carrito.length ? `${carrito.length} repuesto(s) · ${NUM(und)} und.` : 'Venta vacía';
+  $('pb-total').textContent = COP(t.total);
   guardarBorrador();
 }
-function agregar(p, cantidad = 1, precio = null) {
+let tToast;
+function aviso(txt) {
+  const el = $('pos-toast'); el.innerHTML = txt; el.classList.add('on');
+  clearTimeout(tToast); tToast = setTimeout(() => el.classList.remove('on'), 2200);
+}
+$('pb-ver').addEventListener('click', () => document.querySelector('.cart').scrollIntoView({ behavior: 'smooth', block: 'start' }));
+$('pb-cobrar').addEventListener('click', () => $('btn-cobrar').click());
+function agregar(p, cantidad = 1, precio = null, callado = false) {
   const ex = carrito.find(it => it.p.id === p.id);
   if (ex) ex.cantidad += cantidad;
   else carrito.unshift({ p, cantidad, precio: precio ?? precioLista(p), manual: precio !== null });
   pintarCarrito();
+  if (!callado) {
+    const it = ex || carrito[0];
+    aviso(ex ? `Ya estaba en la venta: <b>${esc(p.nombre)}</b> ahora va con <b>${NUM(it.cantidad)} unidades</b>. Cambia la cantidad en la venta.`
+             : `✓ Agregado: <b>${esc(p.nombre)}</b>. Para llevar más, cambia la cantidad en la venta.`);
+  }
 }
 $('carrito').addEventListener('click', e => {
   const b = e.target.closest('[data-d]');
@@ -284,6 +307,9 @@ function abrirCobro() {
   if (!carrito.length) { $('buscar').focus(); return; }
   const t = totales().total;
   $('c-total').textContent = COP(t);
+  $('c-items').innerHTML = carrito.map(it => `<div class="sum-row"><span><b>${NUM(it.cantidad)} ×</b> ${esc(it.p.nombre)}</span><span>${COP(it.cantidad * it.precio)}</span></div>`).join('')
+    + `<button type="button" class="btn ghost sm" id="c-editar" style="margin-top:4px">✎ Cambiar cantidades</button>`;
+  $('c-editar').onclick = () => { cerrar('m-cobro'); document.querySelector('.cart').scrollIntoView({ behavior: 'smooth', block: 'start' }); };
   pagos = []; $('c-err').innerHTML = ''; $('c-credito').checked = false;
   const ef = document.querySelector('.pay-btn[data-tipo=efectivo]');
   if (ef) pagos.push({ medio_id: Number(ef.dataset.medio), nombre: ef.dataset.nombre, tipo: 'efectivo', valor: t });
