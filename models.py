@@ -416,13 +416,19 @@ class MovCaja(db.Model):
     ref_id = db.Column(db.Integer)
     anulado = db.Column(db.Boolean, nullable=False, default=False)
     usuario_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
-    usuario = db.relationship("Usuario")
+    usuario = db.relationship("Usuario", foreign_keys=[usuario_id])
     # discriminación de egresos
     proveedor_id = db.Column(db.Integer, db.ForeignKey("ts_proveedores.id"))
     proveedor = db.relationship("Proveedor")
     categoria = db.Column(db.String(60))      # caja menor
     beneficiario = db.Column(db.String(120))  # quien recibe la plata (vale de caja menor)
     vale = db.Column(db.Integer)              # consecutivo del vale de caja menor
+    # reversión: quién, cuándo y por qué
+    revertido_por_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
+    revertido_por = db.relationship("Usuario", foreign_keys=[revertido_por_id])
+    revertido_fecha = db.Column(db.DateTime)
+    revertido_motivo = db.Column(db.String(200))
+    reverso_id = db.Column(db.Integer)        # movimiento contrario (si el turno ya estaba cerrado)
 
     @property
     def clase(self):
@@ -431,6 +437,34 @@ class MovCaja(db.Model):
     @property
     def folio_vale(self):
         return f"VCM-{self.vale:04d}" if self.vale else ""
+
+    @property
+    def revertido(self):
+        return bool(self.anulado or self.reverso_id)
+
+    @property
+    def reversible(self):
+        return self.origen in ORIGENES_REVERSIBLES and not self.revertido
+
+
+ORIGENES_REVERSIBLES = ("manual", "proveedor", "caja_menor")
+
+
+class Mensaje(db.Model):
+    """Bandeja del administrador: avisos de acciones sensibles (reversiones de caja, etc.)."""
+    __tablename__ = "ts_mensajes"
+    id = db.Column(db.Integer, primary_key=True)
+    fecha = db.Column(db.DateTime, nullable=False, default=ahora, index=True)
+    tipo = db.Column(db.String(30), nullable=False, default="aviso")
+    titulo = db.Column(db.String(160), nullable=False)
+    texto = db.Column(db.String(600))
+    url = db.Column(db.String(200))
+    autor_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
+    autor = db.relationship("Usuario", foreign_keys=[autor_id])
+    leido = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    leido_por_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
+    leido_por = db.relationship("Usuario", foreign_keys=[leido_por_id])
+    leido_fecha = db.Column(db.DateTime)
 
 
 class Compra(db.Model):

@@ -22,7 +22,7 @@ import nomina as nom
 import reportes as rpt
 from models import (CATEGORIAS_CAJA_MENOR, normalizar, DIAS, RESULTADOS_VISITA, Ruta, Visita, CargaMasiva, migrar, CATEGORIAS_GASTO, LISTAS_PRECIO, MOTIVOS_AJUSTE, ROLES, TIPOS_MEDIO, TIPOS_MOV,
                     TIPOS_PAGO_EMP, UNIDADES, Ajuste, Categoria, Cliente, Compra, Cotizacion,
-                    Empleado, Gasto, MedioPago, MovCaja, Movimiento, PagoNomina, Pedido, Producto,
+                    Empleado, Gasto, MedioPago, Mensaje, MovCaja, Movimiento, PagoNomina, Pedido, Producto,
                     Proveedor, Turno, Usuario, Venta, ahora, config, db, semilla)
 import services
 from services import (ErrorNegocio, abrir_turno, anular_ajuste, anular_compra, anular_mov_caja,
@@ -224,6 +224,8 @@ def contexto():
     if current_user.is_authenticated:
         extra["TURNO"] = turno_abierto()
         extra["PEDIDOS_PEND"] = Pedido.query.filter_by(estado="pendiente").count()
+        if current_user.puede("admin"):
+            extra["MENSAJES_PEND"] = Mensaje.query.filter_by(leido=False).count()
     return extra
 
 
@@ -757,17 +759,63 @@ def caja_movimiento():
 
 
 @app.route("/caja/movimiento/<int:mid>/anular", methods=["POST"])
-@requiere("admin")
+@requiere("cajero")
 def caja_mov_anular(mid):
+    """Reversión de un movimiento de caja. El admin y el cajero pueden hacerlo; si no es el
+    admin, queda un aviso en la bandeja de mensajes del administrador."""
     m = get_or_404(MovCaja, mid)
+    if not current_user.puede("admin") and m.turno and m.turno.usuario_id != current_user.id and not m.turno.abierto:
+        abort(404)
     try:
-        services.anular_egreso(m, current_user)
+        services.reversar_mov_caja(m, current_user, request.form.get("motivo"))
         db.session.commit()
-        flash("Movimiento anulado.", "ok")
+        msg = "Movimiento revertido."
+        if not current_user.puede("admin"):
+            msg += " Se le avisó al administrador."
+        flash(msg, "ok")
     except ErrorNegocio as e:
         db.session.rollback()
         errores_flash(e)
-    return redirect(url_for("caja"))
+    return redirect(request.form.get("volver") or url_for("caja"))
+
+
+# =============================================================== bandeja de mensajes (admin)
+@app.route("/mensajes")
+@requiere("admin")
+def mensajes():
+    ver = request.args.get("ver", "pendientes")
+    q = Mensaje.query
+    if ver == "pendientes":
+        q = q.filter_by(leido=False)
+    return render_template("mensajes.html", mensajes=q.order_by(Mensaje.fecha.desc()).limit(300).all(), ver=ver)
+
+
+@app.route("/mensajes/<int:mid>/leido", methods=["POST"])
+@requiere("admin")
+def mensaje_leido(mid):
+    m = get_or_404(Mensaje, mid)
+    if not m.leido:
+        m.leido, m.leido_por_id, m.leido_fecha = True, current_user.id, ahora()
+        db.session.commit()
+    return redirect(request.form.get("volver") or url_for("mensajes"))
+
+
+@app.route("/mensajes/leer-todos", methods=["POST"])
+@requiere("admin")
+def mensajes_leer_todos():
+    for m in Mensaje.query.filter_by(leido=False).all():
+        m.leido, m.leido_por_id, m.leido_fecha = True, current_user.id, ahora()
+    db.session.commit()
+    flash("Bandeja al día.", "ok")
+    return redirect(url_for("mensajes"))
+
+
+# =============================================================== cajón monedero
+@app.route("/cajon")
+@requiere("cajero")
+def cajon():
+    """Página mínima que se manda a la impresora de tickets para que el driver abra el cajón."""
+    return render_template("cajon.html")
 
 
 @app.route("/caja/vale/<int:mid>")

@@ -3,7 +3,7 @@
 {% block content %}
 <div class="page-head">
   <div><h1>Caja y cuadre</h1><p>Apertura con base, entradas y salidas de dinero, y cierre con arqueo.</p></div>
-  <a class="btn sec" href="{{ url_for('turnos') }}">Historial de cierres</a>
+  <div class="actions"><button type="button" class="btn sec" onclick="abrirCajon()">🔓 Abrir cajón</button><a class="btn sec" href="{{ url_for('turnos') }}">Historial de cierres</a></div>
 </div>
 {% if not t %}
 <div class="grid g2">
@@ -61,7 +61,7 @@
         <tbody>{% for m in r.movs|sort(attribute='fecha', reverse=true) %}
           <tr><td>{{ m.fecha.strftime('%I:%M %p') }}</td><td>{% if m.tipo == 'egreso' %}<span class="badge {{ 'warn' if m.origen == 'caja_menor' else ('blue' if m.origen in ('compra', 'proveedor') else '') }}">{{ m.clase }}</span> {% endif %}{{ m.concepto }}{% if m.vale %} · <a href="{{ url_for('caja_vale', mid=m.id) }}">{{ m.folio_vale }}</a>{% endif %}<br><small class="muted">{{ m.usuario.nombre if m.usuario else '' }}{% if m.beneficiario %} · recibió {{ m.beneficiario }}{% endif %}</small></td><td>{{ m.medio.nombre }}</td>
             <td class="num {{ 'pos' if m.tipo == 'ingreso' else 'neg' }}">{{ '+' if m.tipo == 'ingreso' else '−' }}{{ m.valor|pesos }}</td>
-            <td>{% if m.origen in ('manual', 'proveedor', 'caja_menor') and current_user.puede('admin') %}<form method="post" action="{{ url_for('caja_mov_anular', mid=m.id) }}" data-confirm="¿Anular este movimiento?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn ghost sm">✕</button></form>{% endif %}</td></tr>
+            <td>{% if m.reversible %}<form method="post" action="{{ url_for('caja_mov_anular', mid=m.id) }}" data-motivo="¿Por qué reviertes este movimiento de {{ m.valor|pesos }}?{% if not current_user.puede('admin') %} (Se le avisará al administrador){% endif %}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="motivo"><button class="btn ghost sm" title="Revertir movimiento">↺ Revertir</button></form>{% endif %}</td></tr>
         {% else %}<tr><td colspan="5" class="empty">Sin movimientos todavía.</td></tr>{% endfor %}</tbody>
       </table></div>
     </div>

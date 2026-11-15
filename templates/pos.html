@@ -16,7 +16,8 @@
 <div class="pos-wrap">
   <section>
     <div class="page-head" style="margin-bottom:10px">
-      <div><h1>Punto de venta</h1><p>Caja #{{ turno.numero }} · {{ turno.usuario.nombre }} · <span class="kbd">F1</span> buscar <span class="kbd">F2</span> cobrar <span class="kbd">↑↓</span> elegir <span class="kbd">Enter</span> agregar</p></div>
+      <div><h1>Punto de venta</h1><p>Caja #{{ turno.numero }} · {{ turno.usuario.nombre }} · <span class="kbd">F1</span> buscar <span class="kbd">F2</span> cobrar <span class="kbd">↑↓</span> elegir <span class="kbd">Enter</span> agregar <span class="kbd">F9</span> cajón</p></div>
+      <button type="button" class="btn sec sm" onclick="abrirCajon()" title="Abrir cajón monedero (F9)">🔓 Cajón</button>
       {% if precarga %}<span class="badge {{ 'blue' if precarga.tipo == 'pedido' else 'warn' }}" style="font-size:.9rem">{{ 'Pedido web' if precarga.tipo == 'pedido' else 'Cotización' }} {{ precarga.folio }}</span>{% endif %}
     </div>
     <div class="pos-search"><input id="buscar" class="input" placeholder="Código, código de barras, nombre, marca o moto (ej. pastillas pulsar)" autocomplete="off" autofocus></div>
@@ -86,7 +87,9 @@
       <a class="btn dark" id="ok-ticket" target="_blank">🖨 Imprimir ticket</a>
       <a class="btn sec" id="ok-wa" target="_blank">WhatsApp</a>
       <a class="btn sec" id="ok-detalle">Ver venta</a>
+      <button type="button" class="btn sec" onclick="abrirCajon()">🔓 Cajón</button>
     </div>
+    <label class="check" style="justify-content:center;margin-top:10px"><input type="checkbox" id="auto-print"> Imprimir el recibo automáticamente en este equipo</label>
     <button class="btn lg" style="width:100%;margin-top:16px" id="ok-nueva" type="button">Nueva venta (Enter)</button>
   </div>
 </div>
@@ -372,12 +375,18 @@ $('c-confirmar').addEventListener('click', async () => {
   $('ok-folio').textContent = 'Venta ' + j.folio;
   $('ok-cambio').innerHTML = j.cambio > 0 ? 'Cambio: ' + COP(j.cambio) : 'Total ' + COP(j.total);
   $('ok-saldo').textContent = j.saldo > 0 ? 'Quedó a crédito: ' + COP(j.saldo) : '';
-  $('ok-ticket').href = j.ticket + '?imprimir=1';
+  $('ok-ticket').href = j.ticket;
+  if (autoPrint()) imprimirEnIframe(j.ticket);
   $('ok-detalle').href = j.detalle;
   $('ok-wa').style.display = j.whatsapp ? '' : 'none'; $('ok-wa').href = j.whatsapp || '#';
   limpiar(true);
   abrir('m-ok'); $('ok-nueva').focus();
 });
+// impresión del recibo en la impresora de tickets del equipo (se recuerda por equipo)
+const autoPrint = () => { try { return localStorage.getItem('ms_auto_print') === '1'; } catch (e) { return false; } };
+$('auto-print').checked = autoPrint();
+$('auto-print').addEventListener('change', e => { try { localStorage.setItem('ms_auto_print', e.target.checked ? '1' : '0'); } catch (er) {} });
+$('ok-ticket').addEventListener('click', e => { if (e.ctrlKey || e.metaKey) return; e.preventDefault(); imprimirEnIframe($('ok-ticket').href); });
 $('ok-nueva').addEventListener('click', () => { cerrar('m-ok'); if (PRECARGA) location.href = '{{ url_for('pos') }}'; else $('buscar').focus(); });
 $('btn-cobrar').addEventListener('click', abrirCobro);
 $('btn-cotizar').addEventListener('click', async () => {
@@ -395,6 +404,7 @@ function limpiar(silencioso) {
 document.addEventListener('keydown', e => {
   if (e.key === 'F1') { e.preventDefault(); $('buscar').focus(); $('buscar').select(); }
   if (e.key === 'F2') { e.preventDefault(); if (!$('m-cobro').classList.contains('on')) abrirCobro(); else $('c-confirmar').click(); }
+  if (e.key === 'F9') { e.preventDefault(); abrirCajon(); }
   if (e.key === 'Escape') document.querySelectorAll('.modal-bg.on').forEach(m => m.classList.remove('on'));
 });
 

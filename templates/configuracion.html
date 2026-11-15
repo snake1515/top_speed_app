@@ -20,7 +20,9 @@ document.getElementById('gps').addEventListener('click', e => { const b = e.targ
       <div style="display:flex;gap:6px"><input class="input" name="ubicacion" id="ubic" value="{{ ('%.6f, %.6f'|format(cfg.lat, cfg.lng)) if cfg.lat is not none else '' }}" placeholder="7.889100, -72.496700"><button type="button" class="btn sec" id="gps">📍 Estoy aquí</button></div></div>
     <div class="field"><label>Mensaje al pie del recibo</label><input class="input" name="mensaje_recibo" value="{{ cfg.mensaje_recibo or '' }}"></div>
     <div class="form-row">
-      <div class="field"><label>Impresora de tickets</label><select class="input" name="ancho_ticket"><option value="80" {{ 'selected' if cfg.ancho_ticket == 80 }}>80 mm</option><option value="58" {{ 'selected' if cfg.ancho_ticket == 58 }}>58 mm</option></select></div>
+      <div class="field"><label>Impresora de tickets</label><select class="input" name="ancho_ticket"><option value="80" {{ 'selected' if cfg.ancho_ticket == 80 }}>80 mm</option><option value="58" {{ 'selected' if cfg.ancho_ticket == 58 }}>58 mm</option></select>
+        <div class="hint">Mide el rollo: 8 cm = 80 mm, 5,7 cm = 58 mm. Para que el recibo salga directo sin preguntar, abre la app con <code>--kiosk-printing</code>; para que el cajón abra, actívalo en las propiedades del driver de la impresora.
+          <button type="button" class="btn ghost sm" onclick="abrirCajon()">🔓 Probar cajón</button></div></div>
       <div class="field"><label>Logo</label><input class="input" type="file" name="logo" accept="image/*">{% if cfg.logo_v %}<label class="check" style="margin-top:6px"><input type="checkbox" name="quitar_logo" value="1"> Quitar logo</label>{% endif %}</div>
     </div>
     <button class="btn">Guardar</button>

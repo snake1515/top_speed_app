@@ -38,9 +38,10 @@
 <div class="card">
   <h2 style="margin-bottom:8px">Movimientos</h2>
   <div class="table-wrap"><table>
-    <thead><tr><th>Hora</th><th>Concepto</th><th>Medio</th><th>Usuario</th><th class="num">Valor</th></tr></thead>
-    <tbody>{% for m in r.movs|sort(attribute='fecha') %}<tr><td>{{ m.fecha|fh }}</td><td>{% if m.tipo == 'egreso' %}<small class="muted">{{ m.clase }} ·</small> {% endif %}{{ m.concepto }}{% if m.vale %} · <a href="{{ url_for('caja_vale', mid=m.id) }}">{{ m.folio_vale }}</a>{% endif %}</td><td>{{ m.medio.nombre }}</td><td>{{ m.usuario.nombre if m.usuario else '' }}</td>
-      <td class="num {{ 'pos' if m.tipo == 'ingreso' else 'neg' }}">{{ '+' if m.tipo == 'ingreso' else '−' }}{{ m.valor|pesos }}</td></tr>{% endfor %}</tbody>
+    <thead><tr><th>Hora</th><th>Concepto</th><th>Medio</th><th>Usuario</th><th class="num">Valor</th><th></th></tr></thead>
+    <tbody>{% for m in r.movs|sort(attribute='fecha') %}<tr><td>{{ m.fecha|fh }}</td><td>{% if m.tipo == 'egreso' %}<small class="muted">{{ m.clase }} ·</small> {% endif %}{{ m.concepto }}{% if m.vale %} · <a href="{{ url_for('caja_vale', mid=m.id) }}">{{ m.folio_vale }}</a>{% endif %}{% if m.revertido %}<br><span class="badge warn">Revertido</span> <small class="muted">{{ m.revertido_por.nombre if m.revertido_por else '' }} · {{ m.revertido_fecha|fh if m.revertido_fecha else '' }} · {{ m.revertido_motivo or '' }}</small>{% endif %}</td><td>{{ m.medio.nombre }}</td><td>{{ m.usuario.nombre if m.usuario else '' }}</td>
+      <td class="num {{ 'pos' if m.tipo == 'ingreso' else 'neg' }}">{{ '+' if m.tipo == 'ingreso' else '−' }}{{ m.valor|pesos }}</td>
+      <td>{% if m.reversible %}<form method="post" action="{{ url_for('caja_mov_anular', mid=m.id) }}" data-motivo="Esta caja ya está cerrada: se registrará el movimiento contrario en la caja abierta. ¿Por qué reviertes este movimiento de {{ m.valor|pesos }}?{% if not current_user.puede('admin') %} (Se le avisará al administrador){% endif %}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="motivo"><input type="hidden" name="volver" value="{{ url_for('turno_detalle', tid=t.id) }}"><button class="btn ghost sm">↺ Revertir</button></form>{% endif %}</td></tr>{% endfor %}</tbody>
   </table></div>
 </div>
 {% endblock %}

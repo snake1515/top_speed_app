@@ -9,7 +9,7 @@ import secrets
 from datetime import timedelta
 
 from models import (CATEGORIAS_CAJA_MENOR, CLASE_EGRESO, Gasto, RESULTADOS_VISITA, Visita, MOTIVOS_AJUSTE, Ajuste, AjusteItem, Cliente, Compra, CompraItem, Cotizacion,
-                    Devolucion, MedioPago, MovCaja, Movimiento, PagoCompra, PagoVenta, Pedido,
+                    Devolucion, MedioPago, Mensaje, MovCaja, ORIGENES_REVERSIBLES, Movimiento, PagoCompra, PagoVenta, Pedido,
                     PedidoItem, Producto, Turno, Venta, VentaItem, ahora, config, db, siguiente)
 
 TOL = 1e-6
@@ -242,17 +242,53 @@ def egreso_caja(usuario, clase, valor, medio, concepto, proveedor=None, compra=N
     raise ErrorNegocio("Elige el tipo de salida: pago a proveedor, caja menor u otra.")
 
 
-def anular_egreso(m, usuario):
-    if m.anulado:
-        raise ErrorNegocio("Ese movimiento ya estaba anulado.")
-    if m.origen not in ("manual", "proveedor", "caja_menor") or not m.turno or not m.turno.abierto:
-        raise ErrorNegocio("Aquí solo se anulan entradas y salidas manuales, pagos a proveedor sin compra y caja menor "
-                           "de la caja abierta. Los pagos de compras se anulan desde la compra.")
-    m.anulado = True
+def reversar_mov_caja(m, usuario, motivo):
+    """Revierte una entrada/salida manual, un pago a proveedor sin compra o un gasto de caja menor.
+
+    - Si su caja sigue abierta, el movimiento se anula (deja de contar en el cuadre).
+    - Si su caja ya cerró, se registra el movimiento contrario en la caja abierta, para no
+      alterar un cierre ya cuadrado.
+    Si lo hace alguien que no es administrador, queda un aviso sin leer en la bandeja del admin.
+    """
+    motivo = (motivo or "").strip()
+    if m.revertido:
+        raise ErrorNegocio("Ese movimiento ya fue revertido.")
+    if m.origen == "reverso":
+        raise ErrorNegocio("Ese movimiento ya es un reverso; no se puede revertir de nuevo.")
+    if m.origen not in ORIGENES_REVERSIBLES:
+        raise ErrorNegocio("Aquí se revierten entradas y salidas manuales, pagos a proveedor sin compra y caja menor. "
+                           "El dinero de ventas, abonos, compras, devoluciones y gastos se revierte anulando ese documento.")
+    if len(motivo) < 5:
+        raise ErrorNegocio("Escribe el motivo de la reversión (mínimo 5 letras).")
+    abierta = bool(m.turno and m.turno.abierto)
+    if abierta:
+        m.anulado = True
+    else:
+        contrario = "egreso" if m.tipo == "ingreso" else "ingreso"
+        r = mov_caja(contrario, m.valor, m.medio, f"Reverso: {m.concepto}"[:200], "reverso", m.id, usuario.id)
+        m.reverso_id = r.id
+    m.revertido_por_id = usuario.id
+    m.revertido_fecha = ahora()
+    m.revertido_motivo = motivo[:200]
     if m.origen == "caja_menor" and m.ref_id:
         g = db.session.get(Gasto, m.ref_id)
         if g:
             g.anulado = True
+    signo = "+" if m.tipo == "ingreso" else "−"
+    caja = f"caja #{m.turno.numero}" if m.turno else "caja"
+    db.session.add(Mensaje(
+        tipo="reverso_caja",
+        titulo=f"{usuario.nombre} revirtió {signo}{pesos(m.valor)} en {caja}",
+        texto=(f"Movimiento: {m.concepto} · {m.medio.nombre} · {m.fecha.strftime('%d/%m/%Y %I:%M %p')}\n"
+               f"Motivo: {motivo}\n"
+               + ("Se anuló dentro de la caja abierta." if abierta
+                  else "La caja ya estaba cerrada: se registró el movimiento contrario en la caja abierta."))[:600],
+        url=f"/caja/turno/{m.turno_id}" if m.turno_id else "/caja",
+        autor_id=usuario.id,
+        leido=usuario.rol == "admin",  # lo que hace el propio admin queda como historial, ya leído
+        leido_por_id=usuario.id if usuario.rol == "admin" else None,
+    ))
+    return m
 
 
 def cerrar_turno(t, usuario, contado, denominaciones, nota=""):

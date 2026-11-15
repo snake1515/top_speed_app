@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Mensajes{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Bandeja de mensajes</h1><p>Avisos de lo que hacen los usuarios y requiere tu revisión, como las reversiones de caja.</p></div>
+  {% if ver == 'pendientes' and mensajes %}<form method="post" action="{{ url_for('mensajes_leer_todos') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn sec">✔ Marcar todos como leídos</button></form>{% endif %}
+</div>
+<div class="tabs">
+  <a href="{{ url_for('mensajes', ver='pendientes') }}" class="{{ 'on' if ver == 'pendientes' }}">Sin leer{% if MENSAJES_PEND %} ({{ MENSAJES_PEND }}){% endif %}</a>
+  <a href="{{ url_for('mensajes', ver='todos') }}" class="{{ 'on' if ver != 'pendientes' }}">Todos</a>
+</div>
+{% for m in mensajes %}
+<div class="card" style="{{ '' if m.leido else 'border-left:4px solid var(--red)' }}">
+  <div class="card-head">
+    <h2 style="font-size:1.05rem">{% if not m.leido %}<span class="badge red">Nuevo</span> {% endif %}{{ m.titulo }}</h2>
+    <span class="muted">{{ m.fecha|fh }}</span>
+  </div>
+  <div style="white-space:pre-line">{{ m.texto or '' }}</div>
+  <div class="actions" style="margin-top:10px;align-items:center">
+    {% if m.url %}<a class="btn sec sm" href="{{ m.url }}">Ver caja</a>{% endif %}
+    {% if not m.leido %}<form method="post" action="{{ url_for('mensaje_leido', mid=m.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="volver" value="{{ request.full_path }}"><button class="btn sm">✔ Leído</button></form>
+    {% else %}<small class="muted">Leído{% if m.leido_por %} por {{ m.leido_por.nombre }}{% endif %}{% if m.leido_fecha %} · {{ m.leido_fecha|fh }}{% endif %}</small>{% endif %}
+  </div>
+</div>
+{% else %}
+<div class="card"><p class="empty">{{ 'No tienes mensajes sin leer.' if ver == 'pendientes' else 'Aún no hay mensajes.' }}</p></div>
+{% endfor %}
+{% endblock %}

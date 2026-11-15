@@ -39,6 +39,7 @@
       {% if current_user.puede('admin') %}
       <div class="nav-sep">Negocio</div>
       <a href="{{ url_for('panel') }}" class="{{ 'on' if ep == 'panel' }}"><span class="ico">◧</span>Resumen</a>
+      <a href="{{ url_for('mensajes') }}" class="{{ 'on' if ep == 'mensajes' }}"><span class="ico">✉</span>Mensajes{% if MENSAJES_PEND %}<span class="cnt">{{ MENSAJES_PEND }}</span>{% endif %}</a>
       <a href="{{ url_for('reportes') }}" class="{{ 'on' if ep.startswith('reportes') }}"><span class="ico">▤</span>Reportes</a>
       {% endif %}
       {% if current_user.puede('cajero') %}
@@ -114,6 +115,27 @@
     let j = {}; try { j = await r.json(); } catch (e) { j = { ok: false, errores: ['Error de conexión. Intenta de nuevo.'] }; }
     return j;
   }
+  // pide el motivo antes de enviar: <form data-motivo="¿Por qué…?"> con <input type="hidden" name="motivo">
+  document.addEventListener('submit', e => {
+    const f = e.target, msg = f.dataset.motivo; if (!msg) return;
+    const r = prompt(msg);
+    if (r === null) { e.preventDefault(); return; }
+    if (r.trim().length < 5) { e.preventDefault(); alert('Escribe el motivo (mínimo 5 letras).'); return; }
+    f.elements.motivo.value = r.trim();
+  });
+  // impresión directa en la impresora de tickets (sin abrir otra pestaña).
+  // Con Chrome abierto con --kiosk-printing sale sin preguntar a la impresora predeterminada.
+  function imprimirEnIframe(url) {
+    let fr = document.getElementById('frame-impresion');
+    if (fr) fr.remove();
+    fr = document.createElement('iframe');
+    fr.id = 'frame-impresion';
+    fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
+    fr.src = url + (url.includes('?') ? '&' : '?') + 'imprimir=1';
+    document.body.appendChild(fr);
+  }
+  // el cajón se abre cuando el driver de la impresora recibe un trabajo (ver Configuración → Impresora)
+  function abrirCajon() { imprimirEnIframe('{{ url_for('cajon') }}'); }
   // confirmación para formularios peligrosos: <form data-confirm="¿Seguro?">
   document.addEventListener('submit', e => { const m = e.target.dataset.confirm; if (m && !confirm(m)) e.preventDefault(); });
   // evita doble envío
