@@ -110,7 +110,7 @@ function parsearCSV(texto) {
   return {enc, filas: salida};
 }
 function clave(t) { return t.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[*%]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''); }
-const ALIAS_COD = ['codigo', 'cod', 'codigo_interno', 'sku', 'procodigo'];
+const ALIAS_COD = ['codigo', 'cod', 'codigo_proveedor', 'sku', 'procodigo'];
 
 function avance(p, txt) { $('barra').style.width = p + '%'; $('pct').textContent = p + '%'; if (txt) $('etiqueta').textContent = txt; }
 

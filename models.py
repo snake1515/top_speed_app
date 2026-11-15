@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 
 from flask_login import UserMixin
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import event
+from sqlalchemy import event, or_
 from sqlalchemy.orm import deferred
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -165,6 +165,7 @@ class Config(db.Model):
     sig_ajuste = db.Column(db.Integer, nullable=False, default=1)
     sig_carga = db.Column(db.Integer, nullable=False, default=1)
     sig_vale = db.Column(db.Integer, nullable=False, default=1)
+    sig_cod_interno = db.Column(db.Integer, nullable=False, default=0)  # el primero es 0000
 
 
 class MedioPago(db.Model):
@@ -232,13 +233,15 @@ class Producto(db.Model):
     imagen_v = db.Column(db.Integer, nullable=False, default=0)
     creado = db.Column(db.DateTime, default=ahora)
     busqueda = db.Column(db.Text)  # texto sin tildes para buscar (se llena solo)
+    # Código interno de inventario de Moto Speed (0001, 0002…). Se asigna solo al crear el repuesto.
+    codigo_interno = db.Column(db.String(20), index=True)
     # Bodega virtual: se vende como si hubiera, pero no hay unidades físicas. Usa un costo virtual
     # hasta que se compre de verdad; ahí pasa al inventario real con costo promedio.
     virtual = db.Column(db.Boolean, nullable=False, default=False)
     costo_virtual = db.Column(db.Float, nullable=False, default=0)
 
     def actualizar_busqueda(self):
-        self.busqueda = normalizar(" ".join(str(x) for x in (self.codigo, self.codigo_barras, self.nombre, self.marca,
+        self.busqueda = normalizar(" ".join(str(x) for x in (self.codigo_interno, self.codigo, self.codigo_barras, self.nombre, self.marca,
                                                              self.referencia, self.compatibilidad, self.ubicacion) if x))
 
     def precio(self, lista="detal"):
@@ -919,6 +922,24 @@ def siguiente(campo):
     return n
 
 
+def formato_codigo_interno(n):
+    return f"{n:04d}"
+
+
+def asignar_codigo_interno(p):
+    """Le da al repuesto el siguiente código interno si no tiene (0001, 0002…)."""
+    if not (p.codigo_interno or "").strip():
+        while True:
+            c = db.session.query(Config).filter_by(id=1).with_for_update().one()
+            n = c.sig_cod_interno or 0
+            c.sig_cod_interno = n + 1
+            cod = formato_codigo_interno(n)
+            if not Producto.query.filter(Producto.codigo_interno == cod, Producto.id != p.id).first():
+                break
+        p.codigo_interno = cod
+    return p.codigo_interno
+
+
 def semilla():
     """Datos mínimos al instalar: configuración, efectivo y transferencias comunes, categorías."""
     cfg = config()
@@ -936,6 +957,12 @@ def semilla():
             db.session.add(Categoria(nombre=nom))
     for p in Producto.query.filter(Producto.busqueda.is_(None)).all():
         p.actualizar_busqueda()
+    # repuestos que se crearon antes de existir el código interno: se numeran en el orden en que se crearon
+    with db.session.no_autoflush:
+        for p in Producto.query.filter(or_(Producto.codigo_interno.is_(None), Producto.codigo_interno == "")) \
+                .order_by(Producto.id).all():
+            asignar_codigo_interno(p)
+            db.session.flush()
     db.session.commit()
 
 

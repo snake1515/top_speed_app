@@ -10,7 +10,7 @@
   <div class="table-wrap"><table>
     <thead><tr><th>Código</th><th>Repuesto</th><th class="num">Unidades</th><th class="num">Ventas</th>{% if current_user.ve_costos %}<th class="num">Costo estimado</th>{% endif %}<th></th></tr></thead>
     <tbody>{% for r in resumen %}<tr>
-      <td class="mono">{{ r.p.codigo }}</td><td><a href="{{ url_for('producto_detalle', pid=r.p.id) }}">{{ r.p.nombre }}</a></td>
+      <td class="mono"><b>{{ r.p.codigo_interno or '' }}</b> {{ r.p.codigo }}</td><td><a href="{{ url_for('producto_detalle', pid=r.p.id) }}">{{ r.p.nombre }}</a></td>
       <td class="num"><b>{{ r.cantidad|cant }}</b></td><td class="num">{{ r.ventas }}</td>
       {% if current_user.ve_costos %}<td class="num">{{ r.costo|pesos }}</td>{% endif %}
       <td>{% if current_user.puede('bodega') %}<a class="btn sm sec" href="{{ url_for('compra_nueva', p=r.p.id) }}">Comprar</a>{% endif %}</td></tr>{% endfor %}</tbody>

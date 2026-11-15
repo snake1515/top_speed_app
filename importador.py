@@ -14,11 +14,12 @@ import unicodedata
 
 from sqlalchemy.exc import IntegrityError
 
-from models import CargaLote, CargaMasiva, Categoria, Producto, config, db, letra_lote, siguiente
+from models import CargaLote, CargaMasiva, Categoria, Config, Producto, config, db, formato_codigo_interno, letra_lote, siguiente
 from services import ErrorNegocio, entrada
 
 COLUMNAS = [
-    ("codigo", "Código *", "Código interno único (ej. PAST-PUL180)"),
+    ("codigo_interno", "Código interno", "Déjalo vacío: la app asigna el consecutivo 0001, 0002…"),
+    ("codigo", "Código *", "Código del proveedor o de fábrica, único (ej. JKM300244)"),
     ("nombre", "Nombre *", "Ej. Pastillas de freno delanteras"),
     ("categoria", "Categoría", "Se crea si no existe"),
     ("marca", "Marca", "Marca del repuesto"),
@@ -54,7 +55,7 @@ def plantilla():
         if COLUMNAS[i][2]:
             c.comment = Comment(COLUMNAS[i][2], "Moto Speed")
         ws.column_dimensions[c.column_letter].width = 20
-    ws.append(["EJEMPLO-001", "Kit de arrastre 428 (borrar esta fila)", "Transmisión (kit de arrastre)", "Riffel",
+    ws.append(["", "EJEMPLO-001", "Kit de arrastre 428 (borrar esta fila)", "Transmisión (kit de arrastre)", "Riffel",
                "KA-428", "Boxer 100, CT 100", "E2-C3", "", "kit", 3, 85000, 129000, 115000, 120000, 2, 0, "SI", "NO"])
     ws.freeze_panes = "A2"
     buf = BytesIO()
@@ -90,7 +91,8 @@ TAM_LOTE = 200
 
 # Nombres de columna aceptados (se comparan sin tildes, sin mayúsculas, sin «*»).
 ALIAS = {
-    "codigo": ["codigo", "cod", "codigo_interno", "sku", "procodigo"],
+    "codigo": ["codigo", "cod", "codigo_proveedor", "sku", "procodigo"],
+    "codigo_interno": ["codigo_interno", "cod_interno", "codigo_inventario", "interno"],
     "nombre": ["nombre", "descripcion", "producto", "nombre_del_producto"],
     "categoria": ["categoria", "grupo", "linea"],
     "marca": ["marca"],
@@ -150,7 +152,7 @@ def normalizar_fila(fila):
 
 def plantilla_csv():
     enc = [c[0] for c in COLUMNAS]
-    ej = ["EJEMPLO-001", "Kit de arrastre 428 (borrar esta fila)", "Transmisión (kit de arrastre)", "Riffel",
+    ej = ["", "EJEMPLO-001", "Kit de arrastre 428 (borrar esta fila)", "Transmisión (kit de arrastre)", "Riffel",
           "KA-428", "Boxer 100, CT 100", "E2-C3", "", "kit", "3", "85000", "129000", "115000", "120000", "2", "0",
           "SI", "NO"]
     texto = ";".join(enc) + "\r\n" + ";".join(f'"{x}"' if "," in x or ";" in x else x for x in ej) + "\r\n"
@@ -231,19 +233,51 @@ def _validar(d, existe):
                        (("marca", 80), ("referencia", 80), ("compatibilidad", 400), ("ubicacion", 60),
                         ("unidad", 20)) if d.get(k, "").strip()},
              "codigo_barras": d.get("codigo_barras", "").strip().removesuffix(".0")[:60],
-             "en_tienda": d.get("en_tienda", "").strip().upper(), "virtual": virtual}
+             "en_tienda": d.get("en_tienda", "").strip().upper(), "virtual": virtual,
+             "codigo_interno": d.get("codigo_interno", "").strip().removesuffix(".0")[:20]}
     if datos["texto"].get("unidad"):
         datos["texto"]["unidad"] = datos["texto"]["unidad"].lower()
     return datos, None
 
 
-def _aplicar(datos, p, cats, carga, doc_lote, usuario_id):
+class _CodigosInternos:
+    """Reparte códigos internos consecutivos (0000, 0001…) para un lote sin una consulta por fila."""
+
+    def __init__(self):
+        with db.session.no_autoflush:
+            self.usados = {c for (c,) in db.session.query(Producto.codigo_interno)
+                           .filter(Producto.codigo_interno.isnot(None)).all()}
+        self.cfg = None
+
+    def tomar(self, p, pedido=""):
+        if pedido:
+            if pedido in self.usados and pedido != (p.codigo_interno or ""):
+                raise ErrorNegocio(f"El código interno {pedido} ya lo tiene otro repuesto")
+            self.usados.discard(p.codigo_interno)
+            p.codigo_interno = pedido
+            self.usados.add(pedido)
+            return
+        if (p.codigo_interno or "").strip():
+            return
+        if self.cfg is None:  # (se llama dentro de no_autoflush)
+            self.cfg = db.session.query(Config).filter_by(id=1).with_for_update().one()
+        n = self.cfg.sig_cod_interno or 0
+        while formato_codigo_interno(n) in self.usados:
+            n += 1
+        p.codigo_interno = formato_codigo_interno(n)
+        self.usados.add(p.codigo_interno)
+        self.cfg.sig_cod_interno = n + 1
+
+
+def _aplicar(datos, p, cats, carga, doc_lote, usuario_id, internos=None):
     """Crea o actualiza el repuesto. Devuelve True si es nuevo."""
     nuevo = p is None
     if nuevo:
         p = Producto(codigo=datos["codigo"], stock=0, costo_promedio=0, unidad="unidad",
                      precio_mayor=0, precio_taller=0, stock_minimo=0, iva_pct=0, en_tienda=True)
         db.session.add(p)
+    with db.session.no_autoflush:
+        (internos or _CodigosInternos()).tomar(p, datos.get("codigo_interno", ""))
     if datos["nombre"]:
         p.nombre = datos["nombre"]
     if datos["categoria"]:
@@ -320,10 +354,12 @@ def procesar_lote(carga, filas, indice, usuario_id):
             preparados.append((f, datos))
 
     creados = actualizados = 0
+    internos = _CodigosInternos()
     try:
         with db.session.begin_nested():
             for f, datos in preparados:
-                if _aplicar(datos, existentes.get(datos["codigo"].lower()), cats, carga, doc_lote, usuario_id):
+                if _aplicar(datos, existentes.get(datos["codigo"].lower()), cats, carga, doc_lote, usuario_id,
+                            internos):
                     creados += 1
                 else:
                     actualizados += 1
@@ -332,11 +368,12 @@ def procesar_lote(carga, filas, indice, usuario_id):
         # Algo chocó (otra carga al mismo tiempo, etc.): se reintenta fila por fila.
         creados = actualizados = 0
         cats = {c.nombre.lower(): c for c in Categoria.query.all()}
+        internos = _CodigosInternos()
         for f, datos in preparados:
             p = Producto.query.filter(db.func.lower(Producto.codigo) == datos["codigo"].lower()).first()
             try:
                 with db.session.begin_nested():
-                    if _aplicar(datos, p, cats, carga, doc_lote, usuario_id):
+                    if _aplicar(datos, p, cats, carga, doc_lote, usuario_id, internos):
                         creados += 1
                     else:
                         actualizados += 1

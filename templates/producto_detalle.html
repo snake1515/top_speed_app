@@ -4,7 +4,7 @@
 <div class="page-head">
   <div style="display:flex;gap:14px;align-items:center">
     <img class="thumb" style="width:72px;height:72px" src="{{ url_for('img_producto', pid=p.id, v=p.imagen_v) if p.imagen_v else url_for('static', filename='sin-foto.svg') }}" alt="">
-    <div><h1>{{ p.nombre }}</h1><p><span class="mono">{{ p.codigo }}</span>{% if p.codigo_barras %} · <span class="mono">{{ p.codigo_barras }}</span>{% endif %} · {{ p.categoria.nombre if p.categoria else 'Sin categoría' }}{% if p.marca %} · {{ p.marca }}{% endif %}
+    <div><h1>{{ p.nombre }}</h1><p>{% if p.codigo_interno %}<b class="mono">Cód. {{ p.codigo_interno }}</b> · {% endif %}<span class="mono">{{ p.codigo }}</span>{% if p.codigo_barras %} · <span class="mono">{{ p.codigo_barras }}</span>{% endif %} · {{ p.categoria.nombre if p.categoria else 'Sin categoría' }}{% if p.marca %} · {{ p.marca }}{% endif %}
       {% if not p.activo %}<span class="badge err">Inactivo</span>{% endif %}{% if p.en_tienda %} <span class="badge blue">En tienda</span>{% endif %}{% if p.virtual %} <span class="badge warn">Bodega virtual</span>{% endif %}</p></div>
   </div>
   {% if current_user.puede('bodega') %}<div class="actions">

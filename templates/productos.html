@@ -23,7 +23,7 @@
   <thead><tr><th></th><th>Código</th><th>Repuesto</th><th>Ubicación</th><th class="num">Stock</th>{% if current_user.ve_costos %}<th class="num">Costo prom.</th>{% endif %}<th class="num">Detal</th><th class="num">Mayor</th><th class="num">Taller</th>{% if current_user.ve_costos %}<th class="num">Margen</th>{% endif %}</tr></thead>
   <tbody>{% for p in productos %}<tr class="clic" onclick="location.href='{{ url_for('producto_detalle', pid=p.id) }}'">
     <td><img class="thumb" src="{{ url_for('img_producto', pid=p.id, v=p.imagen_v) if p.imagen_v else url_for('static', filename='sin-foto.svg') }}" alt="" loading="lazy"></td>
-    <td class="mono">{{ p.codigo }}</td>
+    <td class="mono"><b>{{ p.codigo_interno or '' }}</b>{% if p.codigo != p.codigo_interno %}<br><small class="muted">{{ p.codigo }}</small>{% endif %}</td>
     <td><a href="{{ url_for('producto_detalle', pid=p.id) }}"><b>{{ p.nombre }}</b></a>{% if p.virtual %} <span class="badge blue">Virtual</span>{% endif %}<br><small class="muted">{{ p.marca or '' }}{% if p.compatibilidad %} · 🏍 {{ p.compatibilidad|truncate(60) }}{% endif %}</small></td>
     <td>{{ p.ubicacion or '' }}</td>
     <td class="num">{% if p.virtual %}<span class="muted">virtual</span>{% else %}<b class="{{ 'neg' if p.stock <= 0 else ('' if not p.bajo_minimo else 'neg') }}">{{ p.stock|cant }}</b>{% endif %}{% if p.bajo_minimo %} <span class="badge err">mín {{ p.stock_minimo|cant }}</span>{% endif %}{% if reservado.get(p.id) %}<br><small class="muted">{{ reservado[p.id]|cant }} apartado(s)</small>{% endif %}</td>

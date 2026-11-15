@@ -11,7 +11,10 @@
       <div class="card">
         <h2 style="margin-bottom:12px">Datos del repuesto</h2>
         <div class="form-row">
-          <div class="field"><label>Código interno *</label><input class="input mono" name="codigo" value="{{ v('codigo') }}" required placeholder="ej. PAST-PUL180-D"></div>
+          <div class="field"><label>Código interno</label><input class="input mono" name="codigo_interno" value="{{ v('codigo_interno') }}" placeholder="{{ 'Se asigna solo (0001, 0002…)' if not p.id else '' }}"><div class="hint">Nuestro código de inventario. Déjalo vacío y la app pone el consecutivo.</div></div>
+          <div class="field"><label>Código proveedor / fábrica</label><input class="input mono" name="codigo" value="{{ v('codigo') }}" placeholder="ej. JKM300244"></div>
+          </div>
+        <div class="form-row">
           <div class="field"><label>Código de barras</label><input class="input mono" name="codigo_barras" value="{{ v('codigo_barras') }}" placeholder="Escanéalo aquí"></div>
         </div>
         <div class="field"><label>Nombre *</label><input class="input" name="nombre" value="{{ v('nombre') }}" required placeholder="ej. Pastillas de freno delanteras"></div>

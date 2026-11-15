@@ -20,7 +20,7 @@ from sqlalchemy.exc import IntegrityError
 import importador
 import nomina as nom
 import reportes as rpt
-from models import (CATEGORIAS_CAJA_MENOR, normalizar, DIAS, RESULTADOS_VISITA, Ruta, Visita, CargaMasiva, migrar, CATEGORIAS_GASTO, LISTAS_PRECIO, MOTIVOS_AJUSTE, ROLES, TIPOS_MEDIO, TIPOS_MOV,
+from models import (CATEGORIAS_CAJA_MENOR, asignar_codigo_interno, normalizar, DIAS, RESULTADOS_VISITA, Ruta, Visita, CargaMasiva, migrar, CATEGORIAS_GASTO, LISTAS_PRECIO, MOTIVOS_AJUSTE, ROLES, TIPOS_MEDIO, TIPOS_MOV,
                     TIPOS_PAGO_EMP, UNIDADES, Ajuste, Categoria, Cliente, Compra, Cotizacion,
                     Empleado, Gasto, MedioPago, Mensaje, MovCaja, Movimiento, PagoNomina, Pedido, Producto,
                     Proveedor, Turno, Usuario, Venta, ahora, config, db, semilla)
@@ -446,7 +446,7 @@ def panel():
 
 # ===================================================================== POS
 def producto_json(p, reservado=None, ver_costo=False):
-    d = {"id": p.id, "codigo": p.codigo, "barras": p.codigo_barras or "", "nombre": p.nombre,
+    d = {"id": p.id, "codigo": p.codigo, "interno": p.codigo_interno or "", "barras": p.codigo_barras or "", "nombre": p.nombre,
          "marca": p.marca or "", "compat": p.compatibilidad or "", "ubicacion": p.ubicacion or "",
          "unidad": p.unidad, "stock": p.stock, "reservado": (reservado or {}).get(p.id, 0), "virtual": bool(p.virtual),
          "detal": p.precio_detal, "mayor": p.precio_mayor or p.precio_detal, "taller": p.precio_taller or p.precio_detal,
@@ -463,7 +463,7 @@ def buscar_productos(q, limite=30, solo_activos=True):
         query = query.filter(Producto.activo.is_(True))
     q = (q or "").strip()
     if q:
-        exacto = Producto.query.filter(or_(Producto.codigo.ilike(q), Producto.codigo_barras == q),
+        exacto = Producto.query.filter(or_(Producto.codigo_interno == q, Producto.codigo.ilike(q), Producto.codigo_barras == q),
                                        Producto.activo.is_(True)).first()
         for palabra in normalizar(q).split()[:6]:
             query = query.filter(Producto.busqueda.like(f"%{palabra}%"))
@@ -1124,6 +1124,8 @@ def producto_form(pid=None):
         f = request.form
         nuevo = p.id is None
         p.codigo = (f.get("codigo") or "").strip()[:60]
+        if "codigo_interno" in f:
+            p.codigo_interno = (f.get("codigo_interno") or "").strip()[:20] or p.codigo_interno
         p.nombre = (f.get("nombre") or "").strip()[:200]
         p.codigo_barras = (f.get("codigo_barras") or "").strip()[:60] or None
         p.categoria_id = int(f.get("categoria_id")) if (f.get("categoria_id") or "").isdigit() else None
@@ -1154,8 +1156,10 @@ def producto_form(pid=None):
             dup_codigo = p.codigo and Producto.query.filter(Producto.codigo.ilike(p.codigo), Producto.id != (p.id or 0)).first()
             dup_barras = p.codigo_barras and Producto.query.filter(Producto.codigo_barras == p.codigo_barras,
                                                                    Producto.id != (p.id or 0)).first()
-        if not p.codigo:
-            errores.append("Escribe el código del repuesto.")
+            dup_interno = p.codigo_interno and Producto.query.filter(Producto.codigo_interno == p.codigo_interno,
+                                                                     Producto.id != (p.id or 0)).first()
+        if dup_interno:
+            errores.append("Ese código interno ya lo tiene otro repuesto.")
         if len(p.nombre) < 2:
             errores.append("Escribe el nombre del repuesto.")
         if p.precio_detal <= 0:
@@ -1186,6 +1190,12 @@ def producto_form(pid=None):
             return render_template("producto_form.html", p=p, categorias=Categoria.query.order_by(Categoria.nombre).all(),
                                    unidades=UNIDADES, f=f)
         db.session.add(p)
+        with db.session.no_autoflush:
+            asignar_codigo_interno(p)
+            if not p.codigo:          # sin código de proveedor: se usa el interno
+                p.codigo = p.codigo_interno
+                if Producto.query.filter(Producto.codigo.ilike(p.codigo), Producto.id != (p.id or 0)).first():
+                    p.codigo = f"MS-{p.codigo_interno}"
         db.session.flush()
         if nuevo and stock_ini > 0:
             try:

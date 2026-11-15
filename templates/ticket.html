@@ -40,7 +40,7 @@
   <table>
     {% for it in v.items %}
     <tr><td colspan="2">{{ it.nombre }}</td></tr>
-    <tr><td>{{ it.cantidad|cant }} x {{ it.precio|pesos }} <small>{{ it.codigo }}</small></td><td class="r">{{ it.total|pesos }}</td></tr>
+    <tr><td>{{ it.cantidad|cant }} x {{ it.precio|pesos }} <small>{{ (it.producto.codigo_interno if it.producto and it.producto.codigo_interno else it.codigo) }}</small></td><td class="r">{{ it.total|pesos }}</td></tr>
     {% if it.devuelto %}<tr><td colspan="2"><small>Devuelto: {{ it.devuelto|cant }}</small></td></tr>{% endif %}
     {% endfor %}
   </table>
