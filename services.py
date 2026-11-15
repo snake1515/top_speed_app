@@ -516,6 +516,7 @@ def anular_venta(venta, usuario, motivo):
     venta.anulada_fecha = ahora()
     venta.anulada_motivo = motivo.strip()[:255]
     venta.anulada_por_id = usuario.id
+    venta.anulada_numero = siguiente("sig_anulacion")
     venta.anulada_reembolso = ";".join(f"{k.replace(';', ',').replace('|', '/')}|{v:.0f}" for k, v in reemb.items() if v)[:255]
     if venta.pedido_id:
         ped = db.session.get(Pedido, venta.pedido_id)
@@ -526,7 +527,7 @@ def anular_venta(venta, usuario, motivo):
     cliente = venta.cliente_nombre or (venta.cliente.nombre if getattr(venta, "cliente", None) else "") or "Consumidor final"
     db.session.add(Mensaje(
         tipo="anulacion_venta", para="todos",
-        titulo=f"{usuario.nombre} anuló la venta {venta.folio} por {pesos(venta.total)}",
+        titulo=f"{usuario.nombre} anuló la venta {venta.folio} por {pesos(venta.total)} ({venta.folio_anulacion})",
         texto=(f"Cliente: {cliente}\nVendida el {venta.fecha.strftime('%d/%m/%Y %I:%M %p')}\n"
                f"Motivo: {motivo.strip()}\nLos repuestos volvieron al inventario y el dinero salió de la caja.")[:600],
         url=f"/ventas/{venta.id}", autor_id=usuario.id,

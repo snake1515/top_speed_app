@@ -11,6 +11,7 @@
   .lg { font-size: 1.35em; font-weight: 700; }
   .dl td { padding: 0; } .dl td.r { padding-left: 6px; word-break: break-word; }
   .dir { font-size: .92em; white-space: nowrap; }
+  .gracias { font-weight: 700; white-space: nowrap; font-size: 1.05em; }
   .negocio { font-size: 1.6em; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; line-height: 1.1; }
   hr { border: 0; border-top: 1px dashed #000; margin: 6px 0; }
   table { width: 100%; border-collapse: collapse; } td { vertical-align: top; padding: 1px 0; }
@@ -58,7 +59,7 @@
   </table>
   {% if v.nota %}<hr><div>{{ v.nota }}</div>{% endif %}
   <hr>
-  <div class="c">{{ cfg.mensaje_recibo or '' }}</div>
+  <div class="c">{% for fr in (cfg.mensaje_recibo or '')|frases %}<div class="{{ 'gracias' if loop.first else '' }}">{{ fr }}</div>{% endfor %}</div>
   <div class="c" style="margin-top:6px"><small>Documento soporte de venta. No es factura electrónica.</small></div>
 </div>
 <div class="acc">

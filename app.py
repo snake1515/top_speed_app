@@ -236,6 +236,12 @@ def f_pesos(v):
     return pesos(v)
 
 
+@app.template_filter("frases")
+def f_frases(texto):
+    """Parte el mensaje del recibo en frases, una por línea («¡Gracias por tu compra!» queda sola)."""
+    return [x.strip() for x in re.split(r"(?<=[.!?])\s+", texto or "") if x.strip()]
+
+
 @app.template_filter("cant")
 def f_cant(v):
     return cant(v)

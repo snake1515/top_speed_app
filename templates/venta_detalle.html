@@ -7,11 +7,11 @@
       {% if v.origen in ('tienda', 'preventa') and v.pedido_id %}· <a href="{{ url_for('pedido_detalle', pid=v.pedido_id) }}">{{ 'pedido de preventa' if v.origen == 'preventa' else 'pedido web' }}</a>{% endif %}</p></div>
   <div class="actions">
     <a class="btn dark" href="{{ url_for('venta_ticket', vid=v.id) }}" onclick="if (!event.ctrlKey) { event.preventDefault(); imprimirEnIframe(this.href); }">🖨 Imprimir ticket</a>
-    {% if v.anulada %}<a class="btn dark" href="{{ url_for('venta_anulacion_ticket', vid=v.id) }}" onclick="if (!event.ctrlKey) { event.preventDefault(); imprimirEnIframe(this.href); }">🖨 Comprobante de anulación</a>{% endif %}
+    {% if v.anulada %}<a class="btn dark" href="{{ url_for('venta_anulacion_ticket', vid=v.id) }}" onclick="if (!event.ctrlKey) { event.preventDefault(); imprimirEnIframe(this.href); }">🖨 Comprobante de anulación {{ v.folio_anulacion }}</a>{% endif %}
     <a class="btn sec" href="{{ wa }}" target="_blank">Enviar por WhatsApp</a>
   </div>
 </div>
-{% if v.anulada %}<div class="flash err">Venta anulada el {{ v.anulada_fecha|fh }}: {{ v.anulada_motivo }}</div>{% endif %}
+{% if v.anulada %}<div class="flash err">Venta anulada{% if v.anulada_numero %} ({{ v.folio_anulacion }}){% endif %} el {{ v.anulada_fecha|fh }}{% if v.anulada_por %} por {{ v.anulada_por.nombre }}{% endif %}: {{ v.anulada_motivo }}</div>{% endif %}
 <div class="grid g-main">
   <div>
     <div class="card">

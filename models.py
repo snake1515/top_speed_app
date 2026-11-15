@@ -166,6 +166,7 @@ class Config(db.Model):
     sig_carga = db.Column(db.Integer, nullable=False, default=1)
     sig_vale = db.Column(db.Integer, nullable=False, default=1)
     sig_cod_interno = db.Column(db.Integer, nullable=False, default=0)  # el primero es 0000
+    sig_anulacion = db.Column(db.Integer, nullable=False, default=1)
 
 
 class MedioPago(db.Model):
@@ -701,6 +702,7 @@ class Venta(db.Model):
     vendedor = db.relationship("Usuario", foreign_keys=[vendedor_id])
     anulada_fecha = db.Column(db.DateTime)
     anulada_motivo = db.Column(db.String(255))
+    anulada_numero = db.Column(db.Integer)  # consecutivo del comprobante de anulación (AN-00001)
     anulada_por_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
     anulada_por = db.relationship("Usuario", foreign_keys=[anulada_por_id])
     anulada_reembolso = db.Column(db.String(255))  # "Efectivo|50000;Nequi|20000": lo que se le devolvió al cliente
@@ -744,6 +746,10 @@ class Venta(db.Model):
     @property
     def folio(self):
         return f"V-{self.numero:05d}"
+
+    @property
+    def folio_anulacion(self):
+        return f"AN-{self.anulada_numero:05d}" if self.anulada_numero else ""
 
 
 class VentaItem(db.Model):
@@ -1017,6 +1023,10 @@ def semilla():
             db.session.add(Categoria(nombre=nom))
     for p in Producto.query.filter(Producto.busqueda.is_(None)).all():
         p.actualizar_busqueda()
+    # ventas anuladas antes de existir el consecutivo de anulación: se numeran en el orden en que se anularon
+    for v in Venta.query.filter(Venta.estado == "anulada", Venta.anulada_numero.is_(None)) \
+            .order_by(Venta.anulada_fecha, Venta.id).all():
+        v.anulada_numero = siguiente("sig_anulacion")
     # repuestos que se crearon antes de existir el código interno: se numeran en el orden en que se crearon
     with db.session.no_autoflush:
         for p in Producto.query.filter(or_(Producto.codigo_interno.is_(None), Producto.codigo_interno == "")) \
