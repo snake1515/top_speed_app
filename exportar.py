@@ -304,8 +304,9 @@ def inversion_excel(r, cfg, url_soporte):
             c.font = Font(name=F)
         d.cell(row=n_, column=1).number_format = "dd/mm/yyyy"
         d.cell(row=n_, column=5).number_format = PESOS
-        if i.soporte_v:
-            c = d.cell(row=n_, column=10, value="Ver soporte")
+        if i.soportes or i.soporte_v:
+            n_s = len(i.soportes) or 1
+            c = d.cell(row=n_, column=10, value="Ver soporte" if n_s == 1 else f"Ver soportes ({n_s})")
             c.hyperlink = url_soporte.replace("/0/", f"/{i.id}/")
             c.font = Font(name=F, color="0563C1", underline="single")
     if ndet:

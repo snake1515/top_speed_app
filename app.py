@@ -27,7 +27,7 @@ import nomina as nom
 import reportes as rpt
 from models import (CATEGORIAS_CAJA_MENOR, asignar_codigo_interno, leido_por, marcar_leido, mensajes_de, mensajes_sin_leer, normalizar, DIAS, RESULTADOS_VISITA, Ruta, Visita, CargaMasiva, migrar, CATEGORIAS_GASTO, LISTAS_PRECIO, MOTIVOS_AJUSTE, ROLES, TIPOS_MEDIO, TIPOS_MOV,
                     TIPOS_PAGO_EMP, UNIDADES, Ajuste, Categoria, Cliente, Compra, Cotizacion,
-                    AporteSocio, CATEGORIAS_INVERSION, GastoFijo, Inversion, Socio, TIPOS_INVERSION,
+                    AporteSocio, CATEGORIAS_INVERSION, GastoFijo, Inversion, InversionSoporte, Socio, TIPOS_INVERSION,
                     Empleado, Gasto, MedioPago, Mensaje, MovCaja, Movimiento, PagoNomina, Pedido, Producto,
                     Proveedor, Turno, Usuario, Venta, ahora, config, db, semilla)
 import services
@@ -2069,22 +2069,23 @@ def inversion_registro():
     i.proveedor = (f.get("proveedor") or "").strip()[:120] or None
     i.medio = (f.get("medio") or "").strip()[:60] or None
     i.nota = (f.get("nota") or "").strip()[:300] or None
-    arch = request.files.get("soporte")
-    if arch and arch.filename:
+    nuevos = []
+    for arch in request.files.getlist("soporte"):
+        if not arch or not arch.filename:
+            continue
         datos = arch.read()
+        nombre = os.path.basename(arch.filename)[:160]
         if arch.filename.lower().endswith(".pdf"):
             if len(datos) > 5 * 1024 * 1024:
-                flash("El PDF del soporte pasa de 5 MB.", "err")
-                return redirect(url_for("inversion"))
-            i.soporte, i.soporte_mime = datos, "application/pdf"
+                flash(f"El PDF «{nombre}» pasa de 5 MB: no se guardó.", "err")
+                continue
+            nuevos.append(InversionSoporte(nombre=nombre, mime="application/pdf", datos=datos))
         else:
             try:
-                img = procesar_imagen(BytesIO(datos), 1600)
+                nuevos.append(InversionSoporte(nombre=nombre, mime="image/jpeg", datos=procesar_imagen(BytesIO(datos), 1600)))
             except ErrorNegocio:
-                flash("No pude leer la foto del soporte. Usa JPG, PNG o PDF.", "err")
-                return redirect(url_for("inversion"))
-            i.soporte, i.soporte_mime = img, "image/jpeg"
-        i.soporte_v = (i.soporte_v or 0) + 1
+                flash(f"No pude leer «{nombre}». Usa fotos (JPG, PNG) o PDF.", "err")
+    i.soportes.extend(nuevos)
     editado = bool(i.id)
     db.session.add(i)
     db.session.commit()
@@ -2105,11 +2106,33 @@ def inversion_anular(iid):
 @app.route("/inversion/<int:iid>/soporte")
 @requiere("admin")
 def inversion_soporte(iid):
+    """Primer soporte del registro (para enlaces viejos y el Excel)."""
     i = get_or_404(Inversion, iid)
+    if i.soportes:
+        return redirect(url_for("inversion_soporte_ver", sid=i.soportes[0].id))
     if not i.soporte:
         abort(404)
     ext = "pdf" if i.soporte_mime == "application/pdf" else "jpg"
     return send_file(BytesIO(i.soporte), mimetype=i.soporte_mime, download_name=f"soporte_{i.id}.{ext}")
+
+
+@app.route("/inversion/soporte/<int:sid>")
+@requiere("admin")
+def inversion_soporte_ver(sid):
+    s = get_or_404(InversionSoporte, sid)
+    ext = "pdf" if s.mime == "application/pdf" else "jpg"
+    nombre = s.nombre if s.nombre and s.nombre.lower().endswith("." + ext) else f"soporte_{s.inversion_id}_{s.id}.{ext}"
+    return send_file(BytesIO(s.datos), mimetype=s.mime, download_name=nombre)
+
+
+@app.route("/inversion/soporte/<int:sid>/quitar", methods=["POST"])
+@requiere("admin")
+def inversion_soporte_quitar(sid):
+    s = get_or_404(InversionSoporte, sid)
+    db.session.delete(s)
+    db.session.commit()
+    flash("Soporte quitado.", "ok")
+    return redirect(url_for("inversion"))
 
 
 @app.route("/inversion/aporte", methods=["POST"])

@@ -41,10 +41,14 @@
         <thead><tr><th>Fecha</th><th>Concepto</th><th>Pagó</th><th class="num">Valor</th><th></th></tr></thead>
         <tbody>{% for i in r.invs %}<tr>
           <td>{{ i.fecha|f }}</td>
-          <td><b>{{ i.concepto }}</b><br><small class="muted">{{ i.categoria }} · {{ tipos[i.tipo] }}{% if i.proveedor %} · {{ i.proveedor }}{% endif %}{% if i.medio %} · {{ i.medio }}{% endif %}</small>{% if i.nota %}<br><small>{{ i.nota }}</small>{% endif %}</td>
+          <td><b>{{ i.concepto }}</b><br><small class="muted">{{ i.categoria }} · {{ tipos[i.tipo] }}{% if i.proveedor %} · {{ i.proveedor }}{% endif %}{% if i.medio %} · {{ i.medio }}{% endif %}</small>{% if i.nota %}<br><small>{{ i.nota }}</small>{% endif %}
+            {% if i.soportes %}<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px">{% for s in i.soportes %}
+              <span class="badge" style="display:inline-flex;align-items:center;gap:4px"><a href="{{ url_for('inversion_soporte_ver', sid=s.id) }}" target="_blank">📎 {{ s.nombre or ('Soporte ' ~ loop.index) }}</a>
+                <form method="post" action="{{ url_for('inversion_soporte_quitar', sid=s.id) }}" style="display:inline" data-confirm="¿Quitar este soporte?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn ghost sm" style="padding:0 4px;min-height:0" title="Quitar">✕</button></form></span>
+            {% endfor %}</div>{% endif %}</td>
           <td>{{ i.socio.nombre if i.socio else 'Fondo común' }}</td>
           <td class="num">{{ i.valor|pesos }}</td>
-          <td style="white-space:nowrap">{% if i.soporte_v %}<a class="btn ghost sm" href="{{ url_for('inversion_soporte', iid=i.id) }}" target="_blank" title="Ver soporte">📎</a>{% endif %}
+          <td style="white-space:nowrap">
             <button type="button" class="btn ghost sm editar-inv" title="Editar"
               data-id="{{ i.id }}" data-concepto="{{ i.concepto }}" data-categoria="{{ i.categoria }}" data-tipo="{{ i.tipo }}"
               data-valor="{{ i.valor|round|int }}" data-fecha="{{ i.fecha.isoformat() }}" data-socio="{{ i.socio_id or '' }}"
@@ -108,7 +112,8 @@
         <div class="field"><label>Medio</label><input class="input" name="medio" list="medios-inv" placeholder="Efectivo, Nequi…"><datalist id="medios-inv">{% for m in medios %}<option>{{ m }}</option>{% endfor %}</datalist></div>
       </div>
       <div class="field"><label>Nota</label><input class="input" name="nota" placeholder="Opcional"></div>
-      <div class="field"><label>Soporte (foto de la factura o PDF)</label><input class="input" type="file" name="soporte" accept="image/*,.pdf"><div class="hint solo-edicion" style="display:none">Si no eliges archivo, se deja el soporte que ya tiene.</div></div>
+      <div class="field"><label>Soportes (fotos de facturas, recibos o PDF)</label><input class="input" type="file" name="soporte" accept="image/*,.pdf" multiple>
+        <div class="hint">Puedes elegir varios archivos a la vez.</div><div class="hint solo-edicion" style="display:none">Los que elijas se agregan a los que ya tiene.</div></div>
       <button class="btn">Guardar</button> <button type="button" class="btn ghost cancelar" style="display:none">Cancelar edición</button>
       {% if r.inv_app > r.mercancia_registrada %}
       <p class="hint" style="margin-top:10px">La mercancía cargada en la app como inventario inicial vale <b>{{ r.inv_app|pesos }}</b> al costo{% if r.mercancia_registrada %} y aquí hay registrados {{ r.mercancia_registrada|pesos }}{% endif %}.

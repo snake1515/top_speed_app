@@ -1114,6 +1114,21 @@ class Inversion(db.Model):
     creado = db.Column(db.DateTime, nullable=False, default=ahora)
 
 
+class InversionSoporte(db.Model):
+    """Archivos de soporte de un registro de la inversión inicial (facturas, recibos, fotos, PDF)."""
+    __tablename__ = "ts_inversiones_soportes"
+    id = db.Column(db.Integer, primary_key=True)
+    inversion_id = db.Column(db.Integer, db.ForeignKey("ts_inversiones.id"), nullable=False, index=True)
+    nombre = db.Column(db.String(160))
+    mime = db.Column(db.String(60), nullable=False)
+    datos = db.deferred(db.Column(db.LargeBinary, nullable=False))
+    creado = db.Column(db.DateTime, nullable=False, default=ahora)
+
+
+Inversion.soportes = db.relationship(InversionSoporte, order_by=InversionSoporte.id, cascade="all, delete-orphan",
+                                     backref="inversion")
+
+
 @event.listens_for(Producto, "before_insert")
 @event.listens_for(Producto, "before_update")
 def _busqueda_producto(mapper, conn, p):
@@ -1177,6 +1192,12 @@ def semilla():
     for v in Venta.query.filter(Venta.estado == "anulada", Venta.anulada_numero.is_(None)) \
             .order_by(Venta.anulada_fecha, Venta.id).all():
         v.anulada_numero = siguiente("sig_anulacion")
+    # soporte único de la inversión inicial (versión anterior) -> pasa a la lista de soportes
+    for i in Inversion.query.filter(Inversion.soporte_v > 0).all():
+        if i.soporte and not i.soportes:
+            ext = "pdf" if i.soporte_mime == "application/pdf" else "jpg"
+            i.soportes.append(InversionSoporte(nombre=f"soporte.{ext}", mime=i.soporte_mime or "image/jpeg", datos=i.soporte))
+            i.soporte, i.soporte_v = None, 0
     # aportes de socios registrados antes de existir el recibo: se numeran en orden
     for a in AporteSocio.query.filter(AporteSocio.numero.is_(None)).order_by(AporteSocio.id).all():
         a.numero = siguiente("sig_aporte")
