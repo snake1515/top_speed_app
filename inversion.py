@@ -339,7 +339,23 @@ def reporte_aportes(cfg, desde=None, hasta=None, socio_id=None):
             grupos.append({"socio": x["socio"], "movs": ms, "total": sum(m["valor"] for m in ms),
                            "dinero": sum(m["valor"] for m in ms if m["clase"] == "aporte"),
                            "pagos": sum(m["valor"] for m in ms if m["clase"] == "pago")})
-    return {"aportes": aportes, "movs": movs, "grupos": grupos, "socios": filas,
+    # relación por concepto: cuánto puso cada socio en cada concepto (categoría de la inversión o aporte en dinero)
+    cols = [x["socio"] for x in filas if en_periodo.get(x["socio"].id)]
+    conceptos = {}
+    for m in movs:
+        cat = "Aportes en dinero al fondo común" if m["clase"] == "aporte" else m["categoria"]
+        c = conceptos.setdefault(cat, {"concepto": cat, "por_socio": defaultdict(float), "total": 0.0, "lineas": {}})
+        c["por_socio"][m["socio"].id] += m["valor"]
+        c["total"] += m["valor"]
+        if m["clase"] == "pago":
+            nombre = m["concepto"].split(" (conjunto con")[0]
+            it = c["lineas"].setdefault((m["id"], nombre), {"concepto": nombre, "fecha": m["fecha"], "por_socio": defaultdict(float), "total": 0.0})
+            it["por_socio"][m["socio"].id] += m["valor"]
+            it["total"] += m["valor"]
+    por_concepto = sorted(conceptos.values(), key=lambda c: (c["concepto"] != "Aportes en dinero al fondo común", -c["total"]))
+    for c in por_concepto:
+        c["lineas"] = sorted(c["lineas"].values(), key=lambda i: (i["fecha"], i["concepto"]))
+    return {"aportes": aportes, "movs": movs, "grupos": grupos, "socios": filas, "por_concepto": por_concepto, "cols": cols, "en_periodo": dict(en_periodo),
             "total_periodo": sum(m["valor"] for m in movs),
             "total_periodo_dinero": sum(m["valor"] for m in movs if m["clase"] == "aporte"),
             "total_periodo_pagos": sum(m["valor"] for m in movs if m["clase"] == "pago"),

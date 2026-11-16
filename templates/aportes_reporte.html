@@ -38,6 +38,21 @@
 </div>
 
 <div class="card">
+  <h2 style="margin-bottom:4px">Relación por concepto</h2>
+  <p class="muted" style="margin:0 0 10px">En qué se fue lo que puso cada socio: aportes en dinero y cada concepto que pagaron de su bolsillo.</p>
+  {% if r.por_concepto %}<div class="table-wrap"><table>
+    <thead><tr><th>Concepto</th>{% for so in r.cols %}<th class="num">{{ so.nombre }}</th>{% endfor %}<th class="num">Total</th><th class="num">%</th></tr></thead>
+    <tbody>{% for c in r.por_concepto %}
+      <tr style="background:#f6f4ee"><td><b>{{ c.concepto }}</b></td>{% for so in r.cols %}<td class="num"><b>{{ c.por_socio[so.id]|pesos if c.por_socio[so.id] else '—' }}</b></td>{% endfor %}
+        <td class="num"><b>{{ c.total|pesos }}</b></td><td class="num">{{ (c.total / r.total_periodo * 100)|round(1) if r.total_periodo else 0 }} %</td></tr>
+      {% for it in c.lineas %}<tr><td style="padding-left:26px"><small class="muted">{{ it.fecha|f }}</small> · {{ it.concepto }}</td>{% for so in r.cols %}<td class="num">{{ it.por_socio[so.id]|pesos if it.por_socio[so.id] else '' }}</td>{% endfor %}
+        <td class="num">{{ it.total|pesos }}</td><td></td></tr>{% endfor %}
+    {% endfor %}</tbody>
+    <tfoot><tr><td><b>Total</b></td>{% for so in r.cols %}<td class="num"><b>{{ r.en_periodo[so.id]|pesos }}</b></td>{% endfor %}<td class="num"><b>{{ r.total_periodo|pesos }}</b></td><td class="num">100 %</td></tr></tfoot>
+  </table></div>{% else %}<p class="empty">Sin aportes en el periodo.</p>{% endif %}
+</div>
+
+<div class="card">
   <h2 style="margin-bottom:4px">Detalle: cada aporte de cada socio</h2>
   <p class="muted" style="margin:0 0 10px">Aportes en dinero al fondo común y compras que cada socio pagó de su bolsillo{{ ' en el periodo' if desde or hasta }}.</p>
   {% for g in r.grupos %}

@@ -395,6 +395,48 @@ def aportes_excel(r, cfg):
         ws.cell(row=fila + 5, column=1, value="La participación sale de lo que cada socio puso (aportes + compras que pagó). "
                                               "Es una referencia: vale lo que los socios acordaron por escrito.").font = Font(name=F, italic=True, color="666666")
 
+    pc = wb.create_sheet("Por concepto")
+    _titulo(pc, "Relación por concepto: en qué se fue lo que puso cada socio", sub, 0)
+    cols = r["cols"]
+    _encabezado(pc, ["Concepto"] + [so.nombre for so in cols] + ["Total"], [52] + [18] * len(cols) + [18])
+    fila, filas_cat = 4, []
+    ultima = get_column_letter(len(cols) + 2)
+    for c in r["por_concepto"]:
+        filas_cat.append(fila)
+        pc.cell(row=fila, column=1, value=c["concepto"]).font = Font(name=F, bold=True)
+        for k, so in enumerate(cols, 2):
+            v = c["por_socio"].get(so.id, 0)
+            x = pc.cell(row=fila, column=k, value=v or None)
+            x.font = Font(name=F, bold=True)
+            x.number_format = PESOS
+        x = pc.cell(row=fila, column=len(cols) + 2, value=f"=SUM(B{fila}:{get_column_letter(len(cols) + 1)}{fila})")
+        x.font = Font(name=F, bold=True)
+        x.number_format = PESOS
+        for k in range(1, len(cols) + 3):
+            pc.cell(row=fila, column=k).fill = PatternFill("solid", fgColor="F6F4EE")
+        fila += 1
+        for it in c["lineas"]:
+            pc.cell(row=fila, column=1, value=f"    {it['fecha']:%d/%m/%Y} · {it['concepto']}").font = Font(name=F, color="555555")
+            for k, so in enumerate(cols, 2):
+                v = it["por_socio"].get(so.id, 0)
+                x = pc.cell(row=fila, column=k, value=v or None)
+                x.font = Font(name=F, color="555555")
+                x.number_format = PESOS
+            x = pc.cell(row=fila, column=len(cols) + 2, value=it["total"])
+            x.font = Font(name=F, color="555555")
+            x.number_format = PESOS
+            fila += 1
+    if filas_cat:
+        pc.cell(row=fila + 1, column=1, value="TOTAL").font = Font(name=F, bold=True)
+        for k in range(2, len(cols) + 3):
+            L = get_column_letter(k)
+            x = pc.cell(row=fila + 1, column=k, value="=" + "+".join(f"{L}{f}" for f in filas_cat))
+            x.font = Font(name=F, bold=True)
+            x.number_format = PESOS
+            x.fill = PatternFill("solid", fgColor="FFF3C4")
+        pc.cell(row=fila + 1, column=1).fill = PatternFill("solid", fgColor="FFF3C4")
+    pc.freeze_panes = "B4"
+
     d = wb.create_sheet("Detalle de aportes")
     _titulo(d, "Detalle: cada aporte de cada socio", sub, 0)
     _encabezado(d, ["Socio", "Fecha", "Tipo", "Recibo", "Concepto", "Medio", "Valor"], [28, 12, 20, 11, 44, 16, 16])
@@ -509,6 +551,26 @@ def aportes_pdf(r, cfg, logo_path):
     story.append(Paragraph(f"Total invertido en el negocio: <b>{p(r['total_invertido'])}</b> · Fondo común: aportado "
                            f"{p(r['total_aportes'])}, gastado {p(r['del_fondo'])}, "
                            f"{'sin gastar' if r['fondo'] >= 0 else 'faltante'} <b>{p(abs(r['fondo']))}</b>.", st["s"]))
+
+    # relación por concepto
+    cols = r["cols"]
+    if r["por_concepto"]:
+        story.append(Paragraph("Relación por concepto", st["h"]))
+        ancho_c = max(1.9 * cm, min(2.6 * cm, (doc.width - 6.2 * cm - 2.3 * cm) / max(len(cols), 1)))
+        filas = [["Concepto"] + [Paragraph(f"<b>{so.nombre}</b>", ParagraphStyle("hc", fontName="Helvetica-Bold", fontSize=7.5, leading=9,
+                                                                                  textColor=colors.white, alignment=2)) for so in cols] + ["Total"]]
+        negritas = []
+        for c in r["por_concepto"]:
+            negritas.append(len(filas))
+            filas.append([Paragraph(f"<b>{c['concepto']}</b>", st["c"])] + [p(c["por_socio"].get(so.id, 0)) if c["por_socio"].get(so.id) else "—" for so in cols] + [p(c["total"])])
+            for it in c["lineas"]:
+                filas.append([Paragraph(f"&nbsp;&nbsp;&nbsp;{it['fecha']:%d/%m/%Y} · {it['concepto']}", ParagraphStyle("ci", parent=st["c"], textColor=GRIS))]
+                             + [p(it["por_socio"].get(so.id, 0)) if it["por_socio"].get(so.id) else "" for so in cols] + [p(it["total"])])
+        filas.append(["TOTAL"] + [p(r["en_periodo"].get(so.id, 0)) for so in cols] + [p(r["total_periodo"])])
+        t = tabla(filas, [doc.width - ancho_c * len(cols) - 2.4 * cm] + [ancho_c] * len(cols) + [2.4 * cm], 1, total=True)
+        t.setStyle(TableStyle([("FONT", (1, k), (-1, k), "Helvetica-Bold", 8.5) for k in negritas]
+                              + [("BACKGROUND", (0, k), (-1, k), colors.HexColor("#EFEBE0")) for k in negritas]))
+        story.append(t)
 
     # detalle: cada aporte de cada socio
     story.append(Paragraph(f"Detalle: cada aporte de cada socio ({len(r['movs'])} registros)", st["h"]))
