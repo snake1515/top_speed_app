@@ -76,6 +76,7 @@
       <a href="{{ url_for('proveedores') }}" class="{{ 'on' if ep.startswith('proveedor') }}"><span class="ico">⛟</span>Proveedores</a>
       <a href="{{ url_for('ajustes') }}" class="{{ 'on' if ep.startswith('ajuste') }}"><span class="ico">±</span>Ajustes</a>
       <a href="{{ url_for('kardex') }}" class="{{ 'on' if ep == 'kardex' }}"><span class="ico">≡</span>Kardex</a>
+      {% if current_user.puede('admin') %}<a href="{{ url_for('indicadores_inventario') }}" class="{{ 'on' if ep == 'indicadores_inventario' }}"><span class="ico">↻</span>Indicadores</a>{% endif %}
       {% endif %}
       {% if current_user.puede('admin') %}
       <div class="nav-sep">Administración</div>

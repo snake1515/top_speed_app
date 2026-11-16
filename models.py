@@ -61,6 +61,7 @@ TIPOS_MOV = {
     "inicial": "Inventario inicial",
     "compra": "Compra",
     "anula_compra": "Anulación de compra",
+    "devolucion_compra": "Devolución a proveedor",
     "venta": "Venta",
     "anula_venta": "Anulación de venta",
     "devolucion": "Devolución de cliente",
@@ -167,6 +168,7 @@ class Config(db.Model):
     sig_vale = db.Column(db.Integer, nullable=False, default=1)
     sig_cod_interno = db.Column(db.Integer, nullable=False, default=0)  # el primero es 0000
     sig_anulacion = db.Column(db.Integer, nullable=False, default=1)
+    sig_dev_compra = db.Column(db.Integer, nullable=False, default=1)
     # Facturación electrónica con el facturador gratuito de la DIAN (se digita allá; aquí se lleva el control)
     fe_activa = db.Column(db.Boolean, nullable=False, default=False)
     fe_desde = db.Column(db.Date)                       # desde qué fecha las ventas se deben facturar
@@ -534,6 +536,7 @@ class Compra(db.Model):
     factura = db.Column(db.String(60))
     total = db.Column(db.Float, nullable=False, default=0)
     pagado = db.Column(db.Float, nullable=False, default=0)
+    devuelto = db.Column(db.Float, nullable=False, default=0)   # valor devuelto al proveedor (al costo de la compra)
     vence = db.Column(db.Date)
     nota = db.Column(db.String(300))
     anulada = db.Column(db.Boolean, nullable=False, default=False)
@@ -545,7 +548,17 @@ class Compra(db.Model):
 
     @property
     def saldo(self):
-        return 0 if self.anulada else max((self.total or 0) - (self.pagado or 0), 0)
+        return 0 if self.anulada else max((self.total or 0) - (self.devuelto or 0) - (self.pagado or 0), 0)
+
+    @property
+    def a_favor(self):
+        """Lo que el proveedor nos debe: se le pagó más de lo que quedó después de las devoluciones."""
+        return 0 if self.anulada else max((self.pagado or 0) - ((self.total or 0) - (self.devuelto or 0))
+                                          - (self.reembolsado or 0), 0)
+
+    @property
+    def reembolsado(self):
+        return sum(d.reembolso or 0 for d in self.devoluciones)
 
 
 class CompraItem(db.Model):
@@ -556,10 +569,50 @@ class CompraItem(db.Model):
     producto = db.relationship("Producto")
     cantidad = db.Column(db.Float, nullable=False)
     costo_unitario = db.Column(db.Float, nullable=False)
+    devuelto = db.Column(db.Float, nullable=False, default=0)
 
     @property
     def subtotal(self):
         return self.cantidad * self.costo_unitario
+
+
+MOTIVOS_DEV_COMPRA = ["Llegó dañado", "No es la referencia", "Llegó de más", "Garantía", "Otro"]
+
+
+class DevolucionCompra(db.Model):
+    """Devolución de repuestos al proveedor (comprobante DP-00001)."""
+    __tablename__ = "ts_devoluciones_compra"
+    id = db.Column(db.Integer, primary_key=True)
+    numero = db.Column(db.Integer, nullable=False)
+    fecha = db.Column(db.DateTime, nullable=False, default=ahora, index=True)
+    compra_id = db.Column(db.Integer, db.ForeignKey("ts_compras.id"), nullable=False, index=True)
+    compra = db.relationship("Compra", backref=db.backref("devoluciones", order_by="DevolucionCompra.fecha"))
+    motivo = db.Column(db.String(40), nullable=False)
+    nota = db.Column(db.String(300))
+    total = db.Column(db.Float, nullable=False, default=0)
+    descontado = db.Column(db.Float, nullable=False, default=0)   # se restó de lo que se le debía al proveedor
+    reembolso = db.Column(db.Float, nullable=False, default=0)    # el proveedor devolvió este dinero
+    reembolso_medio_id = db.Column(db.Integer, db.ForeignKey("ts_medios_pago.id"))
+    reembolso_medio = db.relationship("MedioPago")
+    mov_caja_id = db.Column(db.Integer)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
+    usuario = db.relationship("Usuario")
+    items = db.relationship("DevolucionCompraItem", backref="devolucion", cascade="all, delete-orphan")
+
+    @property
+    def folio(self):
+        return f"DP-{self.numero:05d}"
+
+
+class DevolucionCompraItem(db.Model):
+    __tablename__ = "ts_devoluciones_compra_items"
+    id = db.Column(db.Integer, primary_key=True)
+    devolucion_id = db.Column(db.Integer, db.ForeignKey("ts_devoluciones_compra.id"), nullable=False, index=True)
+    compra_item_id = db.Column(db.Integer, db.ForeignKey("ts_compra_items.id"), nullable=False)
+    producto_id = db.Column(db.Integer, db.ForeignKey("ts_productos.id"), nullable=False)
+    producto = db.relationship("Producto")
+    cantidad = db.Column(db.Float, nullable=False)
+    costo_unitario = db.Column(db.Float, nullable=False)
 
 
 class PagoCompra(db.Model):

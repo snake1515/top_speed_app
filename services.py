@@ -680,9 +680,68 @@ def pagar_compra(c, usuario, valor, medio, desde_caja):
     return mov
 
 
+def devolver_a_proveedor(c, usuario, cantidades, motivo, nota="", reembolso_medio=None):
+    """Devuelve repuestos de una compra al proveedor. cantidades: {compra_item_id: cantidad}.
+    El valor (al costo de esa compra) se descuenta de lo que se le debe; si ya estaba pagado y el proveedor
+    devuelve el dinero, entra a la caja (reembolso_medio); si no, queda a favor."""
+    from models import DevolucionCompra, DevolucionCompraItem, MOTIVOS_DEV_COMPRA
+    if c.anulada:
+        raise ErrorNegocio("La compra está anulada.")
+    if motivo not in MOTIVOS_DEV_COMPRA:
+        raise ErrorNegocio("Elige el motivo de la devolución.")
+    items = {it.id: it for it in c.items}
+    lineas = []
+    for iid, q in (cantidades or {}).items():
+        it = items.get(int(iid))
+        q = float(q or 0)
+        if not it or q <= 0:
+            continue
+        disponible = it.cantidad - (it.devuelto or 0)
+        if q > disponible + TOL:
+            raise ErrorNegocio(f"De «{it.producto.nombre}» solo se pueden devolver {cant(disponible)}.")
+        lineas.append((it, q))
+    if not lineas:
+        raise ErrorNegocio("Escribe cuántas unidades devuelves de al menos un repuesto.")
+    prods = bloquear([it.producto_id for it, _ in lineas])
+    for it, q in lineas:
+        p = prods[it.producto_id]
+        if (p.stock or 0) + TOL < q:
+            raise ErrorNegocio(f"De «{p.nombre}» solo hay {cant(p.stock)} en stock: no se pueden devolver {cant(q)}.")
+    saldo_antes = c.saldo
+    d = DevolucionCompra(numero=siguiente("sig_dev_compra"), compra=c, motivo=motivo,
+                         nota=(nota or "").strip()[:300] or None, usuario_id=usuario.id)
+    db.session.add(d)
+    db.session.flush()
+    total = 0.0
+    for it, q in lineas:
+        p = prods[it.producto_id]
+        p.costo_promedio = round(quitar_de_promedio(p.stock, p.costo_promedio, q, it.costo_unitario), 4)
+        p.stock -= q
+        it.devuelto = (it.devuelto or 0) + q
+        total += q * it.costo_unitario
+        d.items.append(DevolucionCompraItem(compra_item_id=it.id, producto_id=p.id, cantidad=q,
+                                            costo_unitario=it.costo_unitario))
+        _kardex(p, "devolucion_compra", -q, it.costo_unitario, f"{d.folio} · compra C-{c.numero:05d}", "dev_compra",
+                d.id, usuario.id, nota=motivo)
+    total = round(total)
+    d.total = total
+    c.devuelto = (c.devuelto or 0) + total
+    d.descontado = min(total, saldo_antes)
+    excedente = total - d.descontado      # ya estaba pagado
+    if excedente > 0 and reembolso_medio is not None:
+        prov = c.proveedor.nombre if c.proveedor else "proveedor"
+        mov = mov_caja("ingreso", excedente, reembolso_medio, f"Reembolso {d.folio} · {prov}", "dev_compra", d.id,
+                       usuario.id)
+        d.reembolso, d.reembolso_medio, d.mov_caja_id = excedente, reembolso_medio, mov.id
+    return d
+
+
 def anular_compra(c, usuario):
     if c.anulada:
         raise ErrorNegocio("Esta compra ya estaba anulada.")
+    if getattr(c, "devoluciones", None):
+        raise ErrorNegocio("Esta compra tiene devoluciones al proveedor: no se puede anular completa. "
+                           "Devuelve el resto con «Devolver al proveedor» o haz un ajuste.")
     prods = bloquear([it.producto_id for it in c.items])
     for it in c.items:
         p = prods[it.producto_id]

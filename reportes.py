@@ -175,3 +175,88 @@ def excel(desde, hasta, cfg):
 
 
 __all__ = ["resumen", "top_productos", "sin_movimiento", "excel", "MOTIVOS_AJUSTE"]
+
+
+# ------------------------------------------------------------------ indicadores de inventario
+def valor_inventario_en(momento):
+    """Valor del inventario (al costo promedio) en un momento: último saldo de cada repuesto antes de esa hora.
+    Devuelve (total, {producto_id: valor})."""
+    from models import Movimiento
+    ult = (db.session.query(db.func.max(Movimiento.id)).filter(Movimiento.fecha < momento)
+           .group_by(Movimiento.producto_id).subquery())
+    filas = (db.session.query(Movimiento.producto_id, Movimiento.saldo, Movimiento.costo_promedio)
+             .filter(Movimiento.id.in_(db.select(ult))).all())
+    por = {pid: max(saldo or 0, 0) * (cp or 0) for pid, saldo, cp in filas}
+    return sum(por.values()), por
+
+
+def indicadores(desde, hasta):
+    """Rotación del inventario, días de inventario, rankings (más vendido / más rentable) y clasificación ABC."""
+    ini, fin = _rango(desde, hasta)
+    dias = (hasta - desde).days + 1
+    ventas = {o["id"]: o for o in top_productos(desde, hasta, limite=100000)}
+    inv_ini, por_ini = valor_inventario_en(ini)
+    inv_fin, por_fin = valor_inventario_en(fin)
+    # Inventario promedio: se mide cada semana (si el negocio empezó dentro del periodo, desde el primer movimiento).
+    from models import Movimiento
+    primero = db.session.query(db.func.min(Movimiento.fecha)).scalar()
+    arranque = max(ini, primero) if primero else ini
+    puntos, t = [], arranque
+    while t < fin:
+        puntos.append(valor_inventario_en(t + timedelta(hours=23, minutes=59))[0])
+        t += timedelta(days=7)
+    puntos.append(inv_fin)
+    promedio = sum(puntos) / len(puntos) if puntos else 0
+    dias_efectivos = max((fin - arranque).days, 1)
+    costo_ventas = sum(o["costo"] for o in ventas.values())
+    rotacion = costo_ventas / promedio if promedio else None
+    dias_inv = dias_efectivos / rotacion if rotacion else None
+
+    prods = {p.id: p for p in Producto.query.filter(
+        db.or_(Producto.activo.is_(True), Producto.id.in_(list(ventas) or [0]))).all()}
+    filas = []
+    for pid, p in prods.items():
+        v = ventas.get(pid, {"cantidad": 0, "ventas": 0, "costo": 0, "utilidad": 0})
+        if not v["cantidad"] and (p.stock or 0) <= 0 and not p.virtual:
+            continue
+        diario = v["cantidad"] / dias if dias else 0
+        prom_p = (por_ini.get(pid, 0) + por_fin.get(pid, 0)) / 2
+        filas.append({
+            "p": p, "cantidad": v["cantidad"], "ventas": v["ventas"], "costo": v["costo"], "utilidad": v["utilidad"],
+            "margen": v["utilidad"] / v["ventas"] * 100 if v["ventas"] else None,
+            "stock": 0 if p.virtual else (p.stock or 0), "valor": p.valor_inventario,
+            "cobertura": ((p.stock or 0) / diario) if diario and not p.virtual else None,
+            "rotacion": (v["costo"] / prom_p) if prom_p else None,
+        })
+
+    # ABC por utilidad: A = el grupo que deja el 80 % de la utilidad, B = el siguiente 15 %, C = el resto
+    total_util = sum(max(f["utilidad"], 0) for f in filas)
+    acum = 0
+    for f in sorted(filas, key=lambda f: -f["utilidad"]):
+        if f["utilidad"] > 0 and total_util:
+            antes = acum / total_util
+            acum += f["utilidad"]
+            f["abc"] = "A" if antes < 0.80 else ("B" if antes < 0.95 else "C")
+        else:
+            f["abc"] = "C"
+    abc = {k: {"n": 0, "utilidad": 0.0, "ventas": 0.0} for k in "ABC"}
+    for f in filas:
+        abc[f["abc"]]["n"] += 1
+        abc[f["abc"]]["utilidad"] += f["utilidad"]
+        abc[f["abc"]]["ventas"] += f["ventas"]
+
+    vendidos = [f for f in filas if f["cantidad"] > 0]
+    return {
+        "dias": dias, "inv_ini": inv_ini, "inv_fin": inv_fin, "promedio": promedio, "costo_ventas": costo_ventas,
+        "rotacion": rotacion, "dias_inv": dias_inv, "dias_efectivos": dias_efectivos,
+        "anual": (rotacion * 365 / dias_efectivos) if rotacion else None,
+        "por_unidades": sorted(vendidos, key=lambda f: -f["cantidad"])[:10],
+        "por_ventas": sorted(vendidos, key=lambda f: -f["ventas"])[:10],
+        "por_utilidad": sorted(vendidos, key=lambda f: -f["utilidad"])[:10],
+        "por_margen": sorted([f for f in vendidos if f["utilidad"] > 0], key=lambda f: -(f["margen"] or 0))[:10],
+        "agotarse": sorted([f for f in filas if f["cobertura"] is not None and f["cobertura"] < 15],
+                           key=lambda f: f["cobertura"])[:15],
+        "sobrestock": sorted([f for f in filas if f["cobertura"] is not None and f["cobertura"] > 180],
+                             key=lambda f: -f["valor"])[:15],
+        "filas": sorted(filas, key=lambda f: (-f["utilidad"], -f["ventas"])), "abc": abc, "total_util": total_util,
+    }

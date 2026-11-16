@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Indicadores de inventario{% endblock %}
+{% macro tabla(lista, col, titulo, ayuda) %}
+<div class="card">
+  <h2 style="margin-bottom:2px">{{ titulo }}</h2>
+  <p class="muted" style="margin-top:0"><small>{{ ayuda }}</small></p>
+  {% for f in lista %}
+  <div class="sum-row"><span><a href="{{ url_for('producto_detalle', pid=f.p.id) }}">{{ loop.index }}. {{ f.p.nombre }}</a><br><small class="muted mono">{{ f.p.codigo_interno or f.p.codigo }}</small></span>
+    <b style="text-align:right;white-space:nowrap">{% if col == 'cantidad' %}{{ f.cantidad|cant }} und.{% elif col == 'ventas' %}{{ f.ventas|pesos }}{% elif col == 'utilidad' %}{{ f.utilidad|pesos }}{% else %}{{ f.margen|round(1) }} %{% endif %}
+      <br><small class="muted" style="font-weight:400">{% if col == 'margen' %}{{ f.utilidad|pesos }} en {{ f.cantidad|cant }} und.{% elif col == 'utilidad' %}margen {{ (f.margen or 0)|round|int }} %{% else %}utilidad {{ f.utilidad|pesos }}{% endif %}</small></b></div>
+  {% else %}<p class="empty">Sin ventas en el periodo.</p>{% endfor %}
+</div>
+{% endmacro %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Indicadores de inventario</h1><p>Rotación, lo más vendido, lo más rentable y qué repuestos sostienen el negocio.</p></div>
+</div>
+<form class="filters card">
+  <div class="field"><label>Desde</label><input class="input" type="date" name="desde" value="{{ desde }}"></div>
+  <div class="field"><label>Hasta</label><input class="input" type="date" name="hasta" value="{{ hasta }}"></div>
+  <button class="btn dark">Ver</button><span class="muted" style="margin-left:auto">{{ r.dias }} días{% if r.dias_efectivos < r.dias %} · con inventario desde hace {{ r.dias_efectivos }} día(s){% endif %}</span>
+</form>
+
+<div class="kpis">
+  <div class="kpi hl"><div class="lbl">Rotación del inventario</div><div class="val">{{ (r.rotacion|round(2)) if r.rotacion else '—' }} veces</div><div class="sub">{% if r.anual and r.dias_efectivos >= 30 %}≈ {{ r.anual|round(1) }} veces al año{% elif r.dias_efectivos < 30 %}con menos de 30 días aún no es confiable{% else %}sin datos suficientes{% endif %}</div></div>
+  <div class="kpi"><div class="lbl">Días de inventario</div><div class="val">{{ (r.dias_inv|round|int ~ ' días') if r.dias_inv and r.dias_efectivos >= 30 else '—' }}</div><div class="sub">lo que tarda en venderse lo que tienes</div></div>
+  <div class="kpi"><div class="lbl">Costo de lo vendido</div><div class="val">{{ r.costo_ventas|pesos }}</div><div class="sub">en el periodo</div></div>
+  <div class="kpi"><div class="lbl">Inventario promedio</div><div class="val">{{ r.promedio|pesos }}</div><div class="sub">medido cada semana · hoy {{ r.inv_fin|pesos }}</div></div>
+</div>
+<p class="hint" style="margin-top:-6px">Rotación = costo de lo vendido ÷ inventario promedio. Más alta es mejor: la plata vuelve más rápido. En repuestos de moto, entre 3 y 6 veces al año es lo normal; menos indica mercancía quieta.</p>
+
+<div class="grid g2">
+  {{ tabla(r.por_unidades, 'cantidad', 'Más vendido (unidades)', 'Lo que más sale del mostrador.') }}
+  {{ tabla(r.por_ventas, 'ventas', 'Más vendido (plata)', 'Lo que más dinero mueve.') }}
+  {{ tabla(r.por_utilidad, 'utilidad', 'Más rentable (ganancia en pesos)', 'Lo que más ganancia deja en total: ventas − costo.') }}
+  {{ tabla(r.por_margen, 'margen', 'Más rentable (margen %)', 'Lo que más deja por cada peso vendido.') }}
+</div>
+
+<div class="card">
+  <h2 style="margin-bottom:4px">Clasificación ABC</h2>
+  <p class="muted" style="margin-top:0">Según la ganancia que deja cada repuesto en el periodo.</p>
+  <div class="grid g3" style="gap:10px">
+    {% for k, txt in [('A', 'Los que dejan el 80 % de la ganancia: nunca deben faltar.'), ('B', 'El siguiente 15 %: mantén stock moderado.'), ('C', 'El resto: compra poco o bajo pedido (bodega virtual).')] %}
+    <div style="border:1px solid #e5e5e0;border-radius:10px;padding:12px">
+      <div style="display:flex;justify-content:space-between"><b style="font-size:1.6rem">{{ k }}</b><b>{{ r.abc[k].n }} repuesto(s)</b></div>
+      <div>Ganancia {{ r.abc[k].utilidad|pesos }}{% if r.total_util %} · {{ (r.abc[k].utilidad / r.total_util * 100)|round|int }} %{% endif %}</div>
+      <small class="muted">{{ txt }}</small>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+
+<div class="grid g2">
+  <div class="card">
+    <h2 style="margin-bottom:2px">Riesgo de agotarse</h2>
+    <p class="muted" style="margin-top:0"><small>Al ritmo de venta, el stock alcanza para menos de 15 días.</small></p>
+    {% for f in r.agotarse %}<div class="sum-row"><span><a href="{{ url_for('producto_detalle', pid=f.p.id) }}">{{ f.p.nombre }}</a> <span class="badge">{{ f.abc }}</span><br><small class="muted">stock {{ f.stock|cant }} · vende {{ (f.cantidad / r.dias * 30)|round(1) }} al mes</small></span><b class="neg">{{ f.cobertura|round|int }} días</b></div>
+    {% else %}<p class="empty">Nada en riesgo.</p>{% endfor %}
+  </div>
+  <div class="card">
+    <h2 style="margin-bottom:2px">Sobre-stock</h2>
+    <p class="muted" style="margin-top:0"><small>Hay stock para más de 6 meses al ritmo de venta actual (plata quieta).</small></p>
+    {% for f in r.sobrestock %}<div class="sum-row"><span><a href="{{ url_for('producto_detalle', pid=f.p.id) }}">{{ f.p.nombre }}</a><br><small class="muted">stock {{ f.stock|cant }} · vende {{ (f.cantidad / r.dias * 30)|round(1) }} al mes · {{ f.valor|pesos }}</small></span><b>{{ (f.cobertura / 30)|round|int }} meses</b></div>
+    {% else %}<p class="empty">Sin sobre-stock.</p>{% endfor %}
+  </div>
+</div>
+
+<div class="card">
+  <h2 style="margin-bottom:8px">Todos los repuestos</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>ABC</th><th>Repuesto</th><th class="num">Und.</th><th class="num">Ventas</th><th class="num">Utilidad</th><th class="num">Margen</th><th class="num">Stock</th><th class="num">Rotación</th><th class="num">Alcanza para</th></tr></thead>
+    <tbody>{% for f in r.filas %}<tr>
+      <td><span class="badge {{ 'ok' if f.abc == 'A' else ('warn' if f.abc == 'B' else '') }}">{{ f.abc }}</span></td>
+      <td><a href="{{ url_for('producto_detalle', pid=f.p.id) }}">{{ f.p.nombre }}</a><br><small class="muted mono">{{ f.p.codigo_interno or f.p.codigo }}</small>{% if f.p.virtual %} <span class="badge">virtual</span>{% endif %}</td>
+      <td class="num">{{ f.cantidad|cant }}</td><td class="num">{{ f.ventas|pesos }}</td><td class="num">{{ f.utilidad|pesos }}</td>
+      <td class="num">{{ (f.margen|round|int ~ ' %') if f.margen is not none else '—' }}</td>
+      <td class="num">{{ f.stock|cant }}</td>
+      <td class="num">{{ (f.rotacion|round(1)) if f.rotacion else '—' }}</td>
+      <td class="num">{% if f.cobertura is not none %}{{ f.cobertura|round|int }} días{% elif f.stock > 0 %}<span class="neg">sin ventas</span>{% else %}—{% endif %}</td>
+    </tr>{% else %}<tr><td colspan="9" class="empty">Sin datos.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endblock %}

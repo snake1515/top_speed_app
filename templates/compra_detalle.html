@@ -7,16 +7,28 @@
 <div class="grid g-main">
   <div class="card"><div class="table-wrap"><table>
     <thead><tr><th>Repuesto</th><th class="num">Cantidad</th><th class="num">Costo u.</th><th class="num">Subtotal</th><th class="num">Costo prom. hoy</th></tr></thead>
-    <tbody>{% for it in c.items %}<tr><td><a href="{{ url_for('producto_detalle', pid=it.producto_id) }}">{{ it.producto.nombre }}</a><br><small class="mono">{{ it.producto.codigo }}</small></td>
-      <td class="num">{{ it.cantidad|cant }}</td><td class="num">{{ it.costo_unitario|pesos }}</td><td class="num">{{ it.subtotal|pesos }}</td><td class="num">{{ it.producto.costo_promedio|pesos }}</td></tr>{% endfor %}</tbody>
+    <tbody>{% for it in c.items %}<tr><td><a href="{{ url_for('producto_detalle', pid=it.producto_id) }}">{{ it.producto.nombre }}</a><br><small class="mono">{{ it.producto.codigo_interno or '' }} {{ it.producto.codigo }}</small></td>
+      <td class="num">{{ it.cantidad|cant }}{% if it.devuelto %}<br><small class="neg">devuelto {{ it.devuelto|cant }}</small>{% endif %}</td><td class="num">{{ it.costo_unitario|pesos }}</td><td class="num">{{ it.subtotal|pesos }}</td><td class="num">{{ it.producto.costo_promedio|pesos }}</td></tr>{% endfor %}</tbody>
     <tfoot><tr><td colspan="3">Total</td><td class="num">{{ c.total|pesos }}</td><td></td></tr></tfoot>
-  </table></div>{% if c.nota %}<p class="note">{{ c.nota }}</p>{% endif %}</div>
+  </table></div>{% if c.nota %}<p class="note">{{ c.nota }}</p>{% endif %}
+  {% if c.devoluciones %}
+  <h3 style="margin:16px 0 6px">Devoluciones al proveedor</h3>
+  {% for d in c.devoluciones %}
+  <div class="sum-row"><span><b>{{ d.folio }}</b> · {{ d.fecha|fh }} · {{ d.motivo }}{% if d.nota %} · {{ d.nota }}{% endif %}<br>
+    <small class="muted">{% for i in d.items %}{{ i.cantidad|cant }} × {{ i.producto.nombre }}{{ ', ' if not loop.last }}{% endfor %}
+    {% if d.descontado %} · descontado de la deuda {{ d.descontado|pesos }}{% endif %}{% if d.reembolso %} · reembolso {{ d.reembolso|pesos }} en {{ d.reembolso_medio.nombre if d.reembolso_medio else '' }}{% endif %}</small></span>
+    <span style="white-space:nowrap"><b>{{ d.total|pesos }}</b> <a class="btn ghost sm" href="{{ url_for('dev_compra_ticket', did=d.id) }}" onclick="if (!event.ctrlKey) { event.preventDefault(); imprimirEnIframe(this.href); }" title="Imprimir comprobante">🖨</a></span></div>
+  {% endfor %}
+  {% endif %}
+  </div>
   <div>
     <div class="card">
       <h2 style="margin-bottom:10px">Pago al proveedor</h2>
       <div class="sum-row"><span>Total</span><b>{{ c.total|pesos }}</b></div>
+      {% if c.devuelto %}<div class="sum-row"><span>− Devuelto al proveedor</span><b>{{ c.devuelto|pesos }}</b></div>{% endif %}
       <div class="sum-row"><span>Pagado</span><b>{{ c.pagado|pesos }}</b></div>
       <div class="sum-row big"><span>Saldo</span><span class="{{ 'neg' if c.saldo }}">{{ c.saldo|pesos }}</span></div>
+      {% if c.a_favor %}<p class="flash info" style="margin:8px 0 0">El proveedor te debe <b>{{ c.a_favor|pesos }}</b> por devoluciones ya pagadas (cruzar en la próxima compra o pedir el reembolso).</p>{% endif %}
       {% if c.vence and c.saldo %}<p class="muted">Vence {{ c.vence|f }}</p>{% endif %}
       {% for pg in c.pagos %}<div class="sum-row"><small>{{ pg.fecha|f }} · {{ pg.medio.nombre if pg.medio else '' }}{{ ' · caja' if pg.desde_caja }}</small><small>{{ pg.valor|pesos }}</small></div>{% endfor %}
       {% if c.saldo and not c.anulada %}
@@ -31,7 +43,26 @@
       </form>
       {% endif %}
     </div>
-    {% if current_user.puede('admin') and not c.anulada %}
+    {% if not c.anulada and c.items|sum(attribute='cantidad') > c.items|sum(attribute='devuelto') %}
+    <details class="card" {{ 'open' if request.args.get('devolver') }}><summary>↩ Devolver al proveedor</summary>
+      <form method="post" action="{{ url_for('compra_devolver', cid=c.id) }}" style="margin-top:12px" data-confirm="¿Registrar la devolución al proveedor? Los repuestos salen del inventario.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <p class="hint" style="margin-top:0">Para lo que llegó dañado o no es la referencia. Salen del inventario al costo de esta compra.</p>
+        {% for it in c.items if it.cantidad - it.devuelto > 0 %}
+        <div class="sum-row" style="align-items:center"><span>{{ it.producto.nombre }}<br><small class="muted">máx. {{ (it.cantidad - it.devuelto)|cant }} · {{ it.costo_unitario|pesos }} c/u · stock {{ it.producto.stock|cant }}</small></span>
+          <input class="input" name="dev_{{ it.id }}" placeholder="0" style="width:70px;text-align:right" inputmode="decimal"></div>
+        {% endfor %}
+        <div class="field" style="margin-top:8px"><label>Motivo</label><select class="input" name="motivo">{% for m in motivos_dev %}<option>{{ m }}</option>{% endfor %}</select></div>
+        <div class="field"><input class="input" name="nota" placeholder="Detalle (ej. caja golpeada, llegó 90/90 en vez de 100/90)"></div>
+        <p class="hint">Primero se descuenta de lo que se le debe al proveedor ({{ c.saldo|pesos }}). Si ya estaba pagado:</p>
+        <label class="check"><input type="checkbox" name="reembolso" value="1" {{ 'disabled' if not turno }}> El proveedor devuelve el dinero ahora (entra a la caja)</label>
+        <div class="field"><select class="input" name="medio_id">{% for m in medios %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}</select></div>
+        <p class="hint">Si no lo devuelve ahora, queda <b>a favor</b> con el proveedor.</p>
+        <button class="btn sec">Registrar devolución</button>
+      </form>
+    </details>
+    {% endif %}
+    {% if current_user.puede('admin') and not c.anulada and not c.devoluciones %}
     <details class="card"><summary class="neg">Anular compra</summary>
       <form method="post" action="{{ url_for('compra_anular', cid=c.id) }}" style="margin-top:10px" data-confirm="¿Anular la compra? Se resta el stock y se recalcula el costo promedio.">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn danger">Anular compra</button>

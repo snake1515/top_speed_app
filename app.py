@@ -1696,8 +1696,9 @@ def compra_nueva():
 @requiere("bodega")
 def compra_detalle(cid):
     c = get_or_404(Compra, cid)
+    from models import MOTIVOS_DEV_COMPRA
     return render_template("compra_detalle.html", c=c, medios=MedioPago.query.filter_by(activo=True).order_by(MedioPago.orden).all(),
-                           turno=turno_abierto())
+                           turno=turno_abierto(), motivos_dev=MOTIVOS_DEV_COMPRA)
 
 
 @app.route("/compras/<int:cid>/pago", methods=["POST"])
@@ -1715,6 +1716,40 @@ def compra_pago(cid):
         db.session.rollback()
         errores_flash(e)
     return redirect(url_for("compra_detalle", cid=cid))
+
+
+@app.route("/compras/<int:cid>/devolver", methods=["POST"])
+@requiere("bodega")
+def compra_devolver(cid):
+    from models import MedioPago as _MP
+    c = get_or_404(Compra, cid)
+    f = request.form
+    cantidades = {k[4:]: n(v) for k, v in f.items() if k.startswith("dev_") and n(v) > 0}
+    medio = db.session.get(_MP, int(f.get("medio_id") or 0)) if f.get("reembolso") else None
+    try:
+        d = services.devolver_a_proveedor(c, current_user, cantidades, f.get("motivo"), f.get("nota"), medio)
+        db.session.commit()
+        msg = f"Devolución {d.folio} registrada por {pesos(d.total)}."
+        if d.descontado:
+            msg += f" Se descontaron {pesos(d.descontado)} de lo que se le debe al proveedor."
+        if d.reembolso:
+            msg += f" Entraron {pesos(d.reembolso)} a la caja como reembolso."
+        elif d.total - d.descontado > 0:
+            msg += f" Quedan {pesos(d.total - d.descontado)} a favor con el proveedor."
+        flash(msg, "ok")
+        session["imprimir"] = url_for("dev_compra_ticket", did=d.id)
+    except ErrorNegocio as e:
+        db.session.rollback()
+        errores_flash(e)
+    return redirect(url_for("compra_detalle", cid=cid))
+
+
+@app.route("/compras/devolucion/<int:did>/ticket")
+@requiere("bodega")
+def dev_compra_ticket(did):
+    from models import DevolucionCompra
+    d = get_or_404(DevolucionCompra, did)
+    return render_template("ticket_dev_compra.html", d=d, c=d.compra, auto=request.args.get("imprimir") == "1")
 
 
 @app.route("/compras/<int:cid>/anular", methods=["POST"])
@@ -2154,6 +2189,15 @@ def gasto_anular(gid):
 
 
 # ============================================================== reportes
+@app.route("/reportes/inventario")
+@requiere("admin")
+def indicadores_inventario():
+    hoy = ahora().date()
+    desde = _fecha(request.args.get("desde"), hoy - timedelta(days=89))
+    hasta = _fecha(request.args.get("hasta"), hoy)
+    return render_template("indicadores.html", r=rpt.indicadores(desde, hasta), desde=desde, hasta=hasta)
+
+
 @app.route("/reportes")
 @requiere("admin")
 def reportes():

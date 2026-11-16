@@ -18,7 +18,7 @@
   <div>
     <div class="card"><div class="chart-box"><canvas id="graf"></canvas></div></div>
     <div class="card">
-      <h2 style="margin-bottom:8px">Más vendidos</h2>
+      <div class="card-head"><h2>Más vendidos</h2><a href="{{ url_for('indicadores_inventario', desde=desde, hasta=hasta) }}">Rotación y rentabilidad →</a></div>
       <div class="table-wrap"><table>
         <thead><tr><th>Repuesto</th><th class="num">Und.</th><th class="num">Ventas</th><th class="num">Costo</th><th class="num">Utilidad</th><th class="num">Margen</th></tr></thead>
         <tbody>{% for t in top %}<tr><td><a href="{{ url_for('producto_detalle', pid=t.id) }}">{{ t.nombre }}</a><br><small class="mono">{{ t.codigo }}</small></td><td class="num">{{ t.cantidad|cant }}</td><td class="num">{{ t.ventas|pesos }}</td><td class="num">{{ t.costo|pesos }}</td><td class="num">{{ t.utilidad|pesos }}</td><td class="num">{{ ((t.utilidad / t.ventas * 100) if t.ventas else 0)|round|int }} %</td></tr>

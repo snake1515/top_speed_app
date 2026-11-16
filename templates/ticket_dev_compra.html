@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Devolución {{ d.folio }} · {{ cfg.nombre }}</title>
+<style>
+  @page { size: {{ cfg.ancho_ticket }}mm auto; margin: 0; }  /* sin margen: Chrome no imprime encabezados (fecha, URL) */
+  body { font-family: "Courier New", ui-monospace, monospace; font-size: {{ '11px' if cfg.ancho_ticket == 58 else '12.5px' }}; color: #000; margin: 0; background: #e9e9e6; }
+  .t { width: {{ cfg.ancho_ticket - 6 }}mm; margin: 14px auto; background: #fff; padding: 4mm; box-shadow: 0 2px 12px rgba(0,0,0,.12); }
+  .c { text-align: center; } .r { text-align: right; } b { font-weight: 700; }
+  .lg { font-size: 1.35em; font-weight: 700; }
+  .dl td { padding: 0; } .dl td.r { padding-left: 6px; word-break: break-word; }
+  .dir { font-size: .92em; white-space: nowrap; }
+  .gracias { font-weight: 700; white-space: nowrap; font-size: 1.05em; }
+  .negocio { font-size: 1.6em; font-weight: 800; text-transform: uppercase; letter-spacing: .03em; line-height: 1.1; }
+  hr { border: 0; border-top: 1px dashed #000; margin: 6px 0; }
+  table { width: 100%; border-collapse: collapse; } td { vertical-align: top; padding: 1px 0; }
+  img.logo { width: 48mm; max-width: 100%; height: auto; display: block; margin: 0 auto 4px; image-rendering: pixelated; image-rendering: crisp-edges; }
+  .acc { text-align: center; margin: 14px; font-family: system-ui, sans-serif; }
+  .acc a, .acc button { display: inline-block; margin: 3px; padding: 9px 16px; background: #0b0a07; color: #ffc400; border-radius: 8px; text-decoration: none; border: 0; font: inherit; font-weight: 600; cursor: pointer; }
+  .anul { border: 2px solid #000; text-align: center; font-weight: 700; padding: 3px; margin: 4px 0; }
+  .firma { margin-top: 26px; border-top: 1px solid #000; text-align: center; padding-top: 2px; }
+  @media print { body { background: #fff; } .t { box-shadow: none; margin: 0; width: auto; padding: 3mm 3mm 4mm; } .acc { display: none; } }
+</style>
+</head>
+<body>
+<div class="t">
+  <img class="logo" src="{{ url_for('logo_recibo', v=cfg.logo_v) }}" alt="">
+  <div class="c negocio">{{ cfg.nombre|upper }}</div>
+  <div class="c">{% if cfg.direccion %}<span class="dir">{{ cfg.direccion }}</span><br>{% endif %}{% if cfg.ciudad %}{{ cfg.ciudad }}<br>{% endif %}{% if cfg.telefono or cfg.whatsapp %}Tel. {{ cfg.telefono or cfg.whatsapp }}{% if cfg.telefono and cfg.whatsapp and cfg.telefono != cfg.whatsapp %} · WhatsApp {{ cfg.whatsapp }}{% endif %}<br>{% endif %}{% if cfg.nit %}NIT {{ cfg.nit }}{% endif %}</div>
+  <hr>
+  <div class="anul">DEVOLUCIÓN A PROVEEDOR</div>
+  <table class="dl">
+    <tr><td><b>Comprobante</b></td><td class="r lg">{{ d.folio }}</td></tr>
+    <tr><td>Fecha</td><td class="r">{{ d.fecha|fh }}</td></tr>
+    <tr><td><b>Proveedor</b></td><td class="r"><b>{{ c.proveedor.nombre if c.proveedor else '—' }}</b></td></tr>
+    {% if c.proveedor and c.proveedor.nit %}<tr><td>NIT</td><td class="r">{{ c.proveedor.nit }}</td></tr>{% endif %}
+    <tr><td>Compra</td><td class="r">C-{{ '%05d'|format(c.numero) }}</td></tr>
+    {% if c.factura %}<tr><td>Factura prov.</td><td class="r">{{ c.factura }}</td></tr>{% endif %}
+    <tr><td>Registró</td><td class="r">{{ d.usuario.nombre if d.usuario else '' }}</td></tr>
+  </table>
+  <hr>
+  <div><b>Repuestos devueltos</b></div>
+  <table>
+    {% for i in d.items %}
+    <tr><td colspan="2">{{ i.producto.nombre }}</td></tr>
+    <tr><td>{{ i.cantidad|cant }} x {{ i.costo_unitario|pesos }} <small>{{ i.producto.codigo_interno or i.producto.codigo }}</small></td><td class="r">{{ (i.cantidad * i.costo_unitario)|pesos }}</td></tr>
+    {% endfor %}
+  </table>
+  <hr>
+  <table>
+    <tr><td colspan="2" class="lg">VALOR DEVUELTO</td></tr><tr><td></td><td class="r lg">{{ d.total|pesos }}</td></tr>
+    {% if d.descontado %}<tr><td>Descontado de la deuda</td><td class="r">{{ d.descontado|pesos }}</td></tr>{% endif %}
+    {% if d.reembolso %}<tr><td>Reembolso ({{ d.reembolso_medio.nombre if d.reembolso_medio else '' }})</td><td class="r">{{ d.reembolso|pesos }}</td></tr>{% endif %}
+    {% set favor = d.total - d.descontado - d.reembolso %}
+    {% if favor > 0.5 %}<tr><td><b>Queda a favor</b></td><td class="r"><b>{{ favor|pesos }}</b></td></tr>{% endif %}
+  </table>
+  <hr>
+  <div><b>Motivo:</b> {{ d.motivo }}{% if d.nota %} — {{ d.nota }}{% endif %}</div>
+  <div class="firma">Entrega ({{ cfg.nombre }})</div>
+  <div class="firma">Recibe (proveedor) · nombre y cédula</div>
+</div>
+<div class="acc">
+  <button onclick="window.print()">🖨 Imprimir</button>
+  <a href="{{ url_for('compra_detalle', cid=c.id) }}">Ver compra</a>
+</div>
+{% if auto %}<script>window.addEventListener('load', () => setTimeout(() => window.print(), 300));</script>{% endif %}
+</body>
+</html>
