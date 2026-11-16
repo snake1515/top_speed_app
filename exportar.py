@@ -15,6 +15,58 @@ CANT = '#,##0.##;-#,##0.##;"0"'
 PCT = '0.0"%";-0.0"%";"-"'
 
 
+# ---------- fórmulas con su resultado guardado
+# openpyxl guarda las fórmulas sin resultado: Excel en "Vista protegida" (archivos descargados) no calcula y las
+# muestra vacías. Por eso cada fórmula se registra con el valor que ya calculamos y al guardar se escribe ese
+# resultado dentro del archivo: se ve de una vez y la fórmula sigue funcionando al editar.
+def _fx(ws, fila, col, formula, valor):
+    c = ws.cell(row=fila, column=col, value=formula)
+    if not hasattr(ws.parent, "_resultados"):
+        ws.parent._resultados = {}
+    ws.parent._resultados[(ws.title, c.coordinate)] = valor
+    return c
+
+
+def _guardar(wb):
+    import re
+    import zipfile
+    from xml.sax.saxutils import escape
+    crudo = BytesIO()
+    wb.save(crudo)
+    res = getattr(wb, "_resultados", {})
+    if not res:
+        crudo.seek(0)
+        return crudo
+    por_hoja = {}
+    for (titulo, celda), v in res.items():
+        por_hoja.setdefault(titulo, {})[celda] = v
+    rutas = {f"xl/worksheets/sheet{i}.xml": ws.title for i, ws in enumerate(wb.worksheets, 1)}
+    zin = zipfile.ZipFile(BytesIO(crudo.getvalue()))
+    salida = BytesIO()
+    with zipfile.ZipFile(salida, "w", zipfile.ZIP_DEFLATED) as zout:
+        for item in zin.infolist():
+            datos = zin.read(item.filename)
+            vals = por_hoja.get(rutas.get(item.filename))
+            if vals:
+                xml = datos.decode("utf-8")
+
+                def poner(m):
+                    attrs, formula = m.group(1), m.group(2)
+                    ref = re.search(r'\br="([A-Z]+\d+)"', attrs)
+                    if not ref or ref.group(1) not in vals:
+                        return m.group(0)
+                    v = vals[ref.group(1)]
+                    attrs = re.sub(r'\st="[^"]*"', "", attrs)
+                    if isinstance(v, str):
+                        return f'<c{attrs} t="str">{formula}<v>{escape(v)}</v></c>'
+                    return f"<c{attrs}>{formula}<v>{float(v or 0)!r}</v></c>"
+                xml = re.sub(r"<c(\s[^>]*)>(<f>.*?</f>)(?:<v>.*?</v>|<v\s*/>)?</c>", poner, xml)
+                datos = xml.encode("utf-8")
+            zout.writestr(item, datos)
+    salida.seek(0)
+    return salida
+
+
 def estado(p):
     if p.virtual:
         return "Virtual"
@@ -116,18 +168,24 @@ def _hoja_productos(wb, nombre, titulo, sub, productos, cols, extra):
     _encabezado(ws, [c[0] for c in cols], [c[1] for c in cols])
     idx = {c[0]: i for i, c in enumerate(cols, 1)}
     fila = 4
+    sumas = {"Stock": 0.0, "Vendido por surtir": 0.0, "Valor inventario": 0.0}
     for p in productos:
         for i, (t, _, fmt, fn) in enumerate(cols, 1):
             if fn is None:   # Valor inventario
                 st, cp = get_column_letter(idx["Stock"]), get_column_letter(idx["Costo promedio"])
                 v = f"=MAX({st}{fila},0)*{cp}{fila}"
+                c = _fx(ws, fila, i, v, max(p.stock or 0, 0) * (p.costo_promedio or 0))
             else:
                 v = fn(p, extra)
-            c = ws.cell(row=fila, column=i, value=v)
+                c = ws.cell(row=fila, column=i, value=v)
             c.font = Font(name=F, color=ROJO if (t == "Estado" and v in ("Agotado", "Bajo mínimo")) else NEGRO,
                           bold=(t == "Código interno"))
             if fmt:
                 c.number_format = fmt
+        for t in sumas:
+            if t in idx:
+                x = ws.cell(row=fila, column=idx[t]).value
+                sumas[t] += (max(p.stock or 0, 0) * (p.costo_promedio or 0)) if t == "Valor inventario" else (x if isinstance(x, (int, float)) else 0)
         fila += 1
     ultima = fila - 1
     if ultima >= 4:
@@ -137,10 +195,10 @@ def _hoja_productos(wb, nombre, titulo, sub, productos, cols, extra):
         for t in ("Stock", "Vendido por surtir", "Valor inventario"):
             if t in idx:
                 L = get_column_letter(idx[t])
-                c = ws.cell(row=fila + 1, column=idx[t], value=f"=SUBTOTAL(109,{L}4:{L}{ultima})")
+                c = _fx(ws, fila + 1, idx[t], f"=SUBTOTAL(109,{L}4:{L}{ultima})", sumas[t])
                 c.font = Font(name=F, bold=True)
                 c.number_format = PESOS if t == "Valor inventario" else CANT
-        ws.cell(row=fila + 1, column=idx["Nombre"], value=f"=SUBTOTAL(103,D4:D{ultima})&\" repuesto(s)\"").font = Font(name=F, bold=True)
+        _fx(ws, fila + 1, idx["Nombre"], f"=SUBTOTAL(103,D4:D{ultima})&\" repuesto(s)\"", f"{ultima - 3} repuesto(s)").font = Font(name=F, bold=True)
     else:
         ws.cell(row=4, column=1, value="(sin repuestos en esta lista)").font = Font(name=F, italic=True, color="666666")
     ws.freeze_panes = "E4"
@@ -200,10 +258,7 @@ def plantilla(ve_costos=True):
         c.font = Font(name=F, italic=True, color="666666")
         if fmt:
             c.number_format = fmt
-    buf = BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    return buf
+    return _guardar(wb)
 
 
 def inventario_excel(productos, reservado, por_surtir, movimientos, ve_costos, cfg, desde, hasta):
@@ -233,7 +288,10 @@ def inventario_excel(productos, reservado, por_surtir, movimientos, ve_costos, c
                                                                      n=len(reales) + 3) if reales else 0), PESOS))
     for i, (t, v, fmt) in enumerate(filas, 4):
         ws.cell(row=i, column=1, value=t).font = Font(name=F)
-        c = ws.cell(row=i, column=2, value=v)
+        if isinstance(v, str) and v.startswith("="):
+            c = _fx(ws, i, 2, v, sum(max(p.stock or 0, 0) * (p.costo_promedio or 0) for p in reales))
+        else:
+            c = ws.cell(row=i, column=2, value=v)
         c.font = Font(name=F, bold=True)
         c.number_format = fmt
     ws.cell(row=i + 2, column=1, value="Hojas: Inventario (todo) · Bodega virtual · Con inventario · "
@@ -249,10 +307,7 @@ def inventario_excel(productos, reservado, por_surtir, movimientos, ve_costos, c
     _hoja_productos(wb, "Bajo mínimo y agotados", "Bajo mínimo y agotados", "Para pedir al proveedor", alertas, cols, extra)
     _hoja_movimientos(wb, movimientos, ve_costos, desde, hasta)
 
-    buf = BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    return buf
+    return _guardar(wb)
 
 
 def inversion_excel(r, cfg, url_soporte):
@@ -267,7 +322,7 @@ def inversion_excel(r, cfg, url_soporte):
     def par(t, v, fmt=PESOS, negrita=False):
         nonlocal fila
         ws.cell(row=fila, column=1, value=t).font = Font(name=F, bold=negrita)
-        c = ws.cell(row=fila, column=2, value=v)
+        c = _fx(ws, fila, 2, v, sum(i.valor for i in r["invs"])) if isinstance(v, str) and v.startswith("=") else ws.cell(row=fila, column=2, value=v)
         c.font = Font(name=F, bold=True)
         if fmt:
             c.number_format = fmt
@@ -313,7 +368,7 @@ def inversion_excel(r, cfg, url_soporte):
         d.auto_filter.ref = f"A3:J{ndet + 3}"
         c = d.cell(row=ndet + 5, column=4, value="Total")
         c.font = Font(name=F, bold=True)
-        c = d.cell(row=ndet + 5, column=5, value=f"=SUBTOTAL(109,E4:E{ndet + 3})")
+        c = _fx(d, ndet + 5, 5, f"=SUBTOTAL(109,E4:E{ndet + 3})", sum(i.valor for i in r["invs"]))
         c.font = Font(name=F, bold=True)
         c.number_format = PESOS
     d.freeze_panes = "C4"
@@ -326,8 +381,9 @@ def inversion_excel(r, cfg, url_soporte):
     for n_, x in enumerate(r["por_socio"], 4):
         vals = [x["socio"].nombre, x["socio"].documento or "", x["aportes"], x["pagos"], f"=C{n_}+D{n_}",
                 f"=IF(SUM($E$4:$E${nsoc + 3})=0,0,E{n_}/SUM($E$4:$E${nsoc + 3}))"]
+        calc = {5: x["aportes"] + x["pagos"], 6: x["pct"] / 100}
         for k, v in enumerate(vals, 1):
-            c = s.cell(row=n_, column=k, value=v)
+            c = _fx(s, n_, k, v, calc[k]) if k in calc else s.cell(row=n_, column=k, value=v)
             c.font = Font(name=F)
             c.number_format = PESOS if k in (3, 4, 5) else ("0.0%" if k == 6 else "General")
     s.cell(row=nsoc + 5, column=1, value="Fondo común sin gastar").font = Font(name=F, bold=True)
@@ -345,10 +401,7 @@ def inversion_excel(r, cfg, url_soporte):
         a.cell(row=n_, column=1).number_format = "dd/mm/yyyy"
         a.cell(row=n_, column=3).number_format = PESOS
 
-    buf = BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    return buf
+    return _guardar(wb)
 
 
 def _periodo_txt(r):
@@ -374,14 +427,16 @@ def aportes_excel(r, cfg):
     for i, x in enumerate(r["socios"], 4):
         vals = [x["socio"].nombre, x["socio"].documento or "", x["periodo"], x["aportes"], x["pagos"], f"=D{i}+E{i}", x["pct"] / 100]
         for k, v in enumerate(vals, 1):
-            c = ws.cell(row=i, column=k, value=v)
+            c = _fx(ws, i, k, v, x["aportes"] + x["pagos"]) if k == 6 else ws.cell(row=i, column=k, value=v)
             c.font = Font(name=F, bold=(k == 1))
             c.number_format = PESOS if 3 <= k <= 6 else ("0.0%" if k == 7 else "General")
     if n:
         fila = n + 4
         ws.cell(row=fila, column=1, value="TOTAL").font = Font(name=F, bold=True)
+        tot = {3: sum(x["periodo"] for x in r["socios"]), 4: sum(x["aportes"] for x in r["socios"]),
+               5: sum(x["pagos"] for x in r["socios"]), 6: sum(x["aportes"] + x["pagos"] for x in r["socios"])}
         for k, L in ((3, "C"), (4, "D"), (5, "E"), (6, "F")):
-            c = ws.cell(row=fila, column=k, value=f"=SUM({L}4:{L}{fila - 1})")
+            c = _fx(ws, fila, k, f"=SUM({L}4:{L}{fila - 1})", tot[k])
             c.font = Font(name=F, bold=True)
             c.number_format = PESOS
         ws.cell(row=fila + 2, column=1, value="Fondo común: aportado − gastado").font = Font(name=F)
@@ -409,7 +464,7 @@ def aportes_excel(r, cfg):
             x = pc.cell(row=fila, column=k, value=v or None)
             x.font = Font(name=F, bold=True)
             x.number_format = PESOS
-        x = pc.cell(row=fila, column=len(cols) + 2, value=f"=SUM(B{fila}:{get_column_letter(len(cols) + 1)}{fila})")
+        x = _fx(pc, fila, len(cols) + 2, f"=SUM(B{fila}:{get_column_letter(len(cols) + 1)}{fila})", c["total"])
         x.font = Font(name=F, bold=True)
         x.number_format = PESOS
         for k in range(1, len(cols) + 3):
@@ -430,7 +485,8 @@ def aportes_excel(r, cfg):
         pc.cell(row=fila + 1, column=1, value="TOTAL").font = Font(name=F, bold=True)
         for k in range(2, len(cols) + 3):
             L = get_column_letter(k)
-            x = pc.cell(row=fila + 1, column=k, value="=" + "+".join(f"{L}{f}" for f in filas_cat))
+            x = _fx(pc, fila + 1, k, "=" + "+".join(f"{L}{f}" for f in filas_cat),
+                    r["total_periodo"] if k == len(cols) + 2 else r["en_periodo"].get(cols[k - 2].id, 0))
             x.font = Font(name=F, bold=True)
             x.number_format = PESOS
             x.fill = PatternFill("solid", fgColor="FFF3C4")
@@ -452,7 +508,7 @@ def aportes_excel(r, cfg):
             fila += 1
         c = d.cell(row=fila, column=5, value=f"Total {g['socio'].nombre}")
         c.font = Font(name=F, bold=True)
-        c = d.cell(row=fila, column=7, value=f"=SUM(G{ini}:G{fila - 1})")
+        c = _fx(d, fila, 7, f"=SUM(G{ini}:G{fila - 1})", g["total"])
         c.font = Font(name=F, bold=True)
         c.number_format = PESOS
         for k in range(1, 8):
@@ -462,16 +518,13 @@ def aportes_excel(r, cfg):
     if subtot:
         c = d.cell(row=fila, column=5, value="TOTAL DE TODOS LOS SOCIOS")
         c.font = Font(name=F, bold=True)
-        c = d.cell(row=fila, column=7, value="=" + "+".join(subtot))
+        c = _fx(d, fila, 7, "=" + "+".join(subtot), r["total_periodo"])
         c.font = Font(name=F, bold=True)
         c.number_format = PESOS
     else:
         d.cell(row=4, column=1, value="Sin aportes en el periodo").font = Font(name=F, italic=True)
     d.freeze_panes = "A4"
-    buf = BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    return buf
+    return _guardar(wb)
 
 
 def aportes_pdf(r, cfg, logo_path):
