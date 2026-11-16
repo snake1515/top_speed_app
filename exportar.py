@@ -732,23 +732,26 @@ def aportes_pdf(r, cfg, logo_path, sencillo=False):
         story.append(Paragraph("La participación sale de lo que cada socio puso (aportes en dinero + compras que pagó de su bolsillo). "
                                "Es una referencia: lo que acordaron los socios por escrito es lo que vale.", st["n"]))
 
-    # firmas de los socios
-    story.append(Spacer(1, 34))
-    firmas = [[Paragraph(f"<b>{x['socio'].nombre}</b><br/>{('C.C. ' + x['socio'].documento) if x['socio'].documento else ''}",
-                         ParagraphStyle("f", fontName="Helvetica", fontSize=8.5, leading=11, alignment=1)) for x in r["socios"][i:i + 3]]
-              for i in range(0, len(r["socios"]), 3)]
+    # firmas de los socios: el bloque completo va junto (si no cabe, pasa entero a la página siguiente)
+    from reportlab.platypus import KeepTogether
+    socs = [x["socio"] for x in r["socios"]]
+    nc = 2 if len(socs) in (2, 4) else 3
+    firmas = [[Paragraph(f"<b>{so.nombre}</b><br/>{('C.C. ' + so.documento) if so.documento else ''}",
+                         ParagraphStyle("f", fontName="Helvetica", fontSize=8.5, leading=11, alignment=1)) for so in socs[i:i + nc]]
+              for i in range(0, len(socs), nc)]
     if firmas:
         for fila in firmas:
-            while len(fila) < 3:
+            while len(fila) < nc:
                 fila.append("")
-        t = Table(firmas, colWidths=[doc.width / 3] * 3, rowHeights=[46] * len(firmas))
-        estilo = [("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 14), ("RIGHTPADDING", (0, 0), (-1, -1), 14)]
+        t = Table(firmas, colWidths=[doc.width / nc] * nc, rowHeights=[62] * len(firmas))
+        estilo = [("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 18), ("RIGHTPADDING", (0, 0), (-1, -1), 18),
+                  ("TOPPADDING", (0, 0), (-1, -1), 4)]
         for ri, fila in enumerate(firmas):
             for ci, celda in enumerate(fila):
                 if celda:
                     estilo.append(("LINEABOVE", (ci, ri), (ci, ri), .8, NEGRO))
         t.setStyle(TableStyle(estilo))
-        story.append(t)
+        story.append(KeepTogether([Spacer(1, 40), t]))
 
     def pie(canvas, doc_):
         canvas.saveState()
