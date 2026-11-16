@@ -71,7 +71,7 @@
     <thead><tr><th>ABC</th><th>Repuesto</th><th class="num">Und.</th><th class="num">Ventas</th><th class="num">Utilidad</th><th class="num">Margen</th><th class="num">Stock</th><th class="num">Rotación</th><th class="num">Alcanza para</th></tr></thead>
     <tbody>{% for f in r.filas %}<tr>
       <td><span class="badge {{ 'ok' if f.abc == 'A' else ('warn' if f.abc == 'B' else '') }}">{{ f.abc }}</span></td>
-      <td><a href="{{ url_for('producto_detalle', pid=f.p.id) }}">{{ f.p.nombre }}</a><br><small class="muted mono">{{ f.p.codigo_interno or f.p.codigo }}</small>{% if f.p.virtual %} <span class="badge">virtual</span>{% endif %}</td>
+      <td><a href="{{ url_for('producto_detalle', pid=f.p.id) }}">{{ f.p.nombre }}</a><br><small class="muted mono">{{ f.p.codigo_interno or f.p.codigo }}</small>{% if f.p.virtual %} <span class="badge virtual">Virtual</span>{% endif %}</td>
       <td class="num">{{ f.cantidad|cant }}</td><td class="num">{{ f.ventas|pesos }}</td><td class="num">{{ f.utilidad|pesos }}</td>
       <td class="num">{{ (f.margen|round|int ~ ' %') if f.margen is not none else '—' }}</td>
       <td class="num">{{ f.stock|cant }}</td>

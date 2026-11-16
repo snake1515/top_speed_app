@@ -304,3 +304,6 @@ label > .fecha-dmy { display: inline-block; vertical-align: middle; }
 .fecha-dmy > input[type=text] { width: 100%; padding-right: 40px; }
 .fecha-dmy .fecha-cal { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: 0; padding: 4px; cursor: pointer; color: inherit; line-height: 0; }
 .fecha-dmy .fecha-oculta { position: absolute; right: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
+
+/* repuestos de la bodega virtual: etiqueta fucsia con letras negras */
+.badge.virtual { background: #ff2bc2 !important; color: #000 !important; border-color: #ff2bc2 !important; font-weight: 800; }
