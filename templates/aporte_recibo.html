@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block title %}Recibo {{ ap.folio }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Recibo de aporte {{ ap.folio }}</h1><p>{{ ap.socio.nombre }} · {{ ap.valor|pesos }} · {{ ap.fecha|f }}{% if ap.anulado %} · <span class="badge">ANULADO</span>{% endif %}</p></div>
+  <a class="btn sec" href="{{ url_for('inversion') }}">← Inversión inicial</a>
+</div>
+<div class="grid g-main">
+  <div class="card" style="text-align:center">
+    <img id="rec" src="{{ url_for('aporte_recibo_png', aid=ap.id) }}?v={{ ap.anulado|int }}" alt="Recibo {{ ap.folio }}" style="max-width:100%;width:480px;border-radius:12px;box-shadow:0 6px 24px rgba(0,0,0,.18)">
+  </div>
+  <div>
+    <div class="card">
+      <h2 style="margin-bottom:10px">Compartir o imprimir</h2>
+      <button class="btn ok" id="compartir" style="width:100%;margin-bottom:8px">📲 Compartir por WhatsApp (imagen)</button>
+      <a class="btn sec" style="width:100%;margin-bottom:8px" href="{{ url_for('aporte_recibo_png', aid=ap.id, descargar=1) }}">⤓ Descargar PNG</a>
+      <a class="btn dark" style="width:100%" href="{{ url_for('aporte_ticket', aid=ap.id) }}" onclick="if (!event.ctrlKey) { event.preventDefault(); imprimirEnIframe(this.href); }">🖨 Imprimir en la térmica</a>
+      <p class="hint" id="ayuda" style="margin-top:10px">En el celular se abre el menú para enviar la imagen por WhatsApp. En el computador se descarga la imagen y se abre WhatsApp para adjuntarla.</p>
+    </div>
+    <div class="card">
+      <div class="sum-row"><span>Socio</span><b>{{ ap.socio.nombre }}</b></div>
+      {% if ap.socio.documento %}<div class="sum-row"><span>Cédula</span><b>{{ ap.socio.documento }}</b></div>{% endif %}
+      <div class="sum-row"><span>Valor</span><b>{{ ap.valor|pesos }}</b></div>
+      <p class="muted" style="margin:4px 0 8px"><small>Son: {{ letras }}</small></p>
+      <div class="sum-row"><span>Total aportado por el socio</span><b>{{ total|pesos }}</b></div>
+      <div class="sum-row"><span>Participación</span><b>{{ pct|round(1) }} %</b></div>
+    </div>
+  </div>
+</div>
+<script>
+document.getElementById('compartir').addEventListener('click', async () => {
+  const url = "{{ url_for('aporte_recibo_png', aid=ap.id) }}", nombre = "Recibo_{{ ap.folio }}.png";
+  const texto = "Recibo de aporte {{ ap.folio }} · {{ ap.socio.nombre }} · {{ ap.valor|pesos }} · {{ cfg.nombre }}";
+  try {
+    const blob = await (await fetch(url, {cache: 'no-store'})).blob();
+    const archivo = new File([blob], nombre, {type: 'image/png'});
+    if (navigator.canShare && navigator.canShare({files: [archivo]})) {
+      await navigator.share({files: [archivo], title: nombre, text: texto});
+      return;
+    }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nombre; document.body.appendChild(a); a.click(); a.remove();
+  } catch (e) { if (e.name === 'AbortError') return; }
+  window.open("https://wa.me/{{ tel }}?text=" + encodeURIComponent(texto + " (adjunto la imagen del recibo)"), '_blank');
+});
+</script>
+{% endblock %}

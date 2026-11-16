@@ -169,6 +169,7 @@ class Config(db.Model):
     sig_cod_interno = db.Column(db.Integer, nullable=False, default=0)  # el primero es 0000
     sig_anulacion = db.Column(db.Integer, nullable=False, default=1)
     sig_dev_compra = db.Column(db.Integer, nullable=False, default=1)
+    sig_aporte = db.Column(db.Integer, nullable=False, default=1)
     # Facturación electrónica con el facturador gratuito de la DIAN (se digita allá; aquí se lleva el control)
     fe_activa = db.Column(db.Boolean, nullable=False, default=False)
     fe_desde = db.Column(db.Date)                       # desde qué fecha las ventas se deben facturar
@@ -1074,6 +1075,7 @@ class AporteSocio(db.Model):
     """Dinero que un socio entrega al fondo común del negocio (no ligado a una compra puntual)."""
     __tablename__ = "ts_aportes_socios"
     id = db.Column(db.Integer, primary_key=True)
+    numero = db.Column(db.Integer)   # consecutivo del recibo (AP-00001)
     fecha = db.Column(db.Date, nullable=False)
     socio_id = db.Column(db.Integer, db.ForeignKey("ts_socios.id"), nullable=False, index=True)
     socio = db.relationship("Socio")
@@ -1083,6 +1085,11 @@ class AporteSocio(db.Model):
     anulado = db.Column(db.Boolean, nullable=False, default=False)
     usuario_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
     creado = db.Column(db.DateTime, nullable=False, default=ahora)
+    usuario = db.relationship("Usuario")
+
+    @property
+    def folio(self):
+        return f"AP-{self.numero:05d}" if self.numero else f"AP-{self.id:05d}"
 
 
 class Inversion(db.Model):
@@ -1170,6 +1177,9 @@ def semilla():
     for v in Venta.query.filter(Venta.estado == "anulada", Venta.anulada_numero.is_(None)) \
             .order_by(Venta.anulada_fecha, Venta.id).all():
         v.anulada_numero = siguiente("sig_anulacion")
+    # aportes de socios registrados antes de existir el recibo: se numeran en orden
+    for a in AporteSocio.query.filter(AporteSocio.numero.is_(None)).order_by(AporteSocio.id).all():
+        a.numero = siguiente("sig_aporte")
     # repuestos que se crearon antes de existir el código interno: se numeran en el orden en que se crearon
     with db.session.no_autoflush:
         for p in Producto.query.filter(or_(Producto.codigo_interno.is_(None), Producto.codigo_interno == "")) \

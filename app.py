@@ -19,6 +19,7 @@ from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 
 import facturacion
+from models import siguiente as _siguiente
 import inversion as invmod
 import exportar
 import importador
@@ -2125,12 +2126,52 @@ def inversion_aporte():
     if not socio or valor <= 0:
         flash("Elige el socio y escribe el valor del aporte.", "err")
         return redirect(url_for("inversion"))
-    db.session.add(AporteSocio(fecha=_fecha(f.get("fecha")) or ahora().date(), socio=socio, valor=valor,
-                               medio=(f.get("medio") or "").strip()[:60] or None,
-                               nota=(f.get("nota") or "").strip()[:200] or None, usuario_id=current_user.id))
+    ap = AporteSocio(fecha=_fecha(f.get("fecha")) or ahora().date(), socio=socio, valor=valor,
+                     medio=(f.get("medio") or "").strip()[:60] or None, numero=_siguiente("sig_aporte"),
+                     nota=(f.get("nota") or "").strip()[:200] or None, usuario_id=current_user.id)
+    db.session.add(ap)
     db.session.commit()
-    flash(f"Aporte de {socio.nombre} por {pesos(valor)} registrado.", "ok")
-    return redirect(url_for("inversion"))
+    flash(f"Aporte {ap.folio} de {socio.nombre} por {pesos(valor)} registrado.", "ok")
+    return redirect(url_for("aporte_recibo", aid=ap.id))
+
+
+def _datos_aporte(ap):
+    r = invmod.resumen_fundacion(config())
+    fila = next((x for x in r["por_socio"] if x["socio"].id == ap.socio_id), None)
+    return (fila["total"] if fila else ap.valor), (fila["pct"] if fila else 0)
+
+
+@app.route("/inversion/aporte/<int:aid>/recibo")
+@requiere("admin")
+def aporte_recibo(aid):
+    ap = get_or_404(AporteSocio, aid)
+    total, pct = _datos_aporte(ap)
+    tel = re.sub(r"\D", "", ap.socio.telefono or "")
+    if len(tel) == 10:
+        tel = "57" + tel
+    return render_template("aporte_recibo.html", ap=ap, total=total, pct=pct, tel=tel, letras=invmod.en_letras(ap.valor))
+
+
+@app.route("/inversion/aporte/<int:aid>/recibo.png")
+@requiere("admin")
+def aporte_recibo_png(aid):
+    ap = get_or_404(AporteSocio, aid)
+    total, pct = _datos_aporte(ap)
+    base = os.path.join(app.root_path, "static")
+    png = invmod.recibo_aporte_png(ap, config(), total, pct, os.path.join(base, "logo.webp"), os.path.join(base, "fonts"))
+    r = send_file(BytesIO(png), mimetype="image/png", download_name=f"Recibo_{ap.folio}.png",
+                  as_attachment=request.args.get("descargar") == "1")
+    r.headers["Cache-Control"] = "no-store"
+    return r
+
+
+@app.route("/inversion/aporte/<int:aid>/ticket")
+@requiere("admin")
+def aporte_ticket(aid):
+    ap = get_or_404(AporteSocio, aid)
+    total, pct = _datos_aporte(ap)
+    return render_template("ticket_aporte.html", ap=ap, total=total, pct=pct, letras=invmod.en_letras(ap.valor),
+                           auto=request.args.get("imprimir") == "1")
 
 
 @app.route("/inversion/socio", methods=["POST"])

@@ -74,8 +74,8 @@
       <p class="hint">La participación sale de lo que cada uno puso (aportes + compras que pagó). Es una referencia: lo que acordaron los socios por escrito es lo que vale.</p>
       {% else %}<p class="muted">Agrega a los socios abajo para saber cuánto puso cada uno.</p>{% endif %}
       {% if r.aportes %}
-      <details style="margin-top:8px"><summary>Aportes en dinero ({{ r.aportes|length }})</summary>
-        {% for a in r.aportes %}<div class="sum-row"><span>{{ a.fecha|f }} · {{ a.socio.nombre }}{% if a.medio %} · {{ a.medio }}{% endif %}{% if a.nota %}<br><small class="muted">{{ a.nota }}</small>{% endif %}</span>
+      <details style="margin-top:8px" open><summary>Aportes en dinero ({{ r.aportes|length }}) · toca el número para ver el recibo</summary>
+        {% for a in r.aportes %}<div class="sum-row"><span><a href="{{ url_for('aporte_recibo', aid=a.id) }}"><b>{{ a.folio }}</b></a> · {{ a.fecha|f }} · {{ a.socio.nombre }}{% if a.medio %} · {{ a.medio }}{% endif %}{% if a.nota %}<br><small class="muted">{{ a.nota }}</small>{% endif %}</span>
           <span><b>{{ a.valor|pesos }}</b> <form method="post" action="{{ url_for('inversion_aporte') }}" style="display:inline" data-confirm="¿Anular este aporte?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="anular" value="{{ a.id }}"><button class="btn ghost sm">✕</button></form></span></div>{% endfor %}
       </details>
       {% endif %}

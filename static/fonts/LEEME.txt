@@ -1,0 +1,2 @@
+Fuente Inter (Rasmus Andersson), licencia SIL Open Font License 1.1 — https://rsms.me/inter/
+Se usa para generar las imágenes PNG de los recibos.
