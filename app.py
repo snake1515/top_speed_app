@@ -2085,9 +2085,10 @@ def inversion_registro():
                 return redirect(url_for("inversion"))
             i.soporte, i.soporte_mime = img, "image/jpeg"
         i.soporte_v = (i.soporte_v or 0) + 1
+    editado = bool(i.id)
     db.session.add(i)
     db.session.commit()
-    flash(f"Registrado: {i.concepto} por {pesos(i.valor)}.", "ok")
+    flash(f"{'Actualizado' if editado else 'Registrado'}: {i.concepto} por {pesos(i.valor)}.", "ok")
     return redirect(url_for("inversion"))
 
 
@@ -2126,6 +2127,15 @@ def inversion_aporte():
     if not socio or valor <= 0:
         flash("Elige el socio y escribe el valor del aporte.", "err")
         return redirect(url_for("inversion"))
+    if f.get("id"):   # editar un aporte (conserva su número de recibo)
+        ap = get_or_404(AporteSocio, int(f["id"]))
+        ap.socio, ap.valor = socio, valor
+        ap.fecha = _fecha(f.get("fecha")) or ap.fecha
+        ap.medio = (f.get("medio") or "").strip()[:60] or None
+        ap.nota = (f.get("nota") or "").strip()[:200] or None
+        db.session.commit()
+        flash(f"Aporte {ap.folio} actualizado: {socio.nombre} · {pesos(valor)}. El recibo ya muestra los datos nuevos.", "ok")
+        return redirect(url_for("aporte_recibo", aid=ap.id))
     ap = AporteSocio(fecha=_fecha(f.get("fecha")) or ahora().date(), socio=socio, valor=valor,
                      medio=(f.get("medio") or "").strip()[:60] or None, numero=_siguiente("sig_aporte"),
                      nota=(f.get("nota") or "").strip()[:200] or None, usuario_id=current_user.id)

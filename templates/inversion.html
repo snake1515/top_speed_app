@@ -45,6 +45,10 @@
           <td>{{ i.socio.nombre if i.socio else 'Fondo común' }}</td>
           <td class="num">{{ i.valor|pesos }}</td>
           <td style="white-space:nowrap">{% if i.soporte_v %}<a class="btn ghost sm" href="{{ url_for('inversion_soporte', iid=i.id) }}" target="_blank" title="Ver soporte">📎</a>{% endif %}
+            <button type="button" class="btn ghost sm editar-inv" title="Editar"
+              data-id="{{ i.id }}" data-concepto="{{ i.concepto }}" data-categoria="{{ i.categoria }}" data-tipo="{{ i.tipo }}"
+              data-valor="{{ i.valor|round|int }}" data-fecha="{{ i.fecha.isoformat() }}" data-socio="{{ i.socio_id or '' }}"
+              data-proveedor="{{ i.proveedor or '' }}" data-medio="{{ i.medio or '' }}" data-nota="{{ i.nota or '' }}">✎</button>
             <form method="post" action="{{ url_for('inversion_anular', iid=i.id) }}" style="display:inline" data-confirm="¿Quitar «{{ i.concepto }}» de la inversión?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn ghost sm">✕</button></form></td>
         </tr>{% else %}<tr><td colspan="5" class="empty">Aún no hay nada registrado. Empieza con el formulario de la derecha.</td></tr>{% endfor %}</tbody>
       </table></div>
@@ -76,7 +80,10 @@
       {% if r.aportes %}
       <details style="margin-top:8px" open><summary>Aportes en dinero ({{ r.aportes|length }}) · toca el número para ver el recibo</summary>
         {% for a in r.aportes %}<div class="sum-row"><span><a href="{{ url_for('aporte_recibo', aid=a.id) }}"><b>{{ a.folio }}</b></a> · {{ a.fecha|f }} · {{ a.socio.nombre }}{% if a.medio %} · {{ a.medio }}{% endif %}{% if a.nota %}<br><small class="muted">{{ a.nota }}</small>{% endif %}</span>
-          <span><b>{{ a.valor|pesos }}</b> <form method="post" action="{{ url_for('inversion_aporte') }}" style="display:inline" data-confirm="¿Anular este aporte?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="anular" value="{{ a.id }}"><button class="btn ghost sm">✕</button></form></span></div>{% endfor %}
+          <span style="white-space:nowrap"><b>{{ a.valor|pesos }}</b>
+            <button type="button" class="btn ghost sm editar-ap" title="Editar" data-id="{{ a.id }}" data-socio="{{ a.socio_id }}"
+              data-valor="{{ a.valor|round|int }}" data-fecha="{{ a.fecha.isoformat() }}" data-medio="{{ a.medio or '' }}" data-nota="{{ a.nota or '' }}">✎</button>
+            <form method="post" action="{{ url_for('inversion_aporte') }}" style="display:inline" data-confirm="¿Anular este aporte?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="anular" value="{{ a.id }}"><button class="btn ghost sm">✕</button></form></span></div>{% endfor %}
       </details>
       {% endif %}
     </div>
@@ -85,7 +92,8 @@
   <div>
     <form class="card" method="post" action="{{ url_for('inversion_registro') }}" enctype="multipart/form-data" id="f-inv">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <h2 style="margin-bottom:10px">Registrar lo que se pagó</h2>
+      <input type="hidden" name="id" value="">
+      <h2 style="margin-bottom:10px" class="titulo-form">Registrar lo que se pagó</h2>
       <div class="field"><label>Concepto</label><input class="input" name="concepto" required placeholder="ej. Estantería metálica 5 niveles"></div>
       <div class="field"><label>Categoría</label><select class="input" name="categoria" id="inv-cat">{% for c, t in categorias.items() %}<option data-tipo="{{ t }}">{{ c }}</option>{% endfor %}</select></div>
       <div class="field"><label>Tipo</label><select class="input" name="tipo" id="inv-tipo">{% for k, t in tipos.items() %}<option value="{{ k }}">{{ t }}</option>{% endfor %}</select>
@@ -100,26 +108,26 @@
         <div class="field"><label>Medio</label><input class="input" name="medio" list="medios-inv" placeholder="Efectivo, Nequi…"><datalist id="medios-inv">{% for m in medios %}<option>{{ m }}</option>{% endfor %}</datalist></div>
       </div>
       <div class="field"><label>Nota</label><input class="input" name="nota" placeholder="Opcional"></div>
-      <div class="field"><label>Soporte (foto de la factura o PDF)</label><input class="input" type="file" name="soporte" accept="image/*,.pdf"></div>
-      <button class="btn">Guardar</button>
+      <div class="field"><label>Soporte (foto de la factura o PDF)</label><input class="input" type="file" name="soporte" accept="image/*,.pdf"><div class="hint solo-edicion" style="display:none">Si no eliges archivo, se deja el soporte que ya tiene.</div></div>
+      <button class="btn">Guardar</button> <button type="button" class="btn ghost cancelar" style="display:none">Cancelar edición</button>
       {% if r.inv_app > r.mercancia_registrada %}
       <p class="hint" style="margin-top:10px">La mercancía cargada en la app como inventario inicial vale <b>{{ r.inv_app|pesos }}</b> al costo{% if r.mercancia_registrada %} y aquí hay registrados {{ r.mercancia_registrada|pesos }}{% endif %}.
         <a href="#" id="usar-merc" data-v="{{ (r.inv_app - r.mercancia_registrada)|round|int }}">Registrar {{ (r.inv_app - r.mercancia_registrada)|pesos }} como mercancía inicial</a> y elige quién la pagó.</p>
       {% endif %}
     </form>
 
-    <form class="card" method="post" action="{{ url_for('inversion_aporte') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <h2 style="margin-bottom:4px">Aporte de un socio</h2>
+    <form class="card" method="post" action="{{ url_for('inversion_aporte') }}" id="f-ap">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="">
+      <h2 style="margin-bottom:4px" class="titulo-form">Aporte de un socio</h2>
       <p class="hint" style="margin-top:0">Dinero que un socio entregó para el negocio (no una compra puntual).</p>
-      <div class="field"><select class="input" name="socio_id" required>{% for s in r.socios if s.activo %}<option value="{{ s.id }}">{{ s.nombre }}</option>{% else %}<option value="">Primero agrega un socio</option>{% endfor %}</select></div>
+      <div class="field"><select class="input" name="socio_id" required>{% for s in r.socios %}<option value="{{ s.id }}">{{ s.nombre }}</option>{% else %}<option value="">Primero agrega un socio</option>{% endfor %}</select></div>
       <div class="form-row" style="grid-template-columns:1fr 1fr">
         <div class="field"><input class="input" name="valor" placeholder="Valor" inputmode="numeric" required></div>
         <div class="field"><input class="input" type="date" name="fecha" value="{{ hoy }}"></div>
       </div>
       <div class="field"><input class="input" name="medio" list="medios-inv" placeholder="Medio (efectivo, transferencia…)"></div>
       <div class="field"><input class="input" name="nota" placeholder="Nota (opcional)"></div>
-      <button class="btn sec" {{ 'disabled' if not r.socios }}>Registrar aporte</button>
+      <button class="btn sec" {{ 'disabled' if not r.socios }}>Registrar aporte</button> <button type="button" class="btn ghost cancelar" style="display:none">Cancelar edición</button>
     </form>
 
     <div class="card">
@@ -148,6 +156,28 @@
 const cat = document.getElementById('inv-cat'), tipo = document.getElementById('inv-tipo');
 const ponTipo = () => { tipo.value = cat.selectedOptions[0].dataset.tipo; };
 cat.addEventListener('change', ponTipo); ponTipo();
+// editar: carga el registro en el formulario de la derecha
+function editar(form, titulo, datos) {
+  form.id.value = datos.id;
+  for (const [k, v] of Object.entries(datos)) if (k !== 'id' && form[k]) form[k].value = v;
+  const t = form.querySelector('.titulo-form'); t.dataset.orig = t.dataset.orig || t.textContent; t.textContent = titulo;
+  form.querySelector('button:not(.cancelar):not([type=button])').textContent = 'Guardar cambios';
+  form.querySelectorAll('.cancelar, .solo-edicion').forEach(b => b.style.display = '');
+  form.style.outline = '3px solid var(--accent)';
+  form.scrollIntoView({behavior: 'smooth', block: 'start'});
+}
+document.querySelectorAll('.cancelar').forEach(b => b.addEventListener('click', () => location.reload()));
+const fi = document.getElementById('f-inv'), fa = document.getElementById('f-ap');
+document.querySelectorAll('.editar-inv').forEach(b => b.addEventListener('click', () => {
+  const d = b.dataset;
+  editar(fi, 'Editar: ' + d.concepto, {id: d.id, concepto: d.concepto, categoria: d.categoria, valor: d.valor, fecha: d.fecha,
+    socio_id: d.socio, proveedor: d.proveedor, medio: d.medio, nota: d.nota});
+  fi.tipo.value = d.tipo;
+}));
+document.querySelectorAll('.editar-ap').forEach(b => b.addEventListener('click', () => {
+  const d = b.dataset;
+  editar(fa, 'Editar aporte', {id: d.id, socio_id: d.socio, valor: d.valor, fecha: d.fecha, medio: d.medio, nota: d.nota});
+}));
 const um = document.getElementById('usar-merc');
 if (um) um.addEventListener('click', e => { e.preventDefault(); const f = document.getElementById('f-inv');
   f.concepto.value = 'Mercancía inicial (repuestos cargados en la app)'; cat.value = 'Mercancía inicial'; ponTipo();
