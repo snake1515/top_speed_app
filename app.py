@@ -2190,7 +2190,7 @@ def gasto_anular(gid):
 
 # ============================================================== reportes
 @app.route("/reportes/inventario")
-@requiere("admin")
+@requiere("bodega")
 def indicadores_inventario():
     hoy = ahora().date()
     desde = _fecha(request.args.get("desde"), hoy - timedelta(days=89))
