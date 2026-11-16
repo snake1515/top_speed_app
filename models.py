@@ -1086,10 +1086,20 @@ class AporteSocio(db.Model):
     usuario_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
     creado = db.Column(db.DateTime, nullable=False, default=ahora)
     usuario = db.relationship("Usuario")
+    # aporte conjunto: cada socio queda con su parte (y su recibo); las partes comparten este código
+    grupo = db.Column(db.String(16), index=True)
 
     @property
     def folio(self):
         return f"AP-{self.numero:05d}" if self.numero else f"AP-{self.id:05d}"
+
+    @property
+    def companeros(self):
+        """Las otras partes del mismo aporte conjunto."""
+        if not self.grupo:
+            return []
+        return AporteSocio.query.filter(AporteSocio.grupo == self.grupo, AporteSocio.id != self.id,
+                                        AporteSocio.anulado.is_(False)).order_by(AporteSocio.id).all()
 
 
 class Inversion(db.Model):
@@ -1124,6 +1134,38 @@ class InversionSoporte(db.Model):
     datos = db.deferred(db.Column(db.LargeBinary, nullable=False))
     creado = db.Column(db.DateTime, nullable=False, default=ahora)
 
+
+class InversionPago(db.Model):
+    """Parte que pagó cada socio cuando una compra de la inversión se pagó entre varios (pago conjunto)."""
+    __tablename__ = "ts_inversiones_pagos"
+    id = db.Column(db.Integer, primary_key=True)
+    inversion_id = db.Column(db.Integer, db.ForeignKey("ts_inversiones.id"), nullable=False, index=True)
+    socio_id = db.Column(db.Integer, db.ForeignKey("ts_socios.id"), nullable=False, index=True)
+    socio = db.relationship("Socio")
+    valor = db.Column(db.Float, nullable=False)
+
+
+Inversion.pagos = db.relationship(InversionPago, order_by=InversionPago.id, cascade="all, delete-orphan", backref="inversion")
+
+
+def _pagadores(self):
+    """[(socio, valor)] de quienes pagaron de su bolsillo; vacío = fondo común."""
+    if self.pagos:
+        return [(p.socio, p.valor) for p in self.pagos]
+    return [(self.socio, self.valor)] if self.socio else []
+
+
+def _pago_txt(self):
+    pg = self.pagadores
+    if not pg:
+        return "Fondo común"
+    if len(pg) == 1:
+        return pg[0][0].nombre
+    return " + ".join(s.nombre for s, _ in pg) + " (conjunto)"
+
+
+Inversion.pagadores = property(_pagadores)
+Inversion.pago_txt = property(_pago_txt)
 
 Inversion.soportes = db.relationship(InversionSoporte, order_by=InversionSoporte.id, cascade="all, delete-orphan",
                                      backref="inversion")

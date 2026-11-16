@@ -21,6 +21,8 @@
       <div class="sum-row"><span>Socio</span><b>{{ ap.socio.nombre }}</b></div>
       {% if ap.socio.documento %}<div class="sum-row"><span>Cédula</span><b>{{ ap.socio.documento }}</b></div>{% endif %}
       <div class="sum-row"><span>Valor</span><b>{{ ap.valor|pesos }}</b></div>
+      {% set comp = ap.companeros %}{% if comp %}<div class="flash" style="margin:8px 0">Parte de un <b>aporte conjunto</b> de {{ (ap.valor + comp|sum(attribute='valor'))|pesos }} junto con
+        {% for c in comp %}<a href="{{ url_for('aporte_recibo', aid=c.id) }}">{{ c.socio.nombre }} ({{ c.valor|pesos }}, {{ c.folio }})</a>{{ ', ' if not loop.last }}{% endfor %}.</div>{% endif %}
       <p class="muted" style="margin:4px 0 8px"><small>Son: {{ letras }}</small></p>
       <div class="sum-row"><span>Total aportado por el socio</span><b>{{ total|pesos }}</b></div>
       <div class="sum-row"><span>Participación</span><b>{{ pct|round(1) }} %</b></div>

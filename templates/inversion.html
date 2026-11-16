@@ -1,6 +1,17 @@
 {% extends "base.html" %}
 {% block title %}Inversión inicial{% endblock %}
 {% block content %}
+{% macro reparto(socios, pid) %}
+<div class="reparto" id="{{ pid }}" style="display:none;border:1px dashed var(--line,#ccc);border-radius:10px;padding:10px 12px;margin:-4px 0 12px">
+  <div class="hint" style="margin-top:0">Marca los socios y escribe cuánto puso cada uno. Las partes deben sumar el valor total.</div>
+  {% for s in socios if s.activo %}<div class="sum-row" style="gap:10px;align-items:center">
+    <label class="check" style="margin:0"><input type="checkbox" class="rp-chk" data-s="{{ s.id }}"> {{ s.nombre }}</label>
+    <input class="input rp-val" name="parte_{{ s.id }}" data-pesos data-s="{{ s.id }}" placeholder="0" style="width:150px;text-align:right;padding:6px 10px"></div>{% endfor %}
+  <div class="sum-row" style="margin-top:6px;align-items:center"><button type="button" class="btn ghost sm rp-igual">Repartir en partes iguales</button>
+    <span>Suma <b class="rp-suma">$ 0</b> <small class="rp-dif"></small></span></div>
+</div>
+{% endmacro %}
+
 <div class="page-head">
   <div><h1>Inversión inicial</h1><p>Cómo se fundó {{ cfg.nombre }}: todo lo que se pagó para montar el negocio, quién lo pagó y cuándo.</p></div>
   <div class="actions"><a class="btn dark" href="{{ url_for('aportes_reporte') }}">📄 Reporte de aportes</a> <a class="btn sec" href="{{ url_for('inversion_excel') }}">⤓ Descargar Excel</a></div>
@@ -46,12 +57,12 @@
               <span class="badge" style="display:inline-flex;align-items:center;gap:4px"><a href="{{ url_for('inversion_soporte_ver', sid=s.id) }}" target="_blank">📎 {{ s.nombre or ('Soporte ' ~ loop.index) }}</a>
                 <form method="post" action="{{ url_for('inversion_soporte_quitar', sid=s.id) }}" style="display:inline" data-confirm="¿Quitar este soporte?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn ghost sm" style="padding:0 4px;min-height:0" title="Quitar">✕</button></form></span>
             {% endfor %}</div>{% endif %}</td>
-          <td>{{ i.socio.nombre if i.socio else 'Fondo común' }}</td>
+          <td>{% if i.pagos %}{% for p in i.pagos %}{{ p.socio.nombre }} <small class="muted">{{ p.valor|pesos }}</small>{% if not loop.last %}<br>{% endif %}{% endfor %}<br><span class="badge">conjunto</span>{% else %}{{ i.socio.nombre if i.socio else 'Fondo común' }}{% endif %}</td>
           <td class="num">{{ i.valor|pesos }}</td>
           <td style="white-space:nowrap">
             <button type="button" class="btn ghost sm editar-inv" title="Editar"
               data-id="{{ i.id }}" data-concepto="{{ i.concepto }}" data-categoria="{{ i.categoria }}" data-tipo="{{ i.tipo }}"
-              data-valor="{{ i.valor|round|int }}" data-fecha="{{ i.fecha.isoformat() }}" data-socio="{{ i.socio_id or '' }}"
+              data-valor="{{ i.valor|round|int }}" data-fecha="{{ i.fecha.isoformat() }}" data-socio="{{ 'varios' if i.pagos else (i.socio_id or '') }}" data-pagos="{% for p in i.pagos %}{{ p.socio_id }}:{{ p.valor|round|int }}{{ ',' if not loop.last }}{% endfor %}"
               data-proveedor="{{ i.proveedor or '' }}" data-medio="{{ i.medio or '' }}" data-nota="{{ i.nota or '' }}">✎</button>
             <form method="post" action="{{ url_for('inversion_anular', iid=i.id) }}" style="display:inline" data-confirm="¿Quitar «{{ i.concepto }}» de la inversión?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn ghost sm">✕</button></form></td>
         </tr>{% else %}<tr><td colspan="5" class="empty">Aún no hay nada registrado. Empieza con el formulario de la derecha.</td></tr>{% endfor %}</tbody>
@@ -83,7 +94,7 @@
       {% else %}<p class="muted">Agrega a los socios abajo para saber cuánto puso cada uno.</p>{% endif %}
       {% if r.aportes %}
       <details style="margin-top:8px" open><summary>Aportes en dinero ({{ r.aportes|length }}) · toca el número para ver el recibo</summary>
-        {% for a in r.aportes %}<div class="sum-row"><span><a href="{{ url_for('aporte_recibo', aid=a.id) }}"><b>{{ a.folio }}</b></a> · {{ a.fecha|f }} · {{ a.socio.nombre }}{% if a.medio %} · {{ a.medio }}{% endif %}{% if a.nota %}<br><small class="muted">{{ a.nota }}</small>{% endif %}</span>
+        {% for a in r.aportes %}<div class="sum-row"><span><a href="{{ url_for('aporte_recibo', aid=a.id) }}"><b>{{ a.folio }}</b></a> · {{ a.fecha|f }} · {{ a.socio.nombre }}{% if a.grupo %} <span class="badge">conjunto</span>{% endif %}{% if a.medio %} · {{ a.medio }}{% endif %}{% if a.nota %}<br><small class="muted">{{ a.nota }}</small>{% endif %}</span>
           <span style="white-space:nowrap"><b>{{ a.valor|pesos }}</b>
             <button type="button" class="btn ghost sm editar-ap" title="Editar" data-id="{{ a.id }}" data-socio="{{ a.socio_id }}"
               data-valor="{{ a.valor|round|int }}" data-fecha="{{ a.fecha.isoformat() }}" data-medio="{{ a.medio or '' }}" data-nota="{{ a.nota or '' }}">✎</button>
@@ -106,7 +117,8 @@
         <div class="field"><label>Valor</label><input class="input" name="valor" inputmode="numeric" required></div>
         <div class="field"><label>Fecha</label><input class="input" type="date" name="fecha" value="{{ hoy }}"></div>
       </div>
-      <div class="field"><label>¿Quién lo pagó?</label><select class="input" name="socio_id"><option value="">Fondo común (dinero aportado por los socios)</option>{% for s in r.socios if s.activo %}<option value="{{ s.id }}">{{ s.nombre }} (de su bolsillo)</option>{% endfor %}</select></div>
+      <div class="field"><label>¿Quién lo pagó?</label><select class="input" name="socio_id"><option value="">Fondo común (dinero aportado por los socios)</option>{% for s in r.socios if s.activo %}<option value="{{ s.id }}">{{ s.nombre }} (de su bolsillo)</option>{% endfor %}{% if r.socios|selectattr('activo')|list|length > 1 %}<option value="varios">Varios socios (pago conjunto)</option>{% endif %}</select></div>
+      {{ reparto(r.socios, 'rp-inv') }}
       <div class="form-row" style="grid-template-columns:1fr 1fr">
         <div class="field"><label>Se le compró a</label><input class="input" name="proveedor" placeholder="Proveedor o almacén"></div>
         <div class="field"><label>Medio</label><input class="input" name="medio" list="medios-inv" placeholder="Efectivo, Nequi…"><datalist id="medios-inv">{% for m in medios %}<option>{{ m }}</option>{% endfor %}</datalist></div>
@@ -125,7 +137,8 @@
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="">
       <h2 style="margin-bottom:4px" class="titulo-form">Aporte de un socio</h2>
       <p class="hint" style="margin-top:0">Dinero que un socio entregó para el negocio (no una compra puntual).</p>
-      <div class="field"><select class="input" name="socio_id" required>{% for s in r.socios %}<option value="{{ s.id }}">{{ s.nombre }}</option>{% else %}<option value="">Primero agrega un socio</option>{% endfor %}</select></div>
+      <div class="field"><select class="input" name="socio_id" required>{% for s in r.socios %}<option value="{{ s.id }}">{{ s.nombre }}</option>{% else %}<option value="">Primero agrega un socio</option>{% endfor %}{% if r.socios|selectattr('activo')|list|length > 1 %}<option value="varios" class="solo-nuevo">Varios socios (aporte conjunto)</option>{% endif %}</select></div>
+      {{ reparto(r.socios, 'rp-ap') }}
       <div class="form-row" style="grid-template-columns:1fr 1fr">
         <div class="field"><input class="input" name="valor" placeholder="Valor" inputmode="numeric" required></div>
         <div class="field"><input class="input" type="date" name="fecha" value="{{ hoy }}"></div>
@@ -171,6 +184,46 @@ function editar(form, titulo, datos) {
   form.style.outline = '3px solid var(--accent)';
   form.scrollIntoView({behavior: 'smooth', block: 'start'});
 }
+// pago o aporte conjunto entre varios socios
+function prepararReparto(form, pid) {
+  const sel = form.socio_id, box = document.getElementById(pid); if (!sel || !box) return;
+  const vals = [...box.querySelectorAll('.rp-val')], chks = [...box.querySelectorAll('.rp-chk')];
+  const total = () => num(form.valor.value);
+  const pintar = () => {
+    const suma = vals.reduce((a, v) => a + num(v.value), 0), d = total() - suma;
+    box.querySelector('.rp-suma').textContent = COP(suma);
+    box.querySelector('.rp-dif').textContent = !total() ? '' : Math.abs(d) < 1 ? '✓ cuadra' : (d > 0 ? 'faltan ' + COP(d) : 'sobran ' + COP(-d));
+    box.querySelector('.rp-dif').style.color = Math.abs(d) < 1 ? 'var(--ok, #0a8a4a)' : 'var(--danger, #c62828)';
+  };
+  const ver = () => { const on = sel.value === 'varios'; box.style.display = on ? '' : 'none'; vals.forEach(v => v.disabled = !on); pintar(); };
+  sel.addEventListener('change', ver);
+  vals.forEach(v => v.addEventListener('input', () => { const c = chks.find(c => c.dataset.s === v.dataset.s); c.checked = num(v.value) > 0; pintar(); }));
+  chks.forEach(c => c.addEventListener('change', () => { if (!c.checked) vals.find(v => v.dataset.s === c.dataset.s).value = ''; pintar(); }));
+  form.valor.addEventListener('input', pintar);
+  box.querySelector('.rp-igual').addEventListener('click', () => {
+    let marc = chks.filter(c => c.checked); if (marc.length < 2) { marc = chks; marc.forEach(c => c.checked = true); }
+    const t = total(); if (!t) { form.valor.focus(); return; }
+    const base = Math.floor(t / marc.length); let resto = t - base * marc.length;
+    vals.forEach(v => v.value = '');
+    marc.forEach(c => { const v = vals.find(v => v.dataset.s === c.dataset.s); v.value = base + (resto-- > 0 ? 1 : 0); });
+    pintar();
+  });
+  form.addEventListener('submit', e => {
+    if (sel.value !== 'varios') return;
+    const suma = vals.reduce((a, v) => a + num(v.value), 0), n = vals.filter(v => num(v.value) > 0).length;
+    if (n < 2) { e.preventDefault(); e.stopImmediatePropagation(); alert('Escribe la parte de al menos dos socios.'); return; }
+    if (Math.abs(suma - total()) >= 1) { e.preventDefault(); e.stopImmediatePropagation(); alert('Las partes suman ' + COP(suma) + ' y el valor es ' + COP(total()) + '. Deben ser iguales.'); }
+  }, true);
+  form.ponerPartes = txt => { vals.forEach(v => v.value = ''); chks.forEach(c => c.checked = false);
+    (txt || '').split(',').filter(Boolean).forEach(p => { const [id, v] = p.split(':'); const iv = vals.find(x => x.dataset.s === id);
+      if (iv) { iv.value = v; chks.find(c => c.dataset.s === id).checked = true; } }); ver(); };
+  ver();
+}
+// num() y COP() se definen en base.html, después de este script
+document.addEventListener('DOMContentLoaded', () => {
+  prepararReparto(document.getElementById('f-inv'), 'rp-inv');
+  prepararReparto(document.getElementById('f-ap'), 'rp-ap');
+});
 document.querySelectorAll('.cancelar').forEach(b => b.addEventListener('click', () => location.reload()));
 const fi = document.getElementById('f-inv'), fa = document.getElementById('f-ap');
 document.querySelectorAll('.editar-inv').forEach(b => b.addEventListener('click', () => {
@@ -178,10 +231,12 @@ document.querySelectorAll('.editar-inv').forEach(b => b.addEventListener('click'
   editar(fi, 'Editar: ' + d.concepto, {id: d.id, concepto: d.concepto, categoria: d.categoria, valor: d.valor, fecha: d.fecha,
     socio_id: d.socio, proveedor: d.proveedor, medio: d.medio, nota: d.nota});
   fi.tipo.value = d.tipo;
+  if (fi.ponerPartes) fi.ponerPartes(d.socio === 'varios' ? d.pagos : '');
 }));
 document.querySelectorAll('.editar-ap').forEach(b => b.addEventListener('click', () => {
   const d = b.dataset;
   editar(fa, 'Editar aporte', {id: d.id, socio_id: d.socio, valor: d.valor, fecha: d.fecha, medio: d.medio, nota: d.nota});
+  fa.querySelectorAll('.solo-nuevo').forEach(o => o.remove()); if (fa.ponerPartes) fa.ponerPartes('');
 }));
 const um = document.getElementById('usar-merc');
 if (um) um.addEventListener('click', e => { e.preventDefault(); const f = document.getElementById('f-inv');

@@ -39,6 +39,7 @@
     {% if ap.medio %}<tr><td>Medio</td><td class="r">{{ ap.medio }}</td></tr>{% endif %}
   </table>
   {% if ap.nota %}<div>Concepto: {{ ap.nota }}</div>{% endif %}
+  {% set comp = ap.companeros %}{% if comp %}<div>Aporte conjunto por {{ (ap.valor + comp|sum(attribute='valor'))|pesos }} con: {% for c in comp %}{{ c.socio.nombre }} {{ c.valor|pesos }} ({{ c.folio }}){{ ', ' if not loop.last }}{% endfor %}</div>{% endif %}
   <hr>
   <table>
     <tr><td colspan="2" class="lg">VALOR APORTADO</td></tr><tr><td></td><td class="r lg">{{ ap.valor|pesos }}</td></tr>

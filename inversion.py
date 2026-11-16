@@ -33,8 +33,8 @@ def resumen_fundacion(cfg, neta_desde_apertura=None):
     for a in aportes:
         por_socio.setdefault(a.socio_id, {"socio": a.socio, "aportes": 0.0, "pagos": 0.0})["aportes"] += a.valor
     for i in invs:
-        if i.socio_id:
-            por_socio.setdefault(i.socio_id, {"socio": i.socio, "aportes": 0.0, "pagos": 0.0})["pagos"] += i.valor
+        for so, v in i.pagadores:
+            por_socio.setdefault(so.id, {"socio": so, "aportes": 0.0, "pagos": 0.0})["pagos"] += v
     total_socios = sum(d["aportes"] + d["pagos"] for d in por_socio.values())
     filas_socio = []
     for d in por_socio.values():
@@ -43,7 +43,7 @@ def resumen_fundacion(cfg, neta_desde_apertura=None):
             filas_socio.append({**d, "total": puso, "pct": puso / total_socios * 100 if total_socios else 0})
     filas_socio.sort(key=lambda x: -x["total"])
 
-    del_fondo = sum(i.valor for i in invs if not i.socio_id)
+    del_fondo = sum(i.valor for i in invs if not i.pagadores)
     fondo = sum(a.valor for a in aportes) - del_fondo   # dinero aportado que no se ha gastado (o faltante si < 0)
 
     inv_app = inventario_inicial_app(cfg.fecha_apertura)
@@ -59,7 +59,7 @@ def resumen_fundacion(cfg, neta_desde_apertura=None):
         rec = {"neta": neta_desde_apertura, "pct": pct, "falta": falta, "meses_abierto": meses,
                "ritmo": ritmo, "meses_faltan": (falta / ritmo) if ritmo and ritmo > 0 else None}
 
-    linea = [(i.fecha, i.concepto, i.valor, i.categoria, i.socio.nombre if i.socio else "Fondo común") for i in invs]
+    linea = [(i.fecha, i.concepto, i.valor, i.categoria, i.pago_txt) for i in invs]
     linea += [(a.fecha, f"Aporte de {a.socio.nombre}", a.valor, "Aporte de socio", a.socio.nombre) for a in aportes]
     linea.sort(key=lambda x: x[0])
 
@@ -229,6 +229,10 @@ def recibo_aporte_png(a, cfg, total_socio, pct_socio, logo_path, fuentes_dir):
         fila("Medio", a.medio)
     if a.nota:
         fila("Concepto", a.nota)
+    comp = a.companeros
+    if comp:
+        fila("Aporte conjunto", f"total {_pesos(a.valor + sum(c.valor for c in comp))}, junto con "
+             + ", ".join(f"{c.socio.nombre} ({_pesos(c.valor)}, {c.folio})" for c in comp))
     y += 20
 
     # valor destacado
@@ -290,7 +294,7 @@ def reporte_aportes(cfg, desde=None, hasta=None, socio_id=None):
     """Todo lo que puso cada socio en el periodo: aportes en dinero al fondo común y compras que pagó de su bolsillo,
     uno por uno y agrupado por socio, + resumen por socio con participación total."""
     q = AporteSocio.query.filter_by(anulado=False)
-    qi = Inversion.query.filter(Inversion.anulado.is_(False), Inversion.socio_id.isnot(None))
+    qi = Inversion.query.filter(Inversion.anulado.is_(False))
     if desde:
         q = q.filter(AporteSocio.fecha >= desde)
         qi = qi.filter(Inversion.fecha >= desde)
@@ -299,14 +303,24 @@ def reporte_aportes(cfg, desde=None, hasta=None, socio_id=None):
         qi = qi.filter(Inversion.fecha <= hasta)
     if socio_id:
         q = q.filter(AporteSocio.socio_id == socio_id)
-        qi = qi.filter(Inversion.socio_id == socio_id)
     aportes = q.order_by(AporteSocio.fecha, AporteSocio.id).all()
     pagos = qi.order_by(Inversion.fecha, Inversion.id).all()
-    movs = [{"clase": "aporte", "tipo": "Aporte en dinero", "folio": a.folio, "id": a.id, "fecha": a.fecha, "socio": a.socio,
-             "concepto": a.nota or "Aporte al fondo común", "medio": a.medio or "", "valor": a.valor} for a in aportes]
-    movs += [{"clase": "pago", "tipo": "Pagó de su bolsillo", "folio": "", "id": i.id, "fecha": i.fecha, "socio": i.socio,
-              "concepto": i.concepto + (f" · {i.proveedor}" if i.proveedor else ""), "medio": i.medio or "", "valor": i.valor,
-              "categoria": i.categoria} for i in pagos]
+    def conjunto(otros):
+        return f" (conjunto con {', '.join(otros)})" if otros else ""
+    movs = []
+    for a in aportes:
+        otros = [f"{c.socio.nombre} {_pesos(c.valor)}" for c in a.companeros]
+        movs.append({"clase": "aporte", "tipo": "Aporte en dinero", "folio": a.folio, "id": a.id, "fecha": a.fecha, "socio": a.socio,
+                     "concepto": (a.nota or "Aporte al fondo común") + conjunto(otros), "medio": a.medio or "", "valor": a.valor})
+    for i in pagos:
+        pg = i.pagadores
+        for so, v in pg:
+            if socio_id and so.id != socio_id:
+                continue
+            otros = [f"{o.nombre} {_pesos(w)}" for o, w in pg if o.id != so.id]
+            movs.append({"clase": "pago", "tipo": "Pagó de su bolsillo", "folio": "", "id": i.id, "fecha": i.fecha, "socio": so,
+                         "concepto": i.concepto + (f" · {i.proveedor}" if i.proveedor else "") + conjunto(otros),
+                         "medio": i.medio or "", "valor": v, "categoria": i.categoria})
     movs.sort(key=lambda m: (m["fecha"], 0 if m["clase"] == "aporte" else 1, m["id"]))
     general = resumen_fundacion(cfg)
     en_periodo = defaultdict(float)
@@ -327,7 +341,8 @@ def reporte_aportes(cfg, desde=None, hasta=None, socio_id=None):
                            "pagos": sum(m["valor"] for m in ms if m["clase"] == "pago")})
     return {"aportes": aportes, "movs": movs, "grupos": grupos, "socios": filas,
             "total_periodo": sum(m["valor"] for m in movs),
-            "total_periodo_dinero": sum(a.valor for a in aportes), "total_periodo_pagos": sum(i.valor for i in pagos),
+            "total_periodo_dinero": sum(m["valor"] for m in movs if m["clase"] == "aporte"),
+            "total_periodo_pagos": sum(m["valor"] for m in movs if m["clase"] == "pago"),
             "total_aportes": sum(x["aportes"] for x in general["por_socio"]),
             "total_pagos": sum(x["pagos"] for x in general["por_socio"]), "total_socios": general["total_socios"],
             "fondo": general["fondo"], "del_fondo": general["del_fondo"], "total_invertido": general["total"],

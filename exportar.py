@@ -298,7 +298,7 @@ def inversion_excel(r, cfg, url_soporte):
     from models import TIPOS_INVERSION
     for n_, i in enumerate(r["invs"], 4):
         vals = [i.fecha, i.concepto, i.categoria, TIPOS_INVERSION.get(i.tipo, i.tipo), i.valor,
-                i.socio.nombre if i.socio else "Fondo común", i.proveedor or "", i.medio or "", i.nota or ""]
+                i.pago_txt, i.proveedor or "", i.medio or "", i.nota or ""]
         for k, v in enumerate(vals, 1):
             c = d.cell(row=n_, column=k, value=v)
             c.font = Font(name=F)

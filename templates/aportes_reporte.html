@@ -20,7 +20,7 @@
 </form>
 
 <div class="kpis">
-  <div class="kpi hl"><div class="lbl">{{ 'Puesto en el periodo' if desde or hasta else 'Registrado en el reporte' }}</div><div class="val">{{ r.total_periodo|pesos }}</div><div class="sub">{{ r.movs|length }} registro(s): dinero {{ r.total_periodo_dinero|pesos }} · bolsillo {{ r.total_periodo_pagos|pesos }}</div></div>
+  <div class="kpi hl"><div class="lbl">{{ 'Puesto en el periodo' if desde or hasta else 'Registrado en el reporte' }}</div><div class="val">{{ r.total_periodo|pesos }}</div><div class="sub">{{ r.movs|length }} registro(s)</div></div>
   <div class="kpi"><div class="lbl">Total puesto por los socios</div><div class="val">{{ r.total_socios|pesos }}</div><div class="sub">aportes + compras que pagaron</div></div>
   <div class="kpi"><div class="lbl">Total invertido</div><div class="val">{{ r.total_invertido|pesos }}</div><div class="sub">en montar el negocio</div></div>
   <div class="kpi"><div class="lbl">Fondo común {{ 'sin gastar' if r.fondo >= 0 else 'faltante' }}</div><div class="val {{ 'neg' if r.fondo < 0 }}">{{ r.fondo|abs|pesos }}</div><div class="sub">gastado {{ r.del_fondo|pesos }}</div></div>

@@ -27,7 +27,7 @@ import nomina as nom
 import reportes as rpt
 from models import (CATEGORIAS_CAJA_MENOR, asignar_codigo_interno, leido_por, marcar_leido, mensajes_de, mensajes_sin_leer, normalizar, DIAS, RESULTADOS_VISITA, Ruta, Visita, CargaMasiva, migrar, CATEGORIAS_GASTO, LISTAS_PRECIO, MOTIVOS_AJUSTE, ROLES, TIPOS_MEDIO, TIPOS_MOV,
                     TIPOS_PAGO_EMP, UNIDADES, Ajuste, Categoria, Cliente, Compra, Cotizacion,
-                    AporteSocio, CATEGORIAS_INVERSION, GastoFijo, Inversion, InversionSoporte, Socio, TIPOS_INVERSION,
+                    AporteSocio, CATEGORIAS_INVERSION, GastoFijo, Inversion, InversionPago, InversionSoporte, Socio, TIPOS_INVERSION,
                     Empleado, Gasto, MedioPago, Mensaje, MovCaja, Movimiento, PagoNomina, Pedido, Producto,
                     Proveedor, Turno, Usuario, Venta, ahora, config, db, semilla)
 import services
@@ -2052,6 +2052,23 @@ def inversion():
                            hoy=ahora().date(), medios=[m.nombre for m in MedioPago.query.order_by(MedioPago.orden)])
 
 
+def _partes_conjuntas(f, valor):
+    """Reparto de un pago o aporte conjunto: casillas parte_<socio_id>. Devuelve [(socio, valor)] o un mensaje de error."""
+    partes = []
+    for k, v in f.items():
+        if k.startswith("parte_"):
+            x = round(n(v))
+            if x > 0:
+                so = db.session.get(Socio, int(k[6:]))
+                if so:
+                    partes.append((so, x))
+    if len(partes) < 2:
+        return "En un aporte conjunto escribe la parte de al menos dos socios."
+    if abs(sum(x for _, x in partes) - valor) > 1:
+        return f"Las partes suman {pesos(sum(x for _, x in partes))} y el valor es {pesos(valor)}: deben ser iguales."
+    return partes
+
+
 @app.route("/inversion/registro", methods=["POST"])
 @requiere("admin")
 def inversion_registro():
@@ -2065,7 +2082,16 @@ def inversion_registro():
     i.concepto, i.valor, i.categoria = concepto, valor, f["categoria"]
     i.tipo = f.get("tipo") if f.get("tipo") in TIPOS_INVERSION else CATEGORIAS_INVERSION[i.categoria]
     i.fecha = _fecha(f.get("fecha")) or ahora().date()
-    i.socio_id = int(f.get("socio_id") or 0) or None
+    if f.get("socio_id") == "varios":
+        partes = _partes_conjuntas(f, valor)
+        if isinstance(partes, str):
+            flash(partes, "err")
+            return redirect(url_for("inversion"))
+        i.socio_id = None
+        i.pagos = [InversionPago(socio=so, valor=x) for so, x in partes]
+    else:
+        i.socio_id = int(f.get("socio_id") or 0) or None
+        i.pagos = []
     i.proveedor = (f.get("proveedor") or "").strip()[:120] or None
     i.medio = (f.get("medio") or "").strip()[:60] or None
     i.nota = (f.get("nota") or "").strip()[:300] or None
@@ -2145,8 +2171,25 @@ def inversion_aporte():
         db.session.commit()
         flash("Aporte anulado.", "ok")
         return redirect(url_for("inversion"))
-    socio = db.session.get(Socio, int(f.get("socio_id") or 0))
     valor = round(n(f.get("valor")))
+    if f.get("socio_id") == "varios" and not f.get("id"):   # aporte conjunto: una parte (y un recibo) por socio
+        partes = _partes_conjuntas(f, valor) if valor > 0 else "Escribe el valor del aporte."
+        if isinstance(partes, str):
+            flash(partes, "err")
+            return redirect(url_for("inversion"))
+        grupo = secrets.token_hex(6)
+        hechos = []
+        for so, x in partes:
+            ap = AporteSocio(fecha=_fecha(f.get("fecha")) or ahora().date(), socio=so, valor=x, grupo=grupo,
+                             medio=(f.get("medio") or "").strip()[:60] or None, numero=_siguiente("sig_aporte"),
+                             nota=(f.get("nota") or "").strip()[:200] or None, usuario_id=current_user.id)
+            db.session.add(ap)
+            hechos.append(ap)
+        db.session.commit()
+        flash(f"Aporte conjunto por {pesos(valor)} registrado: " + ", ".join(f"{a.folio} {a.socio.nombre} {pesos(a.valor)}" for a in hechos)
+              + ". Cada socio tiene su recibo.", "ok")
+        return redirect(url_for("aporte_recibo", aid=hechos[0].id))
+    socio = db.session.get(Socio, int(f.get("socio_id") or 0) if (f.get("socio_id") or "").isdigit() else 0)
     if not socio or valor <= 0:
         flash("Elige el socio y escribe el valor del aporte.", "err")
         return redirect(url_for("inversion"))
