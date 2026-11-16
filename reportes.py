@@ -3,6 +3,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from io import BytesIO
 
+from models import ahora
 from models import (MOTIVOS_AJUSTE, Ajuste, Devolucion, Gasto, MovCaja, PagoNomina, Producto, Venta,
                     VentaItem, db)
 
@@ -88,7 +89,7 @@ def top_productos(desde, hasta, limite=15):
 
 def sin_movimiento(dias=90, limite=30):
     """Repuestos con stock que no se venden hace tiempo (plata quieta)."""
-    corte = datetime.now() - timedelta(days=dias)
+    corte = ahora() - timedelta(days=dias)
     vendidos = {pid for (pid,) in db.session.query(VentaItem.producto_id).join(Venta)
                 .filter(Venta.fecha >= corte, Venta.estado != "anulada").distinct()}
     prods = Producto.query.filter(Producto.activo.is_(True), Producto.stock > 0).all()

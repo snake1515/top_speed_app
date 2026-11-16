@@ -6,7 +6,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from models import TIPOS_MOV
+from models import TIPOS_MOV, ahora
 
 NEGRO, AMARILLO, ROJO = "0B0A07", "FFC400", "E8243C"
 F = "Arial"
@@ -266,7 +266,7 @@ def inventario_excel(productos, reservado, por_surtir, movimientos, ve_costos, c
     wb.remove(wb.active)
     cols = _columnas(ve_costos)
     extra = {"reservado": reservado, "por_surtir": por_surtir}
-    hoy = datetime.now().strftime("%d/%m/%Y %I:%M %p")
+    hoy = ahora().strftime("%d/%m/%Y %I:%M %p")
     neg = (cfg.nombre or "Moto Speed").upper()
 
     virtuales = [p for p in productos if p.virtual]
@@ -316,7 +316,7 @@ def inversion_excel(r, cfg, url_soporte):
     ws = wb.active
     ws.title = "Resumen"
     neg = (cfg.nombre or "Moto Speed").upper()
-    _titulo(ws, f"{neg} · Inversión inicial", f"Generado el {datetime.now():%d/%m/%Y %I:%M %p}", 2)
+    _titulo(ws, f"{neg} · Inversión inicial", f"Generado el {ahora():%d/%m/%Y %I:%M %p}", 2)
     fila = 4
 
     def par(t, v, fmt=PESOS, negrita=False):
@@ -419,7 +419,7 @@ def aportes_excel(r, cfg):
     ws = wb.active
     ws.title = "Resumen por socio"
     neg = (cfg.nombre or "Moto Speed").upper()
-    sub = _periodo_txt(r) + (f" · {r['socio'].nombre}" if r["socio"] else "") + f" · generado {datetime.now():%d/%m/%Y %I:%M %p}"
+    sub = _periodo_txt(r) + (f" · {r['socio'].nombre}" if r["socio"] else "") + f" · generado {ahora():%d/%m/%Y %I:%M %p}"
     _titulo(ws, f"{neg} · Reporte de aportes de socios", sub, 0)
     _encabezado(ws, ["Socio", "Cédula / NIT", "Puesto en el periodo", "Aportes en dinero (total)", "Compras que pagó (total)",
                      "Total puesto", "Participación"], [28, 16, 18, 20, 20, 16, 14])
@@ -574,7 +574,7 @@ def aportes_pdf(r, cfg, logo_path):
     story += [franja, Spacer(1, 10)]
     story.append(Paragraph("REPORTE DE APORTES DE SOCIOS", st["t"]))
     story.append(Paragraph(_periodo_txt(r) + (f" · {r['socio'].nombre}" if r["socio"] else "")
-                           + f" · generado el {datetime.now():%d/%m/%Y %I:%M %p}", st["s"]))
+                           + f" · generado el {ahora():%d/%m/%Y %I:%M %p}", st["s"]))
 
     def tabla(filas, anchos, num_desde, total=False):
         t = Table(filas, colWidths=anchos, repeatRows=1)

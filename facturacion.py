@@ -7,7 +7,7 @@ vuelve obligatorio facturar).
 """
 from datetime import date, datetime
 
-from models import Venta, db
+from models import Venta, ahora, db
 
 URL_DIAN = "https://catalogo-vpfe.dian.gov.co/User/Login"
 CONSUMIDOR_FINAL = "222222222222"
@@ -15,7 +15,7 @@ CONSUMIDOR_FINAL = "222222222222"
 
 def tope_anual(cfg, anio=None):
     """Ingresos brutos del año (ventas no anuladas menos devoluciones) frente al tope en UVT."""
-    anio = anio or date.today().year
+    anio = anio or ahora().date().year
     ini, fin = datetime(anio, 1, 1), datetime(anio + 1, 1, 1)
     vendido, devuelto = db.session.query(db.func.coalesce(db.func.sum(Venta.total), 0),
                                          db.func.coalesce(db.func.sum(Venta.devuelto), 0)) \
@@ -24,7 +24,7 @@ def tope_anual(cfg, anio=None):
     tope = (cfg.fe_tope_uvt or 3500) * (cfg.fe_uvt or 0)
     pct = ingresos / tope * 100 if tope else 0
     # proyección al cierre del año con el ritmo desde la primera venta del año (la app pudo empezar a mitad de año)
-    hoy = date.today()
+    hoy = ahora().date()
     primera = db.session.query(db.func.min(Venta.fecha)).filter(Venta.fecha >= ini, Venta.fecha < fin).scalar()
     fin_anio = date(anio, 12, 31)
     desde = primera.date() if primera else hoy

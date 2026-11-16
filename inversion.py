@@ -3,7 +3,7 @@ from calendar import monthrange
 from collections import defaultdict
 from datetime import date, datetime, timedelta
 
-from models import AporteSocio, Gasto, GastoFijo, Inversion, Movimiento, Socio, db
+from models import AporteSocio, Gasto, GastoFijo, Inversion, Movimiento, Socio, ahora, db
 
 
 # ------------------------------------------------------------------ inversión inicial
@@ -51,7 +51,7 @@ def resumen_fundacion(cfg, neta_desde_apertura=None):
 
     rec = None
     if neta_desde_apertura is not None and cfg.fecha_apertura and total:
-        meses = max((date.today() - cfg.fecha_apertura).days / 30.44, 0)
+        meses = max((ahora().date() - cfg.fecha_apertura).days / 30.44, 0)
         recuperado = max(neta_desde_apertura, 0)
         pct = min(recuperado / total * 100, 100)
         falta = max(total - neta_desde_apertura, 0)
@@ -77,7 +77,7 @@ def periodo_de(d):
 
 def fijos_del_mes(hoy=None):
     """Gastos fijos activos con su estado este mes: pagado (con el gasto) o pendiente (con días de atraso)."""
-    hoy = hoy or date.today()
+    hoy = hoy or ahora().date()
     per = periodo_de(hoy)
     pagos = {g.gasto_fijo_id: g for g in Gasto.query.filter(Gasto.periodo == per, Gasto.anulado.is_(False),
                                                              Gasto.gasto_fijo_id.isnot(None))}
