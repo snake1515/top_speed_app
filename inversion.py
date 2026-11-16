@@ -287,25 +287,47 @@ def recibo_aporte_png(a, cfg, total_socio, pct_socio, logo_path, fuentes_dir):
 
 # ------------------------------------------------------------------ reporte de aportes
 def reporte_aportes(cfg, desde=None, hasta=None, socio_id=None):
-    """Aportes en el periodo (y de un socio si se elige) + resumen por socio con participación total."""
+    """Todo lo que puso cada socio en el periodo: aportes en dinero al fondo común y compras que pagó de su bolsillo,
+    uno por uno y agrupado por socio, + resumen por socio con participación total."""
     q = AporteSocio.query.filter_by(anulado=False)
+    qi = Inversion.query.filter(Inversion.anulado.is_(False), Inversion.socio_id.isnot(None))
     if desde:
         q = q.filter(AporteSocio.fecha >= desde)
+        qi = qi.filter(Inversion.fecha >= desde)
     if hasta:
         q = q.filter(AporteSocio.fecha <= hasta)
+        qi = qi.filter(Inversion.fecha <= hasta)
     if socio_id:
         q = q.filter(AporteSocio.socio_id == socio_id)
+        qi = qi.filter(Inversion.socio_id == socio_id)
     aportes = q.order_by(AporteSocio.fecha, AporteSocio.id).all()
+    pagos = qi.order_by(Inversion.fecha, Inversion.id).all()
+    movs = [{"clase": "aporte", "tipo": "Aporte en dinero", "folio": a.folio, "id": a.id, "fecha": a.fecha, "socio": a.socio,
+             "concepto": a.nota or "Aporte al fondo común", "medio": a.medio or "", "valor": a.valor} for a in aportes]
+    movs += [{"clase": "pago", "tipo": "Pagó de su bolsillo", "folio": "", "id": i.id, "fecha": i.fecha, "socio": i.socio,
+              "concepto": i.concepto + (f" · {i.proveedor}" if i.proveedor else ""), "medio": i.medio or "", "valor": i.valor,
+              "categoria": i.categoria} for i in pagos]
+    movs.sort(key=lambda m: (m["fecha"], 0 if m["clase"] == "aporte" else 1, m["id"]))
     general = resumen_fundacion(cfg)
     en_periodo = defaultdict(float)
-    for a in aportes:
-        en_periodo[a.socio_id] += a.valor
+    for m in movs:
+        en_periodo[m["socio"].id] += m["valor"]
     filas = []
     for x in general["por_socio"]:
         if socio_id and x["socio"].id != socio_id:
             continue
         filas.append({**x, "periodo": en_periodo.get(x["socio"].id, 0.0)})
-    return {"aportes": aportes, "socios": filas, "total_periodo": sum(a.valor for a in aportes),
+    # detalle agrupado por socio (en el mismo orden del resumen)
+    grupos = []
+    for x in filas:
+        ms = [m for m in movs if m["socio"].id == x["socio"].id]
+        if ms:
+            grupos.append({"socio": x["socio"], "movs": ms, "total": sum(m["valor"] for m in ms),
+                           "dinero": sum(m["valor"] for m in ms if m["clase"] == "aporte"),
+                           "pagos": sum(m["valor"] for m in ms if m["clase"] == "pago")})
+    return {"aportes": aportes, "movs": movs, "grupos": grupos, "socios": filas,
+            "total_periodo": sum(m["valor"] for m in movs),
+            "total_periodo_dinero": sum(a.valor for a in aportes), "total_periodo_pagos": sum(i.valor for i in pagos),
             "total_aportes": sum(x["aportes"] for x in general["por_socio"]),
             "total_pagos": sum(x["pagos"] for x in general["por_socio"]), "total_socios": general["total_socios"],
             "fondo": general["fondo"], "del_fondo": general["del_fondo"], "total_invertido": general["total"],

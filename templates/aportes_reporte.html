@@ -20,7 +20,7 @@
 </form>
 
 <div class="kpis">
-  <div class="kpi hl"><div class="lbl">Aportes {{ 'del periodo' if desde or hasta else 'en dinero' }}</div><div class="val">{{ r.total_periodo|pesos }}</div><div class="sub">{{ r.aportes|length }} aporte(s)</div></div>
+  <div class="kpi hl"><div class="lbl">{{ 'Puesto en el periodo' if desde or hasta else 'Registrado en el reporte' }}</div><div class="val">{{ r.total_periodo|pesos }}</div><div class="sub">{{ r.movs|length }} registro(s): dinero {{ r.total_periodo_dinero|pesos }} · bolsillo {{ r.total_periodo_pagos|pesos }}</div></div>
   <div class="kpi"><div class="lbl">Total puesto por los socios</div><div class="val">{{ r.total_socios|pesos }}</div><div class="sub">aportes + compras que pagaron</div></div>
   <div class="kpi"><div class="lbl">Total invertido</div><div class="val">{{ r.total_invertido|pesos }}</div><div class="sub">en montar el negocio</div></div>
   <div class="kpi"><div class="lbl">Fondo común {{ 'sin gastar' if r.fondo >= 0 else 'faltante' }}</div><div class="val {{ 'neg' if r.fondo < 0 }}">{{ r.fondo|abs|pesos }}</div><div class="sub">gastado {{ r.del_fondo|pesos }}</div></div>
@@ -29,7 +29,7 @@
 <div class="card">
   <h2 style="margin-bottom:8px">Resumen por socio</h2>
   <div class="table-wrap"><table>
-    <thead><tr><th>Socio</th><th class="num">Aportes del periodo</th><th class="num">Aportes en dinero (total)</th><th class="num">Compras que pagó</th><th class="num">Total puesto</th><th class="num">Participación</th></tr></thead>
+    <thead><tr><th>Socio</th><th class="num">Puesto en el periodo</th><th class="num">Aportes en dinero (total)</th><th class="num">Compras que pagó</th><th class="num">Total puesto</th><th class="num">Participación</th></tr></thead>
     <tbody>{% for x in r.socios %}<tr><td><b>{{ x.socio.nombre }}</b><br><small class="muted">{{ x.socio.documento or '' }}</small></td>
       <td class="num">{{ x.periodo|pesos }}</td><td class="num">{{ x.aportes|pesos }}</td><td class="num">{{ x.pagos|pesos }}</td>
       <td class="num"><b>{{ x.total|pesos }}</b></td><td class="num"><b>{{ x.pct|round(1) }} %</b></td></tr>
@@ -38,13 +38,25 @@
 </div>
 
 <div class="card">
-  <h2 style="margin-bottom:8px">Detalle de aportes</h2>
+  <h2 style="margin-bottom:4px">Detalle: cada aporte de cada socio</h2>
+  <p class="muted" style="margin:0 0 10px">Aportes en dinero al fondo común y compras que cada socio pagó de su bolsillo{{ ' en el periodo' if desde or hasta }}.</p>
+  {% for g in r.grupos %}
+  <h3 style="margin:16px 0 6px">{{ g.socio.nombre }} <small class="muted" style="font-weight:500">· {{ g.movs|length }} registro(s) · {{ g.total|pesos }}</small></h3>
   <div class="table-wrap"><table>
-    <thead><tr><th>Recibo</th><th>Fecha</th><th>Socio</th><th>Medio</th><th>Concepto</th><th class="num">Valor</th></tr></thead>
-    <tbody>{% for a in r.aportes %}<tr><td><a href="{{ url_for('aporte_recibo', aid=a.id) }}"><b>{{ a.folio }}</b></a></td><td>{{ a.fecha|f }}</td>
-      <td>{{ a.socio.nombre }}</td><td>{{ a.medio or '' }}</td><td>{{ a.nota or '' }}</td><td class="num">{{ a.valor|pesos }}</td></tr>
-    {% else %}<tr><td colspan="6" class="empty">Sin aportes en el periodo.</td></tr>{% endfor %}</tbody>
-    {% if r.aportes %}<tfoot><tr><td colspan="5"><b>Total</b></td><td class="num"><b>{{ r.total_periodo|pesos }}</b></td></tr></tfoot>{% endif %}
+    <thead><tr><th>Fecha</th><th>Tipo</th><th>Recibo</th><th>Concepto</th><th>Medio</th><th class="num">Valor</th></tr></thead>
+    <tbody>{% for m in g.movs %}<tr>
+      <td>{{ m.fecha|f }}</td>
+      <td>{% if m.clase == 'aporte' %}<span class="tag">Aporte en dinero</span>{% else %}<span class="tag" style="background:#fff3c4">Pagó de su bolsillo</span>{% endif %}</td>
+      <td>{% if m.clase == 'aporte' %}<a href="{{ url_for('aporte_recibo', aid=m.id) }}"><b>{{ m.folio }}</b></a>{% else %}<span class="muted">—</span>{% endif %}</td>
+      <td>{{ m.concepto }}{% if m.categoria %}<br><small class="muted">{{ m.categoria }}</small>{% endif %}</td>
+      <td>{{ m.medio }}</td><td class="num">{{ m.valor|pesos }}</td></tr>{% endfor %}</tbody>
+    <tfoot>
+      {% if g.dinero and g.pagos %}<tr><td colspan="5" class="muted">Aportes en dinero</td><td class="num">{{ g.dinero|pesos }}</td></tr>
+      <tr><td colspan="5" class="muted">Pagó de su bolsillo</td><td class="num">{{ g.pagos|pesos }}</td></tr>{% endif %}
+      <tr><td colspan="5"><b>Total {{ g.socio.nombre }}</b></td><td class="num"><b>{{ g.total|pesos }}</b></td></tr>
+    </tfoot>
   </table></div>
+  {% else %}<p class="empty">Sin aportes en el periodo.</p>{% endfor %}
+  {% if r.grupos|length > 1 %}<div class="sum-row big" style="margin-top:14px;border-top:2px solid var(--ink);padding-top:10px"><span>Total de todos los socios</span><b>{{ r.total_periodo|pesos }}</b></div>{% endif %}
 </div>
 {% endblock %}
