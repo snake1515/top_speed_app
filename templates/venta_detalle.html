@@ -1,5 +1,15 @@
 {% extends "base.html" %}
-{% block title %}Venta {{ v.folio }}{% endblock %}
+{% block title %}Venta {{ v.folio }}<style>.copia { cursor: copy; } .copia:hover { background: #fff6cc; } .copia.ok { background: #d9f5e5; }</style>
+<script>
+document.querySelectorAll('.copia').forEach(el => el.addEventListener('click', async () => {
+  const txt = el.dataset.v || el.textContent.trim();
+  try { await navigator.clipboard.writeText(txt); } catch (e) {
+    const t = document.createElement('textarea'); t.value = txt; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
+  el.classList.add('ok'); setTimeout(() => el.classList.remove('ok'), 900);
+}));
+document.querySelectorAll('[data-confirm-btn]').forEach(b => b.addEventListener('click', e => { if (!confirm(b.dataset.confirmBtn)) e.preventDefault(); }));
+</script>
+{% endblock %}
 {% block content %}
 <div class="page-head">
   <div><h1>Venta {{ v.folio }}</h1>
@@ -64,6 +74,75 @@
       <p class="muted" style="margin-bottom:0">Precio: {{ LISTAS_PRECIO[v.lista] }}</p>
     </div>
 
+    {% if cfg.fe_activa or v.fe_numero %}
+    <div class="card" id="fe" style="border-left:4px solid {{ 'var(--green, #1a9b5c)' if v.fe_numero else 'var(--accent)' }}">
+      <h2 style="margin-bottom:8px">Factura electrónica DIAN</h2>
+      {% if v.fe_numero %}
+        <p style="margin:0"><span class="badge ok">Facturada</span> <b class="mono">{{ v.fe_numero }}</b></p>
+        {% if v.fe_cufe %}<p class="mono" style="font-size:11px;word-break:break-all;margin:6px 0 0">CUFE {{ v.fe_cufe }}</p>{% endif %}
+        <p class="muted" style="margin:6px 0 0"><small>Registrada {{ v.fe_fecha|fh if v.fe_fecha else '' }}{% if v.fe_por %} por {{ v.fe_por.nombre }}{% endif %}</small></p>
+        {% if v.anulada %}
+          {% if v.fe_nota_credito %}<p style="margin:8px 0 0"><span class="badge">Nota crédito {{ v.fe_nota_credito }}</span></p>
+          {% else %}
+          <div class="flash err" style="margin-top:10px">Esta venta se anuló pero ya estaba facturada: haz una <b>nota crédito</b> a la factura {{ v.fe_numero }} en el facturador de la DIAN y anota aquí su número.</div>
+          {% endif %}
+          <form method="post" action="{{ url_for('venta_factura_dian', vid=v.id) }}" style="display:flex;gap:8px;margin-top:8px">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="accion" value="nota_credito">
+            <input class="input mono" name="fe_numero" value="{{ v.fe_nota_credito or '' }}" placeholder="Nº nota crédito (ej. NC12)">
+            <button class="btn sec sm">Guardar</button>
+          </form>
+        {% endif %}
+        {% if current_user.puede('admin') %}
+        <details style="margin-top:8px"><summary class="muted">Corregir</summary>
+          <form method="post" action="{{ url_for('venta_factura_dian', vid=v.id) }}" style="margin-top:8px">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <div class="field"><input class="input mono" name="fe_numero" value="{{ v.fe_numero }}"></div>
+            <div class="field"><input class="input mono" name="fe_cufe" value="{{ v.fe_cufe or '' }}" placeholder="CUFE"></div>
+            <div style="display:flex;gap:8px"><button class="btn sec sm">Guardar</button>
+              <button class="btn ghost sm" name="accion" value="quitar" data-confirm-btn="¿Quitar el registro de la factura?">Quitar</button></div>
+          </form>
+        </details>
+        {% endif %}
+      {% elif v.anulada %}
+        <p class="muted" style="margin:0">Venta anulada: no se factura.</p>
+      {% else %}
+        <p style="margin:0 0 8px"><span class="badge warn">Pendiente por facturar</span></p>
+        <ol class="muted" style="padding-left:18px;margin:0 0 10px">
+          <li>Abre el facturador y crea la factura con estos datos (toca un dato para copiarlo).</li>
+          <li>Cuando la DIAN la apruebe, escribe abajo el número y el CUFE.</li>
+        </ol>
+        <a class="btn dark sm" href="{{ FE_URL }}" target="_blank" rel="noopener">↗ Abrir facturador DIAN</a>
+        <div class="fe-datos" style="margin-top:12px">
+          <div class="sum-row"><span>Documento</span><b class="copia mono">{{ v.cliente_doc or (v.cliente.documento if v.cliente else '') or CONSUMIDOR_FINAL }}</b></div>
+          <div class="sum-row"><span>Cliente</span><b class="copia">{{ v.cliente_nombre or (v.cliente.nombre if v.cliente else '') or 'Consumidor final' }}</b></div>
+          {% if v.cliente_tel %}<div class="sum-row"><span>Celular</span><b class="copia">{{ v.cliente_tel }}</b></div>{% endif %}
+          {% if v.cliente and v.cliente.email %}<div class="sum-row"><span>Correo</span><b class="copia">{{ v.cliente.email }}</b></div>{% endif %}
+          {% if not (v.cliente_doc or (v.cliente and v.cliente.documento)) %}<p class="hint" style="margin:2px 0 6px">Sin documento: en el facturador se usa «Consumidor final» ({{ CONSUMIDOR_FINAL }}).</p>{% endif %}
+          <div class="sum-row"><span>Forma de pago</span><b class="copia">{{ 'Crédito' if v.credito else 'Contado' }}</b></div>
+          {% for l in fe_lineas %}
+          <div style="border-top:1px solid var(--line, #e5e5e0);padding:8px 0">
+            <div><span class="copia mono">{{ l.codigo }}</span> · <span class="copia">{{ l.nombre }}</span></div>
+            <div style="display:flex;gap:14px;flex-wrap:wrap;margin-top:3px;font-size:13px">
+              <span>Cant. <b class="copia">{{ l.cantidad|cant }}</b></span>
+              <span>Valor unit. <b class="copia" data-v="{{ l.unitario|round(2) }}">{{ l.unitario|pesos }}</b></span>
+              <span>IVA <b>{{ l.iva_pct|round|int }} %</b></span>
+              <span>Total <b>{{ l.total|pesos }}</b></span>
+            </div>
+          </div>
+          {% endfor %}
+          <div class="sum-row" style="border-top:2px solid #000;padding-top:6px"><b>Total a facturar</b><b class="copia" data-v="{{ fe_lineas|sum(attribute='total')|round(2) }}">{{ fe_lineas|sum(attribute='total')|pesos }}</b></div>
+          <p class="hint">Valor unitario antes de IVA, con el descuento ya repartido.</p>
+        </div>
+        <form method="post" action="{{ url_for('venta_factura_dian', vid=v.id) }}" style="margin-top:10px">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <div class="field"><label>Número de la factura DIAN</label><input class="input mono" name="fe_numero" placeholder="ej. FE1234" required></div>
+          <div class="field"><label>CUFE <small class="muted">(opcional, recomendado)</small></label><input class="input mono" name="fe_cufe" placeholder="Pega el CUFE completo"></div>
+          <button class="btn ok">✔ Marcar como facturada</button>
+        </form>
+      {% endif %}
+    </div>
+    {% endif %}
+
     {% if v.saldo and not v.anulada %}
     <form class="card" method="post" action="{{ url_for('venta_abono', vid=v.id) }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -99,6 +178,7 @@
       <summary class="neg">Anular venta</summary>
       <form method="post" action="{{ url_for('venta_anular', vid=v.id) }}" style="margin-top:12px" data-confirm="¿Anular {{ v.folio }}? Los repuestos vuelven al inventario y el dinero sale de la caja.">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% if v.fe_numero %}<p class="flash warn">Esta venta ya tiene factura electrónica ({{ v.fe_numero }}). Después de anularla, haz la <b>nota crédito</b> en el facturador de la DIAN.</p>{% endif %}
         <div class="field"><input class="input" name="motivo" placeholder="Motivo de la anulación" required></div>
         <button class="btn danger">Anular venta</button>
         <p class="hint">Si la caja de esa venta ya se cerró, el reembolso sale de la caja abierta.</p>
@@ -107,4 +187,14 @@
     {% endif %}
   </div>
 </div>
+<style>.copia { cursor: copy; } .copia:hover { background: #fff6cc; } .copia.ok { background: #d9f5e5; }</style>
+<script>
+document.querySelectorAll('.copia').forEach(el => el.addEventListener('click', async () => {
+  const txt = el.dataset.v || el.textContent.trim();
+  try { await navigator.clipboard.writeText(txt); } catch (e) {
+    const t = document.createElement('textarea'); t.value = txt; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); }
+  el.classList.add('ok'); setTimeout(() => el.classList.remove('ok'), 900);
+}));
+document.querySelectorAll('[data-confirm-btn]').forEach(b => b.addEventListener('click', e => { if (!confirm(b.dataset.confirmBtn)) e.preventDefault(); }));
+</script>
 {% endblock %}

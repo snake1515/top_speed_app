@@ -18,6 +18,7 @@ from flask_login import LoginManager, current_user, login_required, login_user, 
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 
+import facturacion
 import importador
 import nomina as nom
 import reportes as rpt
@@ -228,6 +229,8 @@ def contexto():
         extra["MENSAJES_PEND"] = mensajes_sin_leer(current_user).count()
         extra["IMPRIMIR_AUTO"] = session.pop("imprimir", None)
         extra["CAJON_AUTO"] = session.pop("abrir_cajon", None)
+        if cfg.fe_activa and current_user.puede("cajero"):
+            extra["FE_PEND"] = facturacion.pendientes(cfg).count()
     return extra
 
 
@@ -447,7 +450,8 @@ def panel():
     pedidos = Pedido.query.filter_by(estado="pendiente").order_by(Pedido.fecha.desc()).limit(6).all()
     top = rpt.top_productos(hoy - timedelta(days=29), hoy, 8)
     serie30 = [(d.strftime("%d/%m"), round(v), round(u)) for d, v, u in r_30["serie"]]
-    return render_template("panel.html", serie30=serie30, hoy=hoy, r_hoy=r_hoy, r_mes=r_mes, r_30=r_30, bajos=bajos, valor_inv=valor_inv,
+    tope = facturacion.tope_anual(config())
+    return render_template("panel.html", tope=tope, serie30=serie30, hoy=hoy, r_hoy=r_hoy, r_mes=r_mes, r_30=r_30, bajos=bajos, valor_inv=valor_inv,
                            cartera=cartera, por_pagar=por_pagar, turno=turno, caja=caja, pedidos=pedidos, top=top,
                            num_prods=len(prods), num_bajos=sum(1 for p in prods if p.bajo_minimo))
 
@@ -643,8 +647,63 @@ def venta_detalle(vid):
     v = get_or_404(Venta, vid)
     medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.orden).all()
     return render_template("venta_detalle.html", v=v, medios=medios, turno=turno_abierto(),
+                           fe_lineas=facturacion.lineas_factura(v), FE_URL=config().fe_url or facturacion.URL_DIAN,
+                           CONSUMIDOR_FINAL=facturacion.CONSUMIDOR_FINAL,
                            wa=wa_link(v.cliente_tel, texto_recibo(v)),
                            devs=[(d, json.loads(d.detalle or "[]")) for d in v.devoluciones])
+
+
+# ============================================ factura electrónica (facturador gratuito DIAN)
+@app.route("/facturacion-dian")
+@requiere("cajero")
+def facturacion_dian():
+    cfg = config()
+    pend = facturacion.pendientes(cfg).order_by(Venta.fecha).limit(500).all()
+    hechas = (Venta.query.filter(Venta.fe_numero.isnot(None), Venta.fe_numero != "")
+              .order_by(Venta.fe_fecha.desc()).limit(60).all())
+    nc_pend = Venta.query.filter(Venta.estado == "anulada", Venta.fe_numero.isnot(None), Venta.fe_numero != "",
+                                 db.or_(Venta.fe_nota_credito.is_(None), Venta.fe_nota_credito == "")).all()
+    tope = facturacion.tope_anual(cfg) if current_user.puede("admin") else None
+    return render_template("facturacion_dian.html", pend=pend, hechas=hechas, nc_pend=nc_pend, tope=tope,
+                           FE_URL=cfg.fe_url or facturacion.URL_DIAN)
+
+
+@app.route("/ventas/<int:vid>/factura-dian", methods=["POST"])
+@requiere("cajero")
+def venta_factura_dian(vid):
+    v = get_or_404(Venta, vid)
+    f = request.form
+    numero = re.sub(r"\s+", "", (f.get("fe_numero") or "")).upper()[:40]
+    cufe = re.sub(r"\s+", "", (f.get("fe_cufe") or "")).lower()[:120]
+    if f.get("accion") == "quitar":
+        if not current_user.puede("admin"):
+            abort(403)
+        v.fe_numero = v.fe_cufe = v.fe_fecha = v.fe_por_id = None
+        db.session.commit()
+        flash("Se quitó el registro de la factura electrónica de esta venta.", "ok")
+        return redirect(url_for("venta_detalle", vid=vid))
+    if f.get("accion") == "nota_credito":
+        v.fe_nota_credito = numero or None
+        db.session.commit()
+        flash("Nota crédito registrada." if numero else "Se quitó la nota crédito.", "ok")
+        return redirect(url_for("venta_detalle", vid=vid))
+    if not numero:
+        flash("Escribe el número de la factura que te dio la DIAN (ej. FE1234).", "err")
+    elif Venta.query.filter(Venta.fe_numero == numero, Venta.id != v.id).first():
+        otra = Venta.query.filter(Venta.fe_numero == numero, Venta.id != v.id).first()
+        flash(f"La factura {numero} ya está registrada en la venta {otra.folio}.", "err")
+    elif cufe and not re.fullmatch(r"[0-9a-f]{40,120}", cufe):
+        flash("El CUFE no se ve bien: son letras (a-f) y números, normalmente 96 caracteres. Cópialo completo.", "err")
+    else:
+        if v.fe_numero and v.fe_numero != numero and not current_user.puede("admin"):
+            abort(403)
+        v.fe_numero, v.fe_cufe = numero, cufe or None
+        v.fe_fecha, v.fe_por_id = ahora(), current_user.id
+        db.session.commit()
+        flash(f"Venta {v.folio} marcada como facturada en la DIAN ({numero}).", "ok")
+        if f.get("volver") == "lista":
+            return redirect(url_for("facturacion_dian"))
+    return redirect(url_for("venta_detalle", vid=vid))
 
 
 @app.route("/ventas/<int:vid>/ticket")
@@ -2026,6 +2085,16 @@ def configuracion():
             cfg.tienda_mensaje = (f.get("tienda_mensaje") or "").strip()[:300] or None
             cfg.tienda_envio = (f.get("tienda_envio") or "").strip()[:300] or None
             cfg.reserva_horas = max(int(n(f.get("reserva_horas"), 48)), 1)
+        elif sec == "fe":
+            cfg.fe_activa = bool(f.get("fe_activa"))
+            try:
+                cfg.fe_desde = datetime.strptime(f.get("fe_desde") or "", "%Y-%m-%d").date()
+            except ValueError:
+                cfg.fe_desde = cfg.fe_desde or (ahora().date() if cfg.fe_activa else None)
+            cfg.fe_url = (f.get("fe_url") or "").strip()[:200] or None
+            cfg.fe_uvt = n(f.get("fe_uvt"), cfg.fe_uvt or 52374)
+            cfg.fe_tope_uvt = n(f.get("fe_tope_uvt"), cfg.fe_tope_uvt or 3500)
+            cfg.fe_aviso_pct = pct(f.get("fe_aviso_pct"), cfg.fe_aviso_pct or 80)
         elif sec == "nomina":
             cfg.smmlv = n(f.get("smmlv"), cfg.smmlv)
             cfg.aux_transporte = n(f.get("aux_transporte"), cfg.aux_transporte)

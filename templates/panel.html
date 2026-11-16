@@ -23,6 +23,17 @@
   <div class="kpi"><div class="lbl">Ganancia neta del mes</div><div class="val {{ 'pos' if r_mes.neta >= 0 else 'neg' }}">{{ r_mes.neta|pesos }}</div><div class="sub">después de gastos y nómina</div></div>
 </div>
 
+{% if tope and tope.tope %}
+<div class="card" style="margin-bottom:16px;{{ 'border-left:4px solid var(--red)' if tope.nivel != 'ok' else '' }}">
+  <div class="card-head"><h2>Tope de facturación electrónica {{ tope.anio }}</h2><a href="{{ url_for('configuracion') }}#fe">Configurar</a></div>
+  <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px"><span>Vendido en el año <b>{{ tope.ingresos|pesos }}</b> de {{ tope.tope|pesos }} ({{ tope.tope_uvt|round|int }} UVT)</span><b class="{{ 'neg' if tope.nivel != 'ok' else '' }}">{{ tope.pct|round(1) }} %</b></div>
+  <div style="height:10px;background:#eee;border-radius:6px;overflow:hidden;margin:8px 0"><div style="height:100%;width:{{ [tope.pct, 100]|min }}%;background:{{ 'var(--red)' if tope.nivel != 'ok' else 'var(--accent)' }}"></div></div>
+  {% if tope.nivel == 'pasado' %}<p class="flash err" style="margin:0">Pasaste el tope: ya estás <b>obligado a facturar electrónicamente</b>. Habilítate en la DIAN y activa la facturación en Configuración. Consulta con tu contador.</p>
+  {% elif tope.nivel == 'aviso' %}<p class="flash warn" style="margin:0">Vas en el {{ tope.pct|round|int }} % del tope. Te faltan {{ tope.falta|pesos }}: prepárate para habilitarte como facturador electrónico.</p>
+  {% else %}<small class="muted">{% if tope.proyeccion > tope.ingresos %}A este ritmo cerrarías el año en {{ tope.proyeccion|pesos }}. {% endif %}Si pasas el tope, quedas obligado a facturar electrónicamente.</small>{% endif %}
+</div>
+{% endif %}
+
 <div class="grid g-main">
   <div>
     <div class="card">

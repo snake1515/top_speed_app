@@ -167,6 +167,13 @@ class Config(db.Model):
     sig_vale = db.Column(db.Integer, nullable=False, default=1)
     sig_cod_interno = db.Column(db.Integer, nullable=False, default=0)  # el primero es 0000
     sig_anulacion = db.Column(db.Integer, nullable=False, default=1)
+    # Facturación electrónica con el facturador gratuito de la DIAN (se digita allá; aquí se lleva el control)
+    fe_activa = db.Column(db.Boolean, nullable=False, default=False)
+    fe_desde = db.Column(db.Date)                       # desde qué fecha las ventas se deben facturar
+    fe_url = db.Column(db.String(200))                  # dirección del facturador
+    fe_uvt = db.Column(db.Float, nullable=False, default=52374)      # valor UVT del año
+    fe_tope_uvt = db.Column(db.Float, nullable=False, default=3500)  # tope de ingresos para no estar obligado
+    fe_aviso_pct = db.Column(db.Float, nullable=False, default=80)   # avisar desde este % del tope
 
 
 class MedioPago(db.Model):
@@ -706,6 +713,13 @@ class Venta(db.Model):
     anulada_por_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
     anulada_por = db.relationship("Usuario", foreign_keys=[anulada_por_id])
     anulada_reembolso = db.Column(db.String(255))  # "Efectivo|50000;Nequi|20000": lo que se le devolvió al cliente
+    # factura electrónica hecha en el facturador gratuito de la DIAN
+    fe_numero = db.Column(db.String(40), index=True)
+    fe_cufe = db.Column(db.String(120))
+    fe_fecha = db.Column(db.DateTime)
+    fe_por_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
+    fe_por = db.relationship("Usuario", foreign_keys=[fe_por_id])
+    fe_nota_credito = db.Column(db.String(40))          # número de la nota crédito si la venta facturada se anula
 
     @property
     def reembolsos(self):

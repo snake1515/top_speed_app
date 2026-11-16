@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block title %}Factura DIAN{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Factura electrónica DIAN</h1><p>Ventas por facturar en el facturador gratuito de la DIAN{% if cfg.fe_desde %} (desde {{ cfg.fe_desde|f }}){% endif %}.</p></div>
+  <div class="actions"><a class="btn dark" href="{{ FE_URL }}" target="_blank" rel="noopener">↗ Abrir facturador DIAN</a></div>
+</div>
+{% if not cfg.fe_activa %}<div class="flash warn">La facturación electrónica está apagada. Actívala en <a href="{{ url_for('configuracion') }}#fe">Configuración</a> cuando te habilites en la DIAN.</div>{% endif %}
+
+{% if tope %}
+<div class="card">
+  <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px"><span>Tope {{ tope.anio }}: vendido <b>{{ tope.ingresos|pesos }}</b> de {{ tope.tope|pesos }}</span><b>{{ tope.pct|round(1) }} %</b></div>
+  <div style="height:8px;background:#eee;border-radius:6px;overflow:hidden;margin-top:6px"><div style="height:100%;width:{{ [tope.pct, 100]|min }}%;background:{{ 'var(--red)' if tope.nivel != 'ok' else 'var(--accent)' }}"></div></div>
+</div>
+{% endif %}
+
+{% if nc_pend %}
+<div class="card" style="border-left:4px solid var(--red)">
+  <h2 style="margin-bottom:6px">Notas crédito pendientes</h2>
+  <p class="muted" style="margin-top:0">Ventas anuladas que ya estaban facturadas: haz la nota crédito en la DIAN y anota su número en la venta.</p>
+  {% for v in nc_pend %}<div class="sum-row"><a href="{{ url_for('venta_detalle', vid=v.id) }}#fe">{{ v.folio }} · factura {{ v.fe_numero }}</a><span>{{ v.total|pesos }}</span></div>{% endfor %}
+</div>
+{% endif %}
+
+<div class="card">
+  <h2 style="margin-bottom:8px">Pendientes por facturar ({{ pend|length }})</h2>
+  {% if pend %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Venta</th><th>Fecha</th><th>Cliente</th><th class="num">Total</th><th>Número DIAN</th></tr></thead>
+    <tbody>{% for v in pend %}<tr>
+      <td><a href="{{ url_for('venta_detalle', vid=v.id) }}#fe"><b>{{ v.folio }}</b></a></td>
+      <td>{{ v.fecha|fh }}</td>
+      <td>{{ v.cliente_nombre or (v.cliente.nombre if v.cliente else '') or 'Consumidor final' }}<br><small class="muted">{{ v.cliente_doc or (v.cliente.documento if v.cliente else '') or '' }}</small></td>
+      <td class="num">{{ (v.total - (v.devuelto or 0))|pesos }}</td>
+      <td><form method="post" action="{{ url_for('venta_factura_dian', vid=v.id) }}" style="display:flex;gap:6px">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="volver" value="lista">
+        <input class="input mono" name="fe_numero" placeholder="ej. FE1234" required style="width:120px">
+        <button class="btn ok sm" title="Marcar como facturada">✔</button></form></td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  <p class="hint">Para ver los datos listos para copiar y guardar el CUFE, abre la venta.</p>
+  {% else %}<p class="empty">No hay ventas pendientes por facturar.</p>{% endif %}
+</div>
+
+<div class="card">
+  <h2 style="margin-bottom:8px">Últimas facturadas</h2>
+  {% if hechas %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Factura</th><th>Venta</th><th>Fecha</th><th>Cliente</th><th class="num">Total</th><th>Registró</th></tr></thead>
+    <tbody>{% for v in hechas %}<tr>
+      <td class="mono"><b>{{ v.fe_numero }}</b>{% if not v.fe_cufe %} <span class="badge warn" title="Falta el CUFE">sin CUFE</span>{% endif %}</td>
+      <td><a href="{{ url_for('venta_detalle', vid=v.id) }}#fe">{{ v.folio }}</a>{% if v.anulada %} <span class="badge">anulada</span>{% endif %}</td>
+      <td>{{ v.fe_fecha|fh if v.fe_fecha else '' }}</td>
+      <td>{{ v.cliente_nombre or (v.cliente.nombre if v.cliente else '') or 'Consumidor final' }}</td>
+      <td class="num">{{ v.total|pesos }}</td><td>{{ v.fe_por.nombre if v.fe_por else '' }}</td>
+    </tr>{% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="empty">Aún no hay ventas facturadas.</p>{% endif %}
+</div>
+{% endblock %}

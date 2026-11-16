@@ -60,7 +60,11 @@
   {% if v.nota %}<hr><div>{{ v.nota }}</div>{% endif %}
   <hr>
   <div class="c">{% for fr in (cfg.mensaje_recibo or '')|frases %}<div class="{{ 'gracias' if loop.first else '' }}">{{ fr }}</div>{% endfor %}</div>
+  {% if v.fe_numero %}
+  <div class="c" style="margin-top:6px"><small><b>Factura electrónica de venta {{ v.fe_numero }}</b>{% if v.fe_cufe %}<br><span style="word-break:break-all">CUFE: {{ v.fe_cufe }}</span>{% endif %}</small></div>
+  {% else %}
   <div class="c" style="margin-top:6px"><small>Documento soporte de venta. No es factura electrónica.</small></div>
+  {% endif %}
 </div>
 <div class="acc">
   <button onclick="window.print()">🖨 Imprimir</button>

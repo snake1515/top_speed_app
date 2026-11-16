@@ -92,6 +92,24 @@ document.getElementById('gps').addEventListener('click', e => { const b = e.targ
       <input class="input" name="nombre" placeholder="Nueva categoría"><button class="btn sm">＋</button></form>
   </div>
 
+  <form class="card" method="post" id="fe">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="seccion" value="fe">
+    <h2 style="margin-bottom:4px">Facturación electrónica DIAN</h2>
+    <p class="hint" style="margin-top:0">Con el <b>facturador gratuito de la DIAN</b>: la factura se hace allá y aquí se lleva el control (qué ventas faltan, número y CUFE de cada una). Actívalo cuando te habilites como facturador.</p>
+    <label class="check"><input type="checkbox" name="fe_activa" value="1" {{ 'checked' if cfg.fe_activa }}> Facturar electrónicamente las ventas</label>
+    <div class="form-row" style="margin-top:8px">
+      <div class="field"><label>Facturar ventas desde</label><input class="input" type="date" name="fe_desde" value="{{ cfg.fe_desde.isoformat() if cfg.fe_desde else '' }}"><div class="hint">Las ventas anteriores no salen como pendientes.</div></div>
+      <div class="field"><label>Dirección del facturador</label><input class="input" name="fe_url" value="{{ cfg.fe_url or '' }}" placeholder="https://catalogo-vpfe.dian.gov.co/User/Login"></div>
+    </div>
+    <h3 style="margin:10px 0 4px">Tope para estar obligado</h3>
+    <div class="form-row">
+      <div class="field"><label>Valor UVT del año</label><input class="input" name="fe_uvt" value="{{ cfg.fe_uvt|round|int }}"></div>
+      <div class="field"><label>Tope (UVT)</label><input class="input" name="fe_tope_uvt" value="{{ cfg.fe_tope_uvt|round|int }}"></div>
+      <div class="field"><label>Avisar desde (%)</label><input class="input" name="fe_aviso_pct" value="{{ cfg.fe_aviso_pct|round|int }}"></div>
+    </div>
+    <p class="hint">Tope actual: {{ (cfg.fe_uvt * cfg.fe_tope_uvt)|pesos }} al año. Revisa la UVT cada enero con tu contador.</p>
+    <button class="btn">Guardar</button>
+  </form>
   <form class="card" method="post" id="nomina">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="seccion" value="nomina">
     <h2 style="margin-bottom:12px">Parámetros de nómina</h2>
