@@ -186,18 +186,19 @@ function editar(form, titulo, datos) {
 }
 // pago o aporte conjunto entre varios socios
 function prepararReparto(form, pid) {
+  const pz = v => Number(String(v ?? '').replace(/\D/g, '')) || 0;   // pesos sin decimales: solo dígitos
   const sel = form.socio_id, box = document.getElementById(pid); if (!sel || !box) return;
   const vals = [...box.querySelectorAll('.rp-val')], chks = [...box.querySelectorAll('.rp-chk')];
-  const total = () => num(form.valor.value);
+  const total = () => pz(form.valor.value);
   const pintar = () => {
-    const suma = vals.reduce((a, v) => a + num(v.value), 0), d = total() - suma;
+    const suma = vals.reduce((a, v) => a + pz(v.value), 0), d = total() - suma;
     box.querySelector('.rp-suma').textContent = COP(suma);
     box.querySelector('.rp-dif').textContent = !total() ? '' : Math.abs(d) < 1 ? '✓ cuadra' : (d > 0 ? 'faltan ' + COP(d) : 'sobran ' + COP(-d));
     box.querySelector('.rp-dif').style.color = Math.abs(d) < 1 ? 'var(--ok, #0a8a4a)' : 'var(--danger, #c62828)';
   };
   const ver = () => { const on = sel.value === 'varios'; box.style.display = on ? '' : 'none'; vals.forEach(v => v.disabled = !on); pintar(); };
   sel.addEventListener('change', ver);
-  vals.forEach(v => v.addEventListener('input', () => { const c = chks.find(c => c.dataset.s === v.dataset.s); c.checked = num(v.value) > 0; pintar(); }));
+  vals.forEach(v => v.addEventListener('input', () => { const c = chks.find(c => c.dataset.s === v.dataset.s); c.checked = pz(v.value) > 0; pintar(); }));
   chks.forEach(c => c.addEventListener('change', () => { if (!c.checked) vals.find(v => v.dataset.s === c.dataset.s).value = ''; pintar(); }));
   form.valor.addEventListener('input', pintar);
   box.querySelector('.rp-igual').addEventListener('click', () => {
@@ -210,7 +211,7 @@ function prepararReparto(form, pid) {
   });
   form.addEventListener('submit', e => {
     if (sel.value !== 'varios') return;
-    const suma = vals.reduce((a, v) => a + num(v.value), 0), n = vals.filter(v => num(v.value) > 0).length;
+    const suma = vals.reduce((a, v) => a + pz(v.value), 0), n = vals.filter(v => pz(v.value) > 0).length;
     if (n < 2) { e.preventDefault(); e.stopImmediatePropagation(); alert('Escribe la parte de al menos dos socios.'); return; }
     if (Math.abs(suma - total()) >= 1) { e.preventDefault(); e.stopImmediatePropagation(); alert('Las partes suman ' + COP(suma) + ' y el valor es ' + COP(total()) + '. Deben ser iguales.'); }
   }, true);
@@ -219,7 +220,7 @@ function prepararReparto(form, pid) {
       if (iv) { iv.value = v; chks.find(c => c.dataset.s === id).checked = true; } }); ver(); };
   ver();
 }
-// num() y COP() se definen en base.html, después de este script
+// pz() y COP() se definen en base.html, después de este script
 document.addEventListener('DOMContentLoaded', () => {
   prepararReparto(document.getElementById('f-inv'), 'rp-inv');
   prepararReparto(document.getElementById('f-ap'), 'rp-ap');

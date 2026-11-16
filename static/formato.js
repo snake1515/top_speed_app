@@ -105,6 +105,7 @@
       set(v) { desc.set.call(this, formatear(v)); }
     });
     desc.set.call(el, formatear(desc.get.call(el)));
+    // en captura: se formatea antes de que otros scripts lean el valor en su propio 'input'
     el.addEventListener('input', () => {
       const antes = desc.get.call(el), pos = el.selectionStart ?? antes.length;
       const digitosAntes = antes.slice(0, pos).replace(/\D/g, '').length;
@@ -115,7 +116,7 @@
       let i = 0, vistos = 0;
       while (i < nuevo.length && vistos < digitosAntes) { if (/\d/.test(nuevo[i])) vistos++; i++; }
       try { el.setSelectionRange(i, i); } catch (e) {}
-    });
+    }, true);
   }
   const todo = r => r.querySelectorAll && r.querySelectorAll(SEL).forEach(convertir);
   const iniciar = () => {
