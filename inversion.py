@@ -339,6 +339,27 @@ def reporte_aportes(cfg, desde=None, hasta=None, socio_id=None):
             grupos.append({"socio": x["socio"], "movs": ms, "total": sum(m["valor"] for m in ms),
                            "dinero": sum(m["valor"] for m in ms if m["clase"] == "aporte"),
                            "pagos": sum(m["valor"] for m in ms if m["clase"] == "pago")})
+    # listado sencillo: cada aporte o pago una sola vez, con los socios que participaron y el valor total
+    sencillo, vistos = [], set()
+    for a in aportes:
+        if a.grupo and a.grupo in vistos:
+            continue
+        partes = [a] + a.companeros
+        if a.grupo:
+            vistos.add(a.grupo)
+            partes = sorted(partes, key=lambda x: x.id)
+        sencillo.append({"fecha": a.fecha, "tipo": "Aporte en dinero", "concepto": a.nota or "Aporte al fondo común",
+                         "detalle": a.medio or "", "folio": ", ".join(x.folio for x in partes),
+                         "socios": [x.socio.nombre for x in partes], "valor": sum(x.valor for x in partes)})
+    for i in pagos:
+        pg = i.pagadores
+        if not pg or (socio_id and socio_id not in [so.id for so, _ in pg]):
+            continue
+        sencillo.append({"fecha": i.fecha, "tipo": "Pago de su bolsillo", "concepto": i.concepto,
+                         "detalle": " · ".join(x for x in [i.categoria, i.proveedor, i.medio] if x), "folio": "",
+                         "socios": [so.nombre for so, _ in pg], "valor": i.valor})
+    sencillo.sort(key=lambda x: (x["fecha"], x["tipo"]))
+
     # relación por concepto: cuánto puso cada socio en cada concepto (categoría de la inversión o aporte en dinero)
     cols = [x["socio"] for x in filas if en_periodo.get(x["socio"].id)]
     conceptos = {}
@@ -355,7 +376,7 @@ def reporte_aportes(cfg, desde=None, hasta=None, socio_id=None):
     por_concepto = sorted(conceptos.values(), key=lambda c: (c["concepto"] != "Aportes en dinero al fondo común", -c["total"]))
     for c in por_concepto:
         c["lineas"] = sorted(c["lineas"].values(), key=lambda i: (i["fecha"], i["concepto"]))
-    return {"aportes": aportes, "movs": movs, "grupos": grupos, "socios": filas, "por_concepto": por_concepto, "cols": cols, "en_periodo": dict(en_periodo),
+    return {"aportes": aportes, "movs": movs, "grupos": grupos, "socios": filas, "sencillo": sencillo, "total_sencillo": sum(x["valor"] for x in sencillo), "por_concepto": por_concepto, "cols": cols, "en_periodo": dict(en_periodo),
             "total_periodo": sum(m["valor"] for m in movs),
             "total_periodo_dinero": sum(m["valor"] for m in movs if m["clase"] == "aporte"),
             "total_periodo_pagos": sum(m["valor"] for m in movs if m["clase"] == "pago"),

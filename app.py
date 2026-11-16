@@ -2239,8 +2239,9 @@ def aportes_reporte_archivo(fmt):
     r = invmod.reporte_aportes(cfg, desde, hasta, socio_id)
     nombre = f"Aportes_socios_{ahora().date():%Y%m%d}"
     if fmt == "pdf":
-        buf = exportar.aportes_pdf(r, cfg, os.path.join(app.root_path, "static", "logo.webp"))
-        return send_file(buf, mimetype="application/pdf", download_name=f"{nombre}.pdf",
+        sencillo = request.args.get("modo") == "sencillo"
+        buf = exportar.aportes_pdf(r, cfg, os.path.join(app.root_path, "static", "logo.webp"), sencillo=sencillo)
+        return send_file(buf, mimetype="application/pdf", download_name=f"{nombre}{'_listado' if sencillo else ''}.pdf",
                          as_attachment=request.args.get("descargar") == "1")
     if fmt == "xlsx":
         return send_file(exportar.aportes_excel(r, cfg), as_attachment=True, download_name=f"{nombre}.xlsx",

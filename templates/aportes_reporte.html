@@ -5,7 +5,8 @@
 <div class="page-head">
   <div><h1>Reporte de aportes</h1><p>Lo que ha puesto cada socio, con el detalle de cada aporte.</p></div>
   <div class="actions">
-    <a class="btn dark" href="{{ url_for('aportes_reporte_archivo', fmt='pdf', **q) }}" target="_blank">📄 Ver / imprimir PDF</a>
+    <a class="btn dark" href="{{ url_for('aportes_reporte_archivo', fmt='pdf', modo='sencillo', **q) }}" target="_blank">📄 PDF sencillo</a>
+    <a class="btn dark" href="{{ url_for('aportes_reporte_archivo', fmt='pdf', **q) }}" target="_blank">📄 PDF completo</a>
     <a class="btn sec" href="{{ url_for('aportes_reporte_archivo', fmt='pdf', descargar=1, **q) }}">⤓ Descargar PDF</a>
     <a class="btn sec" href="{{ url_for('aportes_reporte_archivo', fmt='xlsx', **q) }}">⤓ Excel</a>
     <a class="btn ghost" href="{{ url_for('inversion') }}">← Inversión inicial</a>
@@ -24,6 +25,23 @@
   <div class="kpi"><div class="lbl">Total puesto por los socios</div><div class="val">{{ r.total_socios|pesos }}</div><div class="sub">aportes + compras que pagaron</div></div>
   <div class="kpi"><div class="lbl">Total invertido</div><div class="val">{{ r.total_invertido|pesos }}</div><div class="sub">en montar el negocio</div></div>
   <div class="kpi"><div class="lbl">Fondo común {{ 'sin gastar' if r.fondo >= 0 else 'faltante' }}</div><div class="val {{ 'neg' if r.fondo < 0 }}">{{ r.fondo|abs|pesos }}</div><div class="sub">gastado {{ r.del_fondo|pesos }}</div></div>
+</div>
+
+<div class="card">
+  <div class="card-head" style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
+    <h2 style="margin:0">Listado de aportes</h2>
+    <a class="btn sec sm" href="{{ url_for('aportes_reporte_archivo', fmt='pdf', modo='sencillo', **q) }}" target="_blank">📄 Imprimir este listado</a></div>
+  <p class="muted" style="margin:4px 0 10px">Cada aporte una sola vez, con los socios que participaron y el valor total.</p>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Fecha</th><th>Concepto</th><th>Socios</th><th class="num">Valor</th></tr></thead>
+    <tbody>{% for x in r.sencillo %}<tr>
+      <td>{{ x.fecha|f }}</td>
+      <td><b>{{ x.concepto }}</b><br><small class="muted">{{ x.tipo }}{% if x.detalle %} · {{ x.detalle }}{% endif %}{% if x.folio %} · {{ x.folio }}{% endif %}</small></td>
+      <td>{% for n in x.socios %}{{ n }}{% if not loop.last %}<br>{% endif %}{% endfor %}{% if x.socios|length > 1 %}<br><span class="badge">conjunto</span>{% endif %}</td>
+      <td class="num">{{ x.valor|pesos }}</td></tr>
+    {% else %}<tr><td colspan="4" class="empty">Sin aportes en el periodo.</td></tr>{% endfor %}</tbody>
+    {% if r.sencillo %}<tfoot><tr><td colspan="3"><b>Total</b></td><td class="num"><b>{{ r.total_sencillo|pesos }}</b></td></tr></tfoot>{% endif %}
+  </table></div>
 </div>
 
 <div class="card">
