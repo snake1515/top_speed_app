@@ -732,6 +732,32 @@ def aportes_pdf(r, cfg, logo_path, sencillo=False):
         story.append(Paragraph("La participación sale de lo que cada socio puso (aportes en dinero + compras que pagó de su bolsillo). "
                                "Es una referencia: lo que acordaron los socios por escrito es lo que vale.", st["n"]))
 
+    # constancia antes de las firmas
+    from inversion import en_letras
+    MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"]
+    def palabras(n_):
+        return en_letras(n_).replace(" pesos M/CTE", "").replace(" peso M/CTE", "")
+    hoy = ahora()
+    dia = "primer (1.er) día" if hoy.day == 1 else f"{palabras(hoy.day)} ({hoy.day}) días"
+    negocio = (cfg.nombre or "Moto Speed").upper() + (f", NIT {cfg.nit}," if cfg.nit else "")
+    alcance = {"Todos los aportes": "la totalidad de los aportes registrados"}.get(_periodo_txt(r), f"los aportes registrados ({_periodo_txt(r).lower()})")
+    if r["socio"]:
+        alcance += f" de {r['socio'].nombre}"
+    total_c = r["total_sencillo"]
+    reparto = ""
+    if len(r["grupos_cols"]) > 1 and total_c:
+        partes_ = []
+        for g in r["grupos_cols"]:
+            v_ = r["tot_grupo"].get(g, 0)
+            partes_.append(f"{g}, {p(v_)} ({str(round(v_ / total_c * 100, 1)).replace('.', ',')} %)")
+        reparto = ", distribuidos así: " + "; ".join(partes_)
+    texto = (f"Los socios abajo firmantes declaramos que la presente relación corresponde a {alcance} en dinero y en especie "
+             f"para la constitución y puesta en marcha del establecimiento de comercio {negocio} por un valor total de "
+             f"<b>{p(total_c)}</b> ({en_letras(total_c)}){reparto}. Revisada la información, la aceptamos como cierta."
+             f"<br/><br/>En constancia se firma{(' en ' + cfg.ciudad) if cfg.ciudad else ''}, a los {dia} del mes de {MESES[hoy.month - 1]} "
+             f"de {palabras(hoy.year)} ({hoy.year}).")
+    constancia = Paragraph(texto.replace("$ ", "$&nbsp;"), ParagraphStyle("cons", fontName="Helvetica", fontSize=9, leading=13, alignment=4))
+
     # firmas de los socios: el bloque completo va junto (si no cabe, pasa entero a la página siguiente)
     from reportlab.platypus import KeepTogether
     socs = [x["socio"] for x in r["socios"]]
@@ -751,7 +777,9 @@ def aportes_pdf(r, cfg, logo_path, sencillo=False):
                 if celda:
                     estilo.append(("LINEABOVE", (ci, ri), (ci, ri), .8, NEGRO))
         t.setStyle(TableStyle(estilo))
-        story.append(KeepTogether([Spacer(1, 40), t]))
+        story.append(KeepTogether([Spacer(1, 16), constancia, Spacer(1, 40), t]))
+    else:
+        story.append(KeepTogether([Spacer(1, 16), constancia]))
 
     def pie(canvas, doc_):
         canvas.saveState()
