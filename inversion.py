@@ -283,3 +283,30 @@ def recibo_aporte_png(a, cfg, total_socio, pct_socio, logo_path, fuentes_dir):
     buf = BytesIO()
     img.save(buf, "PNG", optimize=True)
     return buf.getvalue()
+
+
+# ------------------------------------------------------------------ reporte de aportes
+def reporte_aportes(cfg, desde=None, hasta=None, socio_id=None):
+    """Aportes en el periodo (y de un socio si se elige) + resumen por socio con participación total."""
+    q = AporteSocio.query.filter_by(anulado=False)
+    if desde:
+        q = q.filter(AporteSocio.fecha >= desde)
+    if hasta:
+        q = q.filter(AporteSocio.fecha <= hasta)
+    if socio_id:
+        q = q.filter(AporteSocio.socio_id == socio_id)
+    aportes = q.order_by(AporteSocio.fecha, AporteSocio.id).all()
+    general = resumen_fundacion(cfg)
+    en_periodo = defaultdict(float)
+    for a in aportes:
+        en_periodo[a.socio_id] += a.valor
+    filas = []
+    for x in general["por_socio"]:
+        if socio_id and x["socio"].id != socio_id:
+            continue
+        filas.append({**x, "periodo": en_periodo.get(x["socio"].id, 0.0)})
+    return {"aportes": aportes, "socios": filas, "total_periodo": sum(a.valor for a in aportes),
+            "total_aportes": sum(x["aportes"] for x in general["por_socio"]),
+            "total_pagos": sum(x["pagos"] for x in general["por_socio"]), "total_socios": general["total_socios"],
+            "fondo": general["fondo"], "del_fondo": general["del_fondo"], "total_invertido": general["total"],
+            "desde": desde, "hasta": hasta, "socio": filas[0]["socio"] if socio_id and filas else None}

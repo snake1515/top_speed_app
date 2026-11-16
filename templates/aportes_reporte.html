@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Reporte de aportes{% endblock %}
+{% block content %}
+{% set q = {'desde': desde.isoformat() if desde else '', 'hasta': hasta.isoformat() if hasta else '', 'socio': socio_id or ''} %}
+<div class="page-head">
+  <div><h1>Reporte de aportes</h1><p>Lo que ha puesto cada socio, con el detalle de cada aporte.</p></div>
+  <div class="actions">
+    <a class="btn dark" href="{{ url_for('aportes_reporte_archivo', fmt='pdf', **q) }}" target="_blank">📄 Ver / imprimir PDF</a>
+    <a class="btn sec" href="{{ url_for('aportes_reporte_archivo', fmt='pdf', descargar=1, **q) }}">⤓ Descargar PDF</a>
+    <a class="btn sec" href="{{ url_for('aportes_reporte_archivo', fmt='xlsx', **q) }}">⤓ Excel</a>
+    <a class="btn ghost" href="{{ url_for('inversion') }}">← Inversión inicial</a>
+  </div>
+</div>
+<form class="filters card">
+  <div class="field"><label>Desde</label><input class="input" type="date" name="desde" value="{{ q.desde }}"></div>
+  <div class="field"><label>Hasta</label><input class="input" type="date" name="hasta" value="{{ q.hasta }}"></div>
+  <div class="field"><label>Socio</label><select class="input" name="socio"><option value="">Todos</option>{% for s in socios %}<option value="{{ s.id }}" {{ 'selected' if s.id == socio_id }}>{{ s.nombre }}</option>{% endfor %}</select></div>
+  <button class="btn dark">Ver</button>
+  {% if desde or hasta or socio_id %}<a class="btn ghost" href="{{ url_for('aportes_reporte') }}">Quitar filtros</a>{% endif %}
+</form>
+
+<div class="kpis">
+  <div class="kpi hl"><div class="lbl">Aportes {{ 'del periodo' if desde or hasta else 'en dinero' }}</div><div class="val">{{ r.total_periodo|pesos }}</div><div class="sub">{{ r.aportes|length }} aporte(s)</div></div>
+  <div class="kpi"><div class="lbl">Total puesto por los socios</div><div class="val">{{ r.total_socios|pesos }}</div><div class="sub">aportes + compras que pagaron</div></div>
+  <div class="kpi"><div class="lbl">Total invertido</div><div class="val">{{ r.total_invertido|pesos }}</div><div class="sub">en montar el negocio</div></div>
+  <div class="kpi"><div class="lbl">Fondo común {{ 'sin gastar' if r.fondo >= 0 else 'faltante' }}</div><div class="val {{ 'neg' if r.fondo < 0 }}">{{ r.fondo|abs|pesos }}</div><div class="sub">gastado {{ r.del_fondo|pesos }}</div></div>
+</div>
+
+<div class="card">
+  <h2 style="margin-bottom:8px">Resumen por socio</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Socio</th><th class="num">Aportes del periodo</th><th class="num">Aportes en dinero (total)</th><th class="num">Compras que pagó</th><th class="num">Total puesto</th><th class="num">Participación</th></tr></thead>
+    <tbody>{% for x in r.socios %}<tr><td><b>{{ x.socio.nombre }}</b><br><small class="muted">{{ x.socio.documento or '' }}</small></td>
+      <td class="num">{{ x.periodo|pesos }}</td><td class="num">{{ x.aportes|pesos }}</td><td class="num">{{ x.pagos|pesos }}</td>
+      <td class="num"><b>{{ x.total|pesos }}</b></td><td class="num"><b>{{ x.pct|round(1) }} %</b></td></tr>
+    {% else %}<tr><td colspan="6" class="empty">No hay socios.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+
+<div class="card">
+  <h2 style="margin-bottom:8px">Detalle de aportes</h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Recibo</th><th>Fecha</th><th>Socio</th><th>Medio</th><th>Concepto</th><th class="num">Valor</th></tr></thead>
+    <tbody>{% for a in r.aportes %}<tr><td><a href="{{ url_for('aporte_recibo', aid=a.id) }}"><b>{{ a.folio }}</b></a></td><td>{{ a.fecha|f }}</td>
+      <td>{{ a.socio.nombre }}</td><td>{{ a.medio or '' }}</td><td>{{ a.nota or '' }}</td><td class="num">{{ a.valor|pesos }}</td></tr>
+    {% else %}<tr><td colspan="6" class="empty">Sin aportes en el periodo.</td></tr>{% endfor %}</tbody>
+    {% if r.aportes %}<tfoot><tr><td colspan="5"><b>Total</b></td><td class="num"><b>{{ r.total_periodo|pesos }}</b></td></tr></tfoot>{% endif %}
+  </table></div>
+</div>
+{% endblock %}

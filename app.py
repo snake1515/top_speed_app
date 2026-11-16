@@ -2151,6 +2151,37 @@ def _datos_aporte(ap):
     return (fila["total"] if fila else ap.valor), (fila["pct"] if fila else 0)
 
 
+def _filtros_aportes():
+    socio_id = int(request.args.get("socio") or 0) or None
+    return _fecha(request.args.get("desde")), _fecha(request.args.get("hasta")), socio_id
+
+
+@app.route("/inversion/aportes/reporte")
+@requiere("admin")
+def aportes_reporte():
+    desde, hasta, socio_id = _filtros_aportes()
+    r = invmod.reporte_aportes(config(), desde, hasta, socio_id)
+    return render_template("aportes_reporte.html", r=r, socios=Socio.query.order_by(Socio.nombre).all(),
+                           desde=desde, hasta=hasta, socio_id=socio_id)
+
+
+@app.route("/inversion/aportes/reporte.<fmt>")
+@requiere("admin")
+def aportes_reporte_archivo(fmt):
+    desde, hasta, socio_id = _filtros_aportes()
+    cfg = config()
+    r = invmod.reporte_aportes(cfg, desde, hasta, socio_id)
+    nombre = f"Aportes_socios_{ahora().date():%Y%m%d}"
+    if fmt == "pdf":
+        buf = exportar.aportes_pdf(r, cfg, os.path.join(app.root_path, "static", "logo.webp"))
+        return send_file(buf, mimetype="application/pdf", download_name=f"{nombre}.pdf",
+                         as_attachment=request.args.get("descargar") == "1")
+    if fmt == "xlsx":
+        return send_file(exportar.aportes_excel(r, cfg), as_attachment=True, download_name=f"{nombre}.xlsx",
+                         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    abort(404)
+
+
 @app.route("/inversion/aporte/<int:aid>/recibo")
 @requiere("admin")
 def aporte_recibo(aid):

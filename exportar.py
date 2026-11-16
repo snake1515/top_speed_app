@@ -348,3 +348,194 @@ def inversion_excel(r, cfg, url_soporte):
     wb.save(buf)
     buf.seek(0)
     return buf
+
+
+def _periodo_txt(r):
+    if r["desde"] and r["hasta"]:
+        return f"Del {r['desde']:%d/%m/%Y} al {r['hasta']:%d/%m/%Y}"
+    if r["desde"]:
+        return f"Desde el {r['desde']:%d/%m/%Y}"
+    if r["hasta"]:
+        return f"Hasta el {r['hasta']:%d/%m/%Y}"
+    return "Todos los aportes"
+
+
+def aportes_excel(r, cfg):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Resumen por socio"
+    neg = (cfg.nombre or "Moto Speed").upper()
+    sub = _periodo_txt(r) + (f" · {r['socio'].nombre}" if r["socio"] else "") + f" · generado {datetime.now():%d/%m/%Y %I:%M %p}"
+    _titulo(ws, f"{neg} · Reporte de aportes de socios", sub, 0)
+    _encabezado(ws, ["Socio", "Cédula / NIT", "Aportes del periodo", "Aportes en dinero (total)", "Compras que pagó (total)",
+                     "Total puesto", "Participación"], [28, 16, 18, 20, 20, 16, 14])
+    n = len(r["socios"])
+    for i, x in enumerate(r["socios"], 4):
+        vals = [x["socio"].nombre, x["socio"].documento or "", x["periodo"], x["aportes"], x["pagos"], f"=D{i}+E{i}", x["pct"] / 100]
+        for k, v in enumerate(vals, 1):
+            c = ws.cell(row=i, column=k, value=v)
+            c.font = Font(name=F, bold=(k == 1))
+            c.number_format = PESOS if 3 <= k <= 6 else ("0.0%" if k == 7 else "General")
+    if n:
+        fila = n + 4
+        ws.cell(row=fila, column=1, value="TOTAL").font = Font(name=F, bold=True)
+        for k, L in ((3, "C"), (4, "D"), (5, "E"), (6, "F")):
+            c = ws.cell(row=fila, column=k, value=f"=SUM({L}4:{L}{fila - 1})")
+            c.font = Font(name=F, bold=True)
+            c.number_format = PESOS
+        ws.cell(row=fila + 2, column=1, value="Fondo común: aportado − gastado").font = Font(name=F)
+        c = ws.cell(row=fila + 2, column=6, value=r["fondo"])
+        c.font = Font(name=F, bold=True)
+        c.number_format = PESOS
+        ws.cell(row=fila + 3, column=1, value="Total invertido en el negocio").font = Font(name=F)
+        c = ws.cell(row=fila + 3, column=6, value=r["total_invertido"])
+        c.font = Font(name=F, bold=True)
+        c.number_format = PESOS
+        ws.cell(row=fila + 5, column=1, value="La participación sale de lo que cada socio puso (aportes + compras que pagó). "
+                                              "Es una referencia: vale lo que los socios acordaron por escrito.").font = Font(name=F, italic=True, color="666666")
+
+    d = wb.create_sheet("Detalle de aportes")
+    _titulo(d, "Detalle de aportes", sub, 0)
+    _encabezado(d, ["Recibo", "Fecha", "Socio", "Cédula / NIT", "Medio", "Concepto", "Valor"], [12, 12, 28, 16, 18, 36, 16])
+    for i, a in enumerate(r["aportes"], 4):
+        vals = [a.folio, a.fecha, a.socio.nombre, a.socio.documento or "", a.medio or "", a.nota or "", a.valor]
+        for k, v in enumerate(vals, 1):
+            c = d.cell(row=i, column=k, value=v)
+            c.font = Font(name=F)
+        d.cell(row=i, column=2).number_format = "dd/mm/yyyy"
+        d.cell(row=i, column=7).number_format = PESOS
+    m = len(r["aportes"])
+    if m:
+        d.auto_filter.ref = f"A3:G{m + 3}"
+        c = d.cell(row=m + 5, column=6, value="Total")
+        c.font = Font(name=F, bold=True)
+        c = d.cell(row=m + 5, column=7, value=f"=SUBTOTAL(109,G4:G{m + 3})")
+        c.font = Font(name=F, bold=True)
+        c.number_format = PESOS
+    d.freeze_panes = "A4"
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
+
+
+def aportes_pdf(r, cfg, logo_path):
+    """PDF tamaño carta del reporte de aportes, con firmas de los socios."""
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import Image as RLImage, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    from PIL import Image as PILImage
+
+    def p(v):
+        return "$ " + f"{round(v or 0):,.0f}".replace(",", ".")
+    NEGRO, AMA, ROJO, GRIS = colors.HexColor("#0B0A07"), colors.HexColor("#FFC400"), colors.HexColor("#E8243C"), colors.HexColor("#6E6A60")
+    st = {
+        "t": ParagraphStyle("t", fontName="Helvetica-Bold", fontSize=16, leading=19, textColor=NEGRO),
+        "s": ParagraphStyle("s", fontName="Helvetica", fontSize=9, leading=12, textColor=GRIS),
+        "h": ParagraphStyle("h", fontName="Helvetica-Bold", fontSize=11.5, leading=14, textColor=NEGRO, spaceBefore=10, spaceAfter=5),
+        "c": ParagraphStyle("c", fontName="Helvetica", fontSize=8.5, leading=10.5),
+        "n": ParagraphStyle("n", fontName="Helvetica-Oblique", fontSize=8, leading=10, textColor=GRIS),
+    }
+    buf = BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=letter, leftMargin=1.6 * cm, rightMargin=1.6 * cm, topMargin=1.4 * cm, bottomMargin=1.5 * cm,
+                            title="Reporte de aportes de socios", author=cfg.nombre or "Moto Speed")
+    story = []
+
+    # encabezado: logo + datos del negocio
+    try:
+        im = PILImage.open(logo_path).convert("RGBA")
+        fondo = PILImage.new("RGBA", im.size, (255, 255, 255, 255))
+        fondo.alpha_composite(im)
+        lb = BytesIO()
+        fondo.convert("RGB").save(lb, "PNG")
+        lb.seek(0)
+        ancho = 5.2 * cm
+        logo = RLImage(lb, width=ancho, height=ancho * im.height / im.width)
+    except Exception:
+        logo = Paragraph(cfg.nombre or "Moto Speed", st["t"])
+    datos = "<br/>".join(x for x in [f"<b>{(cfg.nombre or 'Moto Speed').upper()}</b>", f"NIT {cfg.nit}" if cfg.nit else "",
+                                     cfg.direccion or "", " · ".join(z for z in [cfg.ciudad or "", f"Tel. {cfg.telefono}" if cfg.telefono else ""] if z)] if x)
+    enc = Table([[logo, Paragraph(datos, ParagraphStyle("d", fontName="Helvetica", fontSize=9, leading=12, alignment=2))]],
+                colWidths=[7 * cm, None])
+    enc.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE")]))
+    story += [enc, Spacer(1, 6)]
+    franja = Table([[""]], colWidths=[doc.width], rowHeights=[4])
+    franja.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), AMA), ("LINEBELOW", (0, 0), (-1, -1), 2, ROJO)]))
+    story += [franja, Spacer(1, 10)]
+    story.append(Paragraph("REPORTE DE APORTES DE SOCIOS", st["t"]))
+    story.append(Paragraph(_periodo_txt(r) + (f" · {r['socio'].nombre}" if r["socio"] else "")
+                           + f" · generado el {datetime.now():%d/%m/%Y %I:%M %p}", st["s"]))
+
+    def tabla(filas, anchos, num_desde, total=False):
+        t = Table(filas, colWidths=anchos, repeatRows=1)
+        estilo = [("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 8.5), ("FONT", (0, 1), (-1, -1), "Helvetica", 8.5),
+                  ("BACKGROUND", (0, 0), (-1, 0), NEGRO), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                  ("ALIGN", (num_desde, 0), (-1, -1), "RIGHT"), ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                  ("ROWBACKGROUNDS", (0, 1), (-1, -2 if total else -1), [colors.white, colors.HexColor("#F6F4EE")]),
+                  ("LINEBELOW", (0, 0), (-1, -1), .25, colors.HexColor("#DDD8CC")),
+                  ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]
+        if total:
+            estilo += [("FONT", (0, -1), (-1, -1), "Helvetica-Bold", 9), ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#FFF3C4")),
+                       ("LINEABOVE", (0, -1), (-1, -1), 1.2, NEGRO)]
+        t.setStyle(TableStyle(estilo))
+        return t
+
+    # resumen por socio
+    story.append(Paragraph("Resumen por socio", st["h"]))
+    filas = [["Socio", "Cédula", "Aportes del\nperiodo", "Aportes en\ndinero (total)", "Compras que\npagó (total)", "Total puesto", "%"]]
+    for x in r["socios"]:
+        filas.append([Paragraph(f"<b>{x['socio'].nombre}</b>", st["c"]), x["socio"].documento or "", p(x["periodo"]), p(x["aportes"]),
+                      p(x["pagos"]), p(x["total"]), f"{x['pct']:.1f} %".replace(".", ",")])
+    filas.append(["TOTAL", "", p(sum(x["periodo"] for x in r["socios"])), p(sum(x["aportes"] for x in r["socios"])),
+                  p(sum(x["pagos"] for x in r["socios"])), p(sum(x["total"] for x in r["socios"])),
+                  "100 %" if not r["socio"] else ""])
+    story.append(tabla(filas, [4.6 * cm, 2.3 * cm, 2.4 * cm, 2.5 * cm, 2.5 * cm, 2.4 * cm, 1.5 * cm], 2, total=True))
+    story.append(Spacer(1, 6))
+    story.append(Paragraph(f"Total invertido en el negocio: <b>{p(r['total_invertido'])}</b> · Fondo común: aportado "
+                           f"{p(r['total_aportes'])}, gastado {p(r['del_fondo'])}, "
+                           f"{'sin gastar' if r['fondo'] >= 0 else 'faltante'} <b>{p(abs(r['fondo']))}</b>.", st["s"]))
+
+    # detalle
+    story.append(Paragraph(f"Detalle de aportes ({len(r['aportes'])})", st["h"]))
+    filas = [["Recibo", "Fecha", "Socio", "Medio", "Concepto", "Valor"]]
+    for a in r["aportes"]:
+        filas.append([a.folio, a.fecha.strftime("%d/%m/%Y"), Paragraph(a.socio.nombre, st["c"]), Paragraph(a.medio or "", st["c"]),
+                      Paragraph(a.nota or "", st["c"]), p(a.valor)])
+    if len(filas) == 1:
+        filas.append(["", "", "Sin aportes en el periodo", "", "", ""])
+    filas.append(["", "", "", "", "TOTAL", p(r["total_periodo"])])
+    story.append(tabla(filas, [1.9 * cm, 2 * cm, 4.1 * cm, 2.9 * cm, 4.8 * cm, 2.5 * cm], 5, total=True))
+    story.append(Spacer(1, 8))
+    story.append(Paragraph("La participación sale de lo que cada socio puso (aportes en dinero + compras que pagó de su bolsillo). "
+                           "Es una referencia: lo que acordaron los socios por escrito es lo que vale.", st["n"]))
+
+    # firmas de los socios
+    story.append(Spacer(1, 34))
+    firmas = [[Paragraph(f"<b>{x['socio'].nombre}</b><br/>{('C.C. ' + x['socio'].documento) if x['socio'].documento else ''}",
+                         ParagraphStyle("f", fontName="Helvetica", fontSize=8.5, leading=11, alignment=1)) for x in r["socios"][i:i + 3]]
+              for i in range(0, len(r["socios"]), 3)]
+    if firmas:
+        for fila in firmas:
+            while len(fila) < 3:
+                fila.append("")
+        t = Table(firmas, colWidths=[doc.width / 3] * 3, rowHeights=[46] * len(firmas))
+        estilo = [("VALIGN", (0, 0), (-1, -1), "TOP"), ("LEFTPADDING", (0, 0), (-1, -1), 14), ("RIGHTPADDING", (0, 0), (-1, -1), 14)]
+        for ri, fila in enumerate(firmas):
+            for ci, celda in enumerate(fila):
+                if celda:
+                    estilo.append(("LINEABOVE", (ci, ri), (ci, ri), .8, NEGRO))
+        t.setStyle(TableStyle(estilo))
+        story.append(t)
+
+    def pie(canvas, doc_):
+        canvas.saveState()
+        canvas.setFont("Helvetica", 7.5)
+        canvas.setFillColor(GRIS)
+        canvas.drawString(doc_.leftMargin, 0.9 * cm, f"{cfg.nombre or 'Moto Speed'} · Reporte de aportes de socios")
+        canvas.drawRightString(letter[0] - doc_.rightMargin, 0.9 * cm, f"Página {doc_.page}")
+        canvas.restoreState()
+    doc.build(story, onFirstPage=pie, onLaterPages=pie)
+    buf.seek(0)
+    return buf
