@@ -152,6 +152,7 @@
 </script>
 {% if IMPRIMIR_AUTO %}<script>window.addEventListener('load', () => imprimirEnIframe({{ IMPRIMIR_AUTO|tojson }}));</script>
 {% elif CAJON_AUTO %}<script>window.addEventListener('load', () => abrirCajon());</script>{% endif %}
+<script src="{{ url_for('static', filename='formato.js', v=STATIC_V) }}"></script>
 {% block scripts %}{% endblock %}
 <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});</script>
 </body>

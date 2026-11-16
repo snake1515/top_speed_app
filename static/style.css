@@ -297,3 +297,10 @@ details summary { cursor: pointer; font-weight: 700; }
   .kpi .lbl { font-size: .72rem; }
   .kpi.hl::after { width: 30px; right: -16px; }
 }
+
+/* fechas DD/MM/AAAA (static/formato.js) */
+.fecha-dmy { position: relative; display: block; }
+label > .fecha-dmy { display: inline-block; vertical-align: middle; }
+.fecha-dmy > input[type=text] { width: 100%; padding-right: 40px; }
+.fecha-dmy .fecha-cal { position: absolute; right: 6px; top: 50%; transform: translateY(-50%); background: none; border: 0; padding: 4px; cursor: pointer; color: inherit; line-height: 0; }
+.fecha-dmy .fecha-oculta { position: absolute; right: 0; bottom: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; border: 0; padding: 0; }
