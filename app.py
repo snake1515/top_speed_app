@@ -2296,6 +2296,7 @@ def inversion_socio():
     s.nombre = nombre
     s.documento = (f.get("documento") or "").strip()[:30] or None
     s.telefono = (f.get("telefono") or "").strip()[:30] or None
+    s.pareja = (f.get("pareja") or "").strip()[:80] or None
     s.activo = not f.get("retirado")
     db.session.add(s)
     db.session.commit()

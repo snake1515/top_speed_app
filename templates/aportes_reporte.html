@@ -33,16 +33,18 @@
     <h2 style="margin:0">Listado de aportes</h2>
     <span><a class="btn sec sm" href="{{ url_for('aportes_reporte_archivo', fmt='pdf', modo='sencillo', **q) }}" target="_blank">📄 PDF</a>
       <a class="btn sec sm" href="{{ url_for('aportes_reporte_archivo', fmt='xlsx', modo='sencillo', **q) }}">⤓ Excel</a></span></div>
-  <p class="muted" style="margin:4px 0 10px">Cada aporte una sola vez, con los socios que participaron y el valor total.</p>
+  <p class="muted" style="margin:4px 0 10px">Cada aporte una sola vez, con los socios que participaron, cuánto puso cada pareja y el valor total. Las parejas se definen en Inversión inicial → Socios.</p>
   <div class="table-wrap"><table>
-    <thead><tr><th>Fecha</th><th>Concepto</th><th>Socios</th><th class="num">Valor</th></tr></thead>
+    <thead><tr><th>Fecha</th><th>Concepto</th><th>Socios</th>{% for g in r.grupos_cols %}<th class="num">{{ g }}</th>{% endfor %}<th class="num">Total</th></tr></thead>
     <tbody>{% for x in r.sencillo %}<tr>
       <td>{{ x.fecha|f }}</td>
       <td><b>{{ x.concepto }}</b><br><small class="muted">{{ x.tipo }}{% if x.detalle %} · {{ x.detalle }}{% endif %}{% if x.folio %} · {{ x.folio }}{% endif %}</small></td>
       <td>{% for n in x.socios %}{{ n }}{% if not loop.last %}<br>{% endif %}{% endfor %}{% if x.socios|length > 1 %}<br><span class="badge">conjunto</span>{% endif %}</td>
-      <td class="num">{{ x.valor|pesos }}</td></tr>
+      {% for g in r.grupos_cols %}<td class="num">{{ x.por_grupo[g]|pesos if x.por_grupo[g] else '' }}</td>{% endfor %}
+      <td class="num"><b>{{ x.valor|pesos }}</b></td></tr>
     {% else %}<tr><td colspan="4" class="empty">Sin aportes en el periodo.</td></tr>{% endfor %}</tbody>
-    {% if r.sencillo %}<tfoot><tr><td colspan="3"><b>Total</b></td><td class="num"><b>{{ r.total_sencillo|pesos }}</b></td></tr></tfoot>{% endif %}
+    {% if r.sencillo %}<tfoot><tr><td colspan="3"><b>Total</b></td>{% for g in r.grupos_cols %}<td class="num"><b>{{ r.tot_grupo[g]|pesos }}</b></td>{% endfor %}<td class="num"><b>{{ r.total_sencillo|pesos }}</b></td></tr>
+      {% if r.grupos_cols|length > 1 %}<tr><td colspan="3" class="muted">Participación</td>{% for g in r.grupos_cols %}<td class="num muted">{{ (r.tot_grupo[g] / r.total_sencillo * 100)|round(1) if r.total_sencillo else 0 }} %</td>{% endfor %}<td class="num muted">100 %</td></tr>{% endif %}</tfoot>{% endif %}
   </table></div>
 </div>
 

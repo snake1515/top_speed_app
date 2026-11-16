@@ -1069,6 +1069,12 @@ class Socio(db.Model):
     telefono = db.Column(db.String(30))
     nota = db.Column(db.String(200))
     activo = db.Column(db.Boolean, nullable=False, default=True)
+    # pareja o grupo con el que aporta (ej. "Carlos y Marisel"); los reportes sencillos suman por pareja
+    pareja = db.Column(db.String(80))
+
+    @property
+    def grupo_nombre(self):
+        return self.pareja or self.nombre
 
 
 class AporteSocio(db.Model):
@@ -1241,6 +1247,15 @@ def semilla():
             i.soportes.append(InversionSoporte(nombre=f"soporte.{ext}", mime=i.soporte_mime or "image/jpeg", datos=i.soporte))
             i.soporte, i.soporte_v = None, 0
     # aportes de socios registrados antes de existir el recibo: se numeran en orden
+    # parejas de socios de Moto Speed (una sola vez; después se cambian en Inversión inicial → Socios)
+    socios = Socio.query.all()
+    if socios and not any(x.pareja for x in socios):
+        for x in socios:
+            nom = normalizar(x.nombre)
+            if nom.startswith("carlos") or nom.startswith("marisel"):
+                x.pareja = "Carlos y Marisel"
+            elif nom.startswith("roldan") or nom.startswith("yennyth") or nom.startswith("marcela"):
+                x.pareja = "Roldán y Marcela"
     for a in AporteSocio.query.filter(AporteSocio.numero.is_(None)).order_by(AporteSocio.id).all():
         a.numero = siguiente("sig_aporte")
     # repuestos que se crearon antes de existir el código interno: se numeran en el orden en que se crearon

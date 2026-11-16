@@ -423,27 +423,50 @@ def aportes_excel(r, cfg, sencillo=False):
     # primera hoja: listado sencillo (cada aporte una vez, los socios y el valor total)
     ls = wb.create_sheet("Listado de aportes", 0)
     _titulo(ls, f"{neg} · Aportes de los socios", sub, 0)
-    _encabezado(ls, ["Fecha", "Concepto", "Detalle", "Socios", "Valor"], [12, 46, 40, 40, 16])
+    gc = r["grupos_cols"]
+    ng = len(gc)
+    cv = 5 + ng   # columna del total
+    _encabezado(ls, ["Fecha", "Concepto", "Detalle", "Socios"] + gc + ["Total"], [12, 44, 38, 34] + [18] * ng + [16])
     fila = 4
     for x in r["sencillo"]:
-        vals = [x["fecha"], x["concepto"], " · ".join(z for z in [x["tipo"], x["detalle"], x["folio"]] if z),
-                "\n".join(x["socios"]), x["valor"]]
+        vals = [x["fecha"], x["concepto"], " · ".join(z for z in [x["tipo"], x["detalle"], x["folio"]] if z), "\n".join(x["socios"])]
+        vals += [x["por_grupo"].get(g) or None for g in gc]
         for k, v in enumerate(vals, 1):
             c = ls.cell(row=fila, column=k, value=v)
             c.font = Font(name=F, bold=(k == 2))
             c.alignment = Alignment(vertical="center", wrap_text=k in (2, 3, 4))
-        ls.cell(row=fila, column=1).number_format = "dd/mm/yyyy"
-        ls.cell(row=fila, column=5).number_format = PESOS
-        fila += 1
-    if r["sencillo"]:
-        ls.auto_filter.ref = f"A3:E{fila - 1}"
-        c = ls.cell(row=fila, column=4, value="TOTAL")
-        c.font = Font(name=F, bold=True)
-        c = _fx(ls, fila, 5, f"=SUBTOTAL(109,E4:E{fila - 1})", r["total_sencillo"])
+            if k > 4:
+                c.number_format = PESOS
+        if ng:
+            c = _fx(ls, fila, cv, f"=SUM(E{fila}:{get_column_letter(cv - 1)}{fila})", x["valor"])
+        else:
+            c = ls.cell(row=fila, column=cv, value=x["valor"])
         c.font = Font(name=F, bold=True)
         c.number_format = PESOS
-        for k in range(1, 6):
+        c.alignment = Alignment(vertical="center")
+        ls.cell(row=fila, column=1).number_format = "dd/mm/yyyy"
+        ls.cell(row=fila, column=1).alignment = Alignment(vertical="center")
+        fila += 1
+    if r["sencillo"]:
+        ls.auto_filter.ref = f"A3:{get_column_letter(cv)}{fila - 1}"
+        c = ls.cell(row=fila, column=4, value="TOTAL")
+        c.font = Font(name=F, bold=True)
+        for k in range(5, cv + 1):
+            L = get_column_letter(k)
+            val = r["total_sencillo"] if k == cv else r["tot_grupo"].get(gc[k - 5], 0)
+            c = _fx(ls, fila, k, f"=SUBTOTAL(109,{L}4:{L}{fila - 1})", val)
+            c.font = Font(name=F, bold=True)
+            c.number_format = PESOS
+        for k in range(1, cv + 1):
             ls.cell(row=fila, column=k).fill = PatternFill("solid", fgColor="FFF3C4")
+        if ng > 1 and r["total_sencillo"]:
+            ls.cell(row=fila + 1, column=4, value="Participación").font = Font(name=F, color="666666")
+            for k in range(5, cv + 1):
+                L = get_column_letter(k)
+                val = 1 if k == cv else r["tot_grupo"].get(gc[k - 5], 0) / r["total_sencillo"]
+                c = _fx(ls, fila + 1, k, f"=IF(${get_column_letter(cv)}${fila}=0,0,{L}{fila}/${get_column_letter(cv)}${fila})", val)
+                c.font = Font(name=F, color="666666")
+                c.number_format = "0.0%"
     else:
         ls.cell(row=4, column=1, value="Sin aportes en el periodo").font = Font(name=F, italic=True)
     ls.freeze_panes = "A4"
@@ -625,18 +648,30 @@ def aportes_pdf(r, cfg, logo_path, sencillo=False):
         return t
 
     if sencillo:
-        # listado sencillo: cada aporte una vez, con los socios que participaron y el valor total
+        # listado sencillo: cada aporte una vez, los socios, cuánto puso cada pareja y el valor total
+        gc = r["grupos_cols"]
         story.append(Paragraph(f"Aportes ({len(r['sencillo'])})", st["h"]))
-        filas = [["Fecha", "Concepto", "Socios", "Valor"]]
+        hp = ParagraphStyle("hp", fontName="Helvetica-Bold", fontSize=7.5, leading=9, textColor=colors.white, alignment=2)
+        filas = [["Fecha", "Concepto", "Socios"] + [Paragraph(g, hp) for g in gc] + ["Total"]]
         for x in r["sencillo"]:
             sub_ = " · ".join(z for z in [x["tipo"], x["detalle"], x["folio"]] if z)
-            filas.append([x["fecha"].strftime("%d/%m/%Y"), Paragraph(f"<b>{x['concepto']}</b><br/><font color='#6E6A60' size='7.5'>{sub_}</font>", st["c"]),
-                          Paragraph("<br/>".join(x["socios"]) + ("<br/><font color='#6E6A60' size='7.5'>conjunto</font>" if len(x["socios"]) > 1 else ""), st["c"]),
-                          p(x["valor"])])
+            filas.append([x["fecha"].strftime("%d/%m/%Y"), Paragraph(f"<b>{x['concepto']}</b><br/><font color='#6E6A60' size='7'>{sub_}</font>", st["c"]),
+                          Paragraph("<br/>".join(x["socios"]), ParagraphStyle("so", parent=st["c"], fontSize=7.5, leading=9.5))]
+                         + [p(x["por_grupo"].get(g, 0)) if x["por_grupo"].get(g) else "" for g in gc] + [p(x["valor"])])
         if len(filas) == 1:
-            filas.append(["", "Sin aportes en el periodo", "", ""])
-        filas.append(["", "TOTAL", "", p(r["total_sencillo"])])
-        story.append(tabla(filas, [2.1 * cm, 8.6 * cm, 4.9 * cm, 2.6 * cm], 3, total=True))
+            filas.append(["", "Sin aportes en el periodo", ""] + [""] * len(gc) + [""])
+        filas.append(["", "TOTAL", ""] + [p(r["tot_grupo"].get(g, 0)) for g in gc] + [p(r["total_sencillo"])])
+        if len(gc) > 1 and r["total_sencillo"]:
+            filas.append(["", "Participación", ""] + [f"{r['tot_grupo'].get(g, 0) / r['total_sencillo'] * 100:.1f} %".replace(".", ",") for g in gc] + ["100 %"])
+        w_g = 2.3 * cm
+        w_c = doc.width - 1.8 * cm - 4.6 * cm - w_g * len(gc) - 2.3 * cm
+        t = tabla(filas, [1.8 * cm, w_c, 4.6 * cm] + [w_g] * len(gc) + [2.3 * cm], 3, total=True)
+        if len(gc) > 1 and r["total_sencillo"]:
+            t.setStyle(TableStyle([("FONT", (0, -2), (-1, -2), "Helvetica-Bold", 9), ("BACKGROUND", (0, -2), (-1, -2), colors.HexColor("#FFF3C4")),
+                                   ("LINEABOVE", (0, -2), (-1, -2), 1.2, NEGRO), ("BACKGROUND", (0, -1), (-1, -1), colors.white),
+                                   ("FONT", (0, -1), (-1, -1), "Helvetica", 8), ("TEXTCOLOR", (0, -1), (-1, -1), GRIS),
+                                   ("LINEABOVE", (0, -1), (-1, -1), .25, colors.HexColor("#DDD8CC"))]))
+        story.append(t)
     else:
         # resumen por socio
         story.append(Paragraph("Resumen por socio", st["h"]))

@@ -151,11 +151,13 @@
     <div class="card">
       <h2 style="margin-bottom:8px">Socios</h2>
       {% for s in r.socios %}
-      <details style="margin-bottom:6px"><summary><b>{{ s.nombre }}</b>{% if not s.activo %} <span class="badge">retirado</span>{% endif %}</summary>
+      <details style="margin-bottom:6px"><summary><b>{{ s.nombre }}</b>{% if s.pareja %} <small class="muted">· {{ s.pareja }}</small>{% endif %}{% if not s.activo %} <span class="badge">retirado</span>{% endif %}</summary>
         <form method="post" action="{{ url_for('inversion_socio') }}" style="margin-top:6px">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ s.id }}">
           <div class="field"><input class="input" name="nombre" value="{{ s.nombre }}" required></div>
           <div class="form-row" style="grid-template-columns:1fr 1fr"><div class="field"><input class="input" name="documento" value="{{ s.documento or '' }}" placeholder="Cédula"></div><div class="field"><input class="input" name="telefono" value="{{ s.telefono or '' }}" placeholder="Celular"></div></div>
+          <div class="field"><input class="input" name="pareja" value="{{ s.pareja or '' }}" list="parejas" placeholder="Pareja o grupo (ej. Carlos y Marisel)">
+            <div class="hint">Los socios con la misma pareja se suman juntos en el reporte sencillo.</div></div>
           <label class="check"><input type="checkbox" name="retirado" value="1" {{ 'checked' if not s.activo }}> Ya no es socio</label>
           <button class="btn sec sm">Guardar</button>
         </form>
@@ -165,6 +167,8 @@
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="field"><input class="input" name="nombre" placeholder="Nombre del socio" required></div>
         <div class="form-row" style="grid-template-columns:1fr 1fr"><div class="field"><input class="input" name="documento" placeholder="Cédula"></div><div class="field"><input class="input" name="telefono" placeholder="Celular"></div></div>
+        <div class="field"><input class="input" name="pareja" list="parejas" placeholder="Pareja o grupo (opcional)"></div>
+        <datalist id="parejas">{% for pj in r.socios|map(attribute='pareja')|select|unique %}<option>{{ pj }}</option>{% endfor %}</datalist>
         <button class="btn sec">＋ Agregar socio</button>
       </form>
     </div>
