@@ -8,7 +8,8 @@
     <a class="btn dark" href="{{ url_for('aportes_reporte_archivo', fmt='pdf', modo='sencillo', **q) }}" target="_blank">📄 PDF sencillo</a>
     <a class="btn dark" href="{{ url_for('aportes_reporte_archivo', fmt='pdf', **q) }}" target="_blank">📄 PDF completo</a>
     <a class="btn sec" href="{{ url_for('aportes_reporte_archivo', fmt='pdf', descargar=1, **q) }}">⤓ Descargar PDF</a>
-    <a class="btn sec" href="{{ url_for('aportes_reporte_archivo', fmt='xlsx', **q) }}">⤓ Excel</a>
+    <a class="btn sec" href="{{ url_for('aportes_reporte_archivo', fmt='xlsx', modo='sencillo', **q) }}">⤓ Excel sencillo</a>
+    <a class="btn sec" href="{{ url_for('aportes_reporte_archivo', fmt='xlsx', **q) }}">⤓ Excel completo</a>
     <a class="btn ghost" href="{{ url_for('inversion') }}">← Inversión inicial</a>
   </div>
 </div>
@@ -30,7 +31,8 @@
 <div class="card">
   <div class="card-head" style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap">
     <h2 style="margin:0">Listado de aportes</h2>
-    <a class="btn sec sm" href="{{ url_for('aportes_reporte_archivo', fmt='pdf', modo='sencillo', **q) }}" target="_blank">📄 Imprimir este listado</a></div>
+    <span><a class="btn sec sm" href="{{ url_for('aportes_reporte_archivo', fmt='pdf', modo='sencillo', **q) }}" target="_blank">📄 PDF</a>
+      <a class="btn sec sm" href="{{ url_for('aportes_reporte_archivo', fmt='xlsx', modo='sencillo', **q) }}">⤓ Excel</a></span></div>
   <p class="muted" style="margin:4px 0 10px">Cada aporte una sola vez, con los socios que participaron y el valor total.</p>
   <div class="table-wrap"><table>
     <thead><tr><th>Fecha</th><th>Concepto</th><th>Socios</th><th class="num">Valor</th></tr></thead>

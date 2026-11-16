@@ -2244,7 +2244,9 @@ def aportes_reporte_archivo(fmt):
         return send_file(buf, mimetype="application/pdf", download_name=f"{nombre}{'_listado' if sencillo else ''}.pdf",
                          as_attachment=request.args.get("descargar") == "1")
     if fmt == "xlsx":
-        return send_file(exportar.aportes_excel(r, cfg), as_attachment=True, download_name=f"{nombre}.xlsx",
+        sencillo = request.args.get("modo") == "sencillo"
+        return send_file(exportar.aportes_excel(r, cfg, sencillo=sencillo), as_attachment=True,
+                         download_name=f"{nombre}{'_listado' if sencillo else ''}.xlsx",
                          mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
     abort(404)
 

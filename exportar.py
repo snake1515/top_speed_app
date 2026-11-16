@@ -414,7 +414,7 @@ def _periodo_txt(r):
     return "Todos los aportes"
 
 
-def aportes_excel(r, cfg):
+def aportes_excel(r, cfg, sencillo=False):
     wb = Workbook()
     ws = wb.active
     ws.title = "Resumen por socio"
@@ -553,6 +553,11 @@ def aportes_excel(r, cfg):
     else:
         d.cell(row=4, column=1, value="Sin aportes en el periodo").font = Font(name=F, italic=True)
     d.freeze_panes = "A4"
+    if sencillo:   # solo el listado: cada aporte, los socios y el valor total
+        for h in list(wb.worksheets):
+            if h.title != "Listado de aportes":
+                wb.remove(h)
+        wb.active = 0
     return _guardar(wb)
 
 
