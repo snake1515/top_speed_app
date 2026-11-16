@@ -99,3 +99,9 @@ body.shop { background: #f4f4f1; }
 .s-ingresar { color: var(--nav-ink); font-weight: 600; font-size: .92rem; text-decoration: none !important; border: 1px solid #3a3424; padding: 8px 12px; border-radius: 9px; }
 .s-ingresar:hover { color: var(--accent); border-color: var(--accent); }
 @media (max-width: 860px) { .s-ingresar { padding: 7px 10px; font-size: .85rem; } }
+
+/* código interno visible para el comprador */
+.s-card .cod { font: 700 .72rem/1 var(--mono, ui-monospace, monospace); color: #8a6d00; background: #fff6cc; border: 1px solid #f2df8a; border-radius: 6px; padding: 3px 6px; align-self: flex-start; letter-spacing: .04em; }
+.cod-grande { display: inline-flex; align-items: center; gap: 8px; background: #fff6cc; border: 1px solid #f2df8a; border-radius: 8px; padding: 6px 10px; margin: 2px 0 6px; font-size: 1rem; }
+.cod-grande b { font-family: var(--mono, ui-monospace, monospace); font-size: 1.15rem; letter-spacing: .05em; }
+.cod-grande .copiar { border: 0; background: #121418; color: #fff; border-radius: 6px; padding: 4px 8px; font-size: .75rem; cursor: pointer; }

@@ -21,7 +21,7 @@
 <header class="s-top">
   <div class="s-wrap s-bar">
     <a class="s-brand" href="{{ url_for('tienda') }}"><img src="{{ url_for('logo', v=cfg.logo_v, f='c') }}" alt=""><span><b>{{ cfg.nombre }}</b><small>{{ cfg.eslogan or '' }}</small></span></a>
-    <form class="s-search" action="{{ url_for('tienda') }}"><input name="q" value="{{ q or '' }}" placeholder="Busca por repuesto o por tu moto: «kit arrastre boxer»" aria-label="Buscar"><button aria-label="Buscar">⌕</button></form>
+    <form class="s-search" action="{{ url_for('tienda') }}"><input name="q" value="{{ q or '' }}" placeholder="Busca por código, repuesto o tu moto: «0123» o «kit arrastre boxer»" aria-label="Buscar"><button aria-label="Buscar">⌕</button></form>
     <div class="s-acc">
       <a class="s-ingresar" href="{{ url_for('login') }}" title="Ingreso para el equipo de {{ cfg.nombre }}">Ingresar</a>
       <button class="s-cart-btn" type="button" id="abrir-carrito" aria-label="Carrito">🛒 <span id="cnt">0</span></button>

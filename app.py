@@ -2913,6 +2913,11 @@ def tienda():
     if cat:
         query = query.filter(Producto.categoria_id == cat)
     if q:
+        # código interno exacto (con o sin ceros a la izquierda): directo a la ficha del repuesto
+        if q.isdigit() and len(q) <= 8:
+            exacto = query.filter(Producto.codigo_interno.in_({q, q.zfill(4)})).all()
+            if len(exacto) == 1:
+                return redirect(url_for("tienda_producto", pid=exacto[0].id))
         for palabra in normalizar(q).split()[:6]:
             query = query.filter(Producto.busqueda.like(f"%{palabra}%"))
     orden = request.args.get("orden", "")

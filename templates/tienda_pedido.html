@@ -15,7 +15,7 @@
   {% endif %}
   <table style="margin-top:14px">
     <thead><tr><th>Repuesto</th><th class="num">Cant.</th><th class="num">Total</th></tr></thead>
-    <tbody>{% for i in p.items %}<tr><td>{{ i.nombre }}<br><small class="mono muted">{{ i.codigo }}</small></td><td class="num">{{ i.cantidad|cant }}</td><td class="num">{{ (i.cantidad * i.precio)|pesos }}</td></tr>{% endfor %}</tbody>
+    <tbody>{% for i in p.items %}<tr><td>{{ i.nombre }}<br><small class="mono muted">{{ ("Cód. " ~ i.producto.codigo_interno) if i.producto and i.producto.codigo_interno else i.codigo }}</small></td><td class="num">{{ i.cantidad|cant }}</td><td class="num">{{ (i.cantidad * i.precio)|pesos }}</td></tr>{% endfor %}</tbody>
     <tfoot><tr><td colspan="2">Total</td><td class="num">{{ p.total|pesos }}</td></tr></tfoot>
   </table>
   {% set con_datos = medios|selectattr('detalle')|list %}
