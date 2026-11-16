@@ -19,11 +19,14 @@ from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 
 import facturacion
+import inversion as invmod
+import exportar
 import importador
 import nomina as nom
 import reportes as rpt
 from models import (CATEGORIAS_CAJA_MENOR, asignar_codigo_interno, leido_por, marcar_leido, mensajes_de, mensajes_sin_leer, normalizar, DIAS, RESULTADOS_VISITA, Ruta, Visita, CargaMasiva, migrar, CATEGORIAS_GASTO, LISTAS_PRECIO, MOTIVOS_AJUSTE, ROLES, TIPOS_MEDIO, TIPOS_MOV,
                     TIPOS_PAGO_EMP, UNIDADES, Ajuste, Categoria, Cliente, Compra, Cotizacion,
+                    AporteSocio, CATEGORIAS_INVERSION, GastoFijo, Inversion, Socio, TIPOS_INVERSION,
                     Empleado, Gasto, MedioPago, Mensaje, MovCaja, Movimiento, PagoNomina, Pedido, Producto,
                     Proveedor, Turno, Usuario, Venta, ahora, config, db, semilla)
 import services
@@ -451,7 +454,8 @@ def panel():
     top = rpt.top_productos(hoy - timedelta(days=29), hoy, 8)
     serie30 = [(d.strftime("%d/%m"), round(v), round(u)) for d, v, u in r_30["serie"]]
     tope = facturacion.tope_anual(config())
-    return render_template("panel.html", tope=tope, serie30=serie30, hoy=hoy, r_hoy=r_hoy, r_mes=r_mes, r_30=r_30, bajos=bajos, valor_inv=valor_inv,
+    fijos_pend = [x for x in invmod.fijos_del_mes() if not x["pago"] and x["atraso"] >= -5]
+    return render_template("panel.html", tope=tope, fijos_pend=fijos_pend, serie30=serie30, hoy=hoy, r_hoy=r_hoy, r_mes=r_mes, r_30=r_30, bajos=bajos, valor_inv=valor_inv,
                            cartera=cartera, por_pagar=por_pagar, turno=turno, caja=caja, pedidos=pedidos, top=top,
                            num_prods=len(prods), num_bajos=sum(1 for p in prods if p.bajo_minimo))
 
@@ -1937,9 +1941,200 @@ def gastos():
     desde, hasta = periodo()
     ini, fin = rango_dt(desde, hasta)
     lista = Gasto.query.filter(Gasto.fecha >= ini, Gasto.fecha < fin).order_by(Gasto.fecha.desc()).all()
-    return render_template("gastos.html", gastos=lista, categorias=CATEGORIAS_GASTO, medios=medios, desde=desde,
+    return render_template("gastos.html", fijos=invmod.fijos_del_mes(), fijos_todos=GastoFijo.query.filter_by(activo=True).order_by(GastoFijo.nombre).all(),
+                           gastos=lista, categorias=CATEGORIAS_GASTO, medios=medios, desde=desde,
                            hasta=hasta, total=sum(g.valor for g in lista if not g.anulado), turno=turno_abierto(),
                            hoy=ahora().date())
+
+
+# ------------------------------------------------------------- gastos fijos (se repiten cada mes)
+@app.route("/gastos/fijos", methods=["POST"])
+@requiere("admin")
+def gastos_fijos_guardar():
+    f = request.form
+    gf = get_or_404(GastoFijo, int(f["id"])) if f.get("id") else GastoFijo()
+    if f.get("accion") == "desactivar" and gf.id:
+        gf.activo = False
+        db.session.commit()
+        flash(f"«{gf.nombre}» ya no se repite.", "ok")
+        return redirect(url_for("gastos"))
+    nombre = (f.get("nombre") or "").strip()[:120]
+    valor = round(n(f.get("valor")))
+    if len(nombre) < 3 or valor <= 0 or f.get("categoria") not in CATEGORIAS_GASTO:
+        flash("Escribe el nombre, el valor y la categoría del gasto fijo.", "err")
+        return redirect(url_for("gastos"))
+    gf.nombre, gf.valor, gf.categoria = nombre, valor, f["categoria"]
+    gf.dia = min(max(int(n(f.get("dia"), 1)), 1), 31)
+    gf.medio_id = int(f.get("medio_id") or 0) or None
+    gf.desde = _fecha(f.get("desde")) or gf.desde or ahora().date().replace(day=1)
+    gf.nota = (f.get("nota") or "").strip()[:200] or None
+    gf.activo = True
+    db.session.add(gf)
+    db.session.commit()
+    flash(f"Gasto fijo «{gf.nombre}» guardado: {pesos(gf.valor)} cada mes, el día {gf.dia}.", "ok")
+    return redirect(url_for("gastos"))
+
+
+@app.route("/gastos/fijos/<int:fid>/pagar", methods=["POST"])
+@requiere("admin")
+def gasto_fijo_pagar(fid):
+    gf = get_or_404(GastoFijo, fid)
+    f = request.form
+    hoy = ahora().date()
+    per = invmod.periodo_de(hoy)
+    try:
+        if Gasto.query.filter_by(gasto_fijo_id=gf.id, periodo=per, anulado=False).first():
+            raise ErrorNegocio(f"«{gf.nombre}» ya está pagado este mes.")
+        valor = round(n(f.get("valor"), gf.valor))
+        if valor <= 0:
+            raise ErrorNegocio("Escribe el valor pagado.")
+        medio = db.session.get(MedioPago, int(f.get("medio_id") or gf.medio_id or 0))
+        mes = ["", "enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre",
+               "noviembre", "diciembre"][hoy.month]
+        g = Gasto(fecha=fecha_form(f.get("fecha")), categoria=gf.categoria, descripcion=f"{gf.nombre} · {mes} {hoy.year}"[:200],
+                  valor=valor, medio=medio, usuario_id=current_user.id, gasto_fijo_id=gf.id, periodo=per)
+        db.session.add(g)
+        db.session.flush()
+        if f.get("desde_caja") and medio:
+            g.mov_caja_id = mov_caja("egreso", valor, medio, f"Gasto: {g.descripcion[:150]}", "gasto", g.id, current_user.id).id
+        db.session.commit()
+        flash(f"Pagado: {g.descripcion} por {pesos(valor)}.", "ok")
+    except ErrorNegocio as e:
+        db.session.rollback()
+        errores_flash(e)
+    return redirect(request.form.get("volver") or url_for("gastos"))
+
+
+# ------------------------------------------------------------- inversión inicial (fundación)
+@app.route("/inversion")
+@requiere("admin")
+def inversion():
+    cfg = config()
+    neta = rpt.resumen(cfg.fecha_apertura, ahora().date())["neta"] if cfg.fecha_apertura else None
+    r = invmod.resumen_fundacion(cfg, neta)
+    return render_template("inversion.html", r=r, categorias=CATEGORIAS_INVERSION, tipos=TIPOS_INVERSION,
+                           hoy=ahora().date(), medios=[m.nombre for m in MedioPago.query.order_by(MedioPago.orden)])
+
+
+@app.route("/inversion/registro", methods=["POST"])
+@requiere("admin")
+def inversion_registro():
+    f = request.form
+    i = get_or_404(Inversion, int(f["id"])) if f.get("id") else Inversion(usuario_id=current_user.id)
+    concepto = (f.get("concepto") or "").strip()[:200]
+    valor = round(n(f.get("valor")))
+    if len(concepto) < 3 or valor <= 0 or f.get("categoria") not in CATEGORIAS_INVERSION:
+        flash("Escribe el concepto, el valor y la categoría.", "err")
+        return redirect(url_for("inversion"))
+    i.concepto, i.valor, i.categoria = concepto, valor, f["categoria"]
+    i.tipo = f.get("tipo") if f.get("tipo") in TIPOS_INVERSION else CATEGORIAS_INVERSION[i.categoria]
+    i.fecha = _fecha(f.get("fecha")) or ahora().date()
+    i.socio_id = int(f.get("socio_id") or 0) or None
+    i.proveedor = (f.get("proveedor") or "").strip()[:120] or None
+    i.medio = (f.get("medio") or "").strip()[:60] or None
+    i.nota = (f.get("nota") or "").strip()[:300] or None
+    arch = request.files.get("soporte")
+    if arch and arch.filename:
+        datos = arch.read()
+        if arch.filename.lower().endswith(".pdf"):
+            if len(datos) > 5 * 1024 * 1024:
+                flash("El PDF del soporte pasa de 5 MB.", "err")
+                return redirect(url_for("inversion"))
+            i.soporte, i.soporte_mime = datos, "application/pdf"
+        else:
+            try:
+                img = procesar_imagen(BytesIO(datos), 1600)
+            except ErrorNegocio:
+                flash("No pude leer la foto del soporte. Usa JPG, PNG o PDF.", "err")
+                return redirect(url_for("inversion"))
+            i.soporte, i.soporte_mime = img, "image/jpeg"
+        i.soporte_v = (i.soporte_v or 0) + 1
+    db.session.add(i)
+    db.session.commit()
+    flash(f"Registrado: {i.concepto} por {pesos(i.valor)}.", "ok")
+    return redirect(url_for("inversion"))
+
+
+@app.route("/inversion/<int:iid>/anular", methods=["POST"])
+@requiere("admin")
+def inversion_anular(iid):
+    i = get_or_404(Inversion, iid)
+    i.anulado = True
+    db.session.commit()
+    flash(f"Se quitó «{i.concepto}» de la inversión inicial.", "ok")
+    return redirect(url_for("inversion"))
+
+
+@app.route("/inversion/<int:iid>/soporte")
+@requiere("admin")
+def inversion_soporte(iid):
+    i = get_or_404(Inversion, iid)
+    if not i.soporte:
+        abort(404)
+    ext = "pdf" if i.soporte_mime == "application/pdf" else "jpg"
+    return send_file(BytesIO(i.soporte), mimetype=i.soporte_mime, download_name=f"soporte_{i.id}.{ext}")
+
+
+@app.route("/inversion/aporte", methods=["POST"])
+@requiere("admin")
+def inversion_aporte():
+    f = request.form
+    if f.get("anular"):
+        a = get_or_404(AporteSocio, int(f["anular"]))
+        a.anulado = True
+        db.session.commit()
+        flash("Aporte anulado.", "ok")
+        return redirect(url_for("inversion"))
+    socio = db.session.get(Socio, int(f.get("socio_id") or 0))
+    valor = round(n(f.get("valor")))
+    if not socio or valor <= 0:
+        flash("Elige el socio y escribe el valor del aporte.", "err")
+        return redirect(url_for("inversion"))
+    db.session.add(AporteSocio(fecha=_fecha(f.get("fecha")) or ahora().date(), socio=socio, valor=valor,
+                               medio=(f.get("medio") or "").strip()[:60] or None,
+                               nota=(f.get("nota") or "").strip()[:200] or None, usuario_id=current_user.id))
+    db.session.commit()
+    flash(f"Aporte de {socio.nombre} por {pesos(valor)} registrado.", "ok")
+    return redirect(url_for("inversion"))
+
+
+@app.route("/inversion/socio", methods=["POST"])
+@requiere("admin")
+def inversion_socio():
+    f = request.form
+    s = get_or_404(Socio, int(f["id"])) if f.get("id") else Socio()
+    nombre = (f.get("nombre") or "").strip()[:120]
+    if len(nombre) < 3:
+        flash("Escribe el nombre del socio.", "err")
+        return redirect(url_for("inversion"))
+    s.nombre = nombre
+    s.documento = (f.get("documento") or "").strip()[:30] or None
+    s.telefono = (f.get("telefono") or "").strip()[:30] or None
+    s.activo = not f.get("retirado")
+    db.session.add(s)
+    db.session.commit()
+    flash(f"Socio {s.nombre} guardado.", "ok")
+    return redirect(url_for("inversion"))
+
+
+@app.route("/inversion/apertura", methods=["POST"])
+@requiere("admin")
+def inversion_apertura():
+    cfg = config()
+    cfg.fecha_apertura = _fecha(request.form.get("fecha_apertura"))
+    db.session.commit()
+    flash("Fecha de apertura guardada.", "ok")
+    return redirect(url_for("inversion"))
+
+
+@app.route("/inversion/excel")
+@requiere("admin")
+def inversion_excel():
+    cfg = config()
+    neta = rpt.resumen(cfg.fecha_apertura, ahora().date())["neta"] if cfg.fecha_apertura else None
+    buf = exportar.inversion_excel(invmod.resumen_fundacion(cfg, neta), cfg, url_for("inversion_soporte", iid=0, _external=True))
+    return send_file(buf, as_attachment=True, download_name=f"inversion_inicial_{ahora().date():%Y%m%d}.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
 @app.route("/gastos/<int:gid>/anular", methods=["POST"])

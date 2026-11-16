@@ -4,6 +4,28 @@
 <div class="page-head"><div><h1>Gastos del negocio</h1><p>Arriendo, servicios, publicidad, domicilios… Se restan en la ganancia neta.</p></div></div>
 <div class="grid g-main">
   <div>
+    <div class="card" id="fijos">
+      <div class="card-head"><h2>Gastos fijos de este mes</h2><span class="muted">se repiten cada mes</span></div>
+      {% for x in fijos %}
+      <div class="sum-row" style="align-items:center;flex-wrap:wrap;gap:8px;border-left:4px solid {{ '#1a9b5c' if x.pago else ('var(--red)' if x.atraso > 0 else 'var(--accent)') }};padding-left:10px;margin-bottom:8px">
+        <span><b>{{ x.fijo.nombre }}</b> <small class="muted">· {{ x.fijo.categoria }} · día {{ x.fijo.dia }}</small><br>
+          {% if x.pago %}<small class="pos">✔ Pagado {{ x.pago.fecha|f }} · {{ x.pago.valor|pesos }}{{ ' · salió de caja' if x.pago.mov_caja_id }}</small>
+          {% elif x.atraso > 0 %}<small class="neg">Pendiente · venció hace {{ x.atraso }} día(s)</small>
+          {% elif x.atraso == 0 %}<small class="neg">Pendiente · vence hoy</small>
+          {% else %}<small class="muted">Pendiente · vence el {{ x.vence|f }}</small>{% endif %}</span>
+        {% if not x.pago %}
+        <form method="post" action="{{ url_for('gasto_fijo_pagar', fid=x.fijo.id) }}" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap" data-confirm="¿Registrar el pago de {{ x.fijo.nombre }}?">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input class="input" name="valor" value="{{ x.fijo.valor|round|int }}" inputmode="numeric" style="width:110px" title="Valor (ajústalo si este mes fue distinto)">
+          <select class="input" name="medio_id" style="width:auto">{% for m in medios %}<option value="{{ m.id }}" {{ 'selected' if m.id == x.fijo.medio_id }}>{{ m.nombre }}</option>{% endfor %}</select>
+          <label class="check" style="margin:0"><input type="checkbox" name="desde_caja" value="1" {{ 'disabled' if not turno }}> de la caja</label>
+          <button class="btn ok sm">Pagar</button>
+        </form>
+        {% else %}<b>{{ x.pago.valor|pesos }}</b>{% endif %}
+      </div>
+      {% else %}<p class="muted" style="margin:0">No hay gastos fijos programados. Créalos abajo a la derecha (publicidad en Facebook, arriendo, internet…).</p>{% endfor %}
+      {% if fijos %}<div class="sum-row" style="border-top:1px solid #ddd;padding-top:6px"><span>Pagado {{ fijos|selectattr('pago')|map(attribute='pago.valor')|sum|pesos }} · pendiente {{ fijos|rejectattr('pago')|map(attribute='fijo.valor')|sum|pesos }}</span><b>Costo fijo del mes {{ (fijos|selectattr('pago')|map(attribute='pago.valor')|sum + fijos|rejectattr('pago')|map(attribute='fijo.valor')|sum)|pesos }}</b></div>{% endif %}
+    </div>
     <form class="filters card"><div class="field"><label>Desde</label><input class="input" type="date" name="desde" value="{{ desde }}"></div><div class="field"><label>Hasta</label><input class="input" type="date" name="hasta" value="{{ hasta }}"></div><button class="btn dark">Filtrar</button><b style="margin-left:auto;font-size:1.2rem">{{ total|pesos }}</b></form>
     <div class="card"><div class="table-wrap"><table>
       <thead><tr><th>Fecha</th><th>Categoría</th><th>Descripción</th><th>Medio</th><th class="num">Valor</th><th></th></tr></thead>
@@ -12,9 +34,41 @@
       {% else %}<tr><td colspan="6" class="empty">Sin gastos en ese periodo.</td></tr>{% endfor %}</tbody>
     </table></div></div>
   </div>
+  <div>
+  <div class="card">
+  <form method="post" action="{{ url_for('gastos_fijos_guardar') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h2 style="margin-bottom:4px">Programar gasto fijo</h2>
+    <p class="hint" style="margin-top:0">Se repite cada mes y la app te avisa cuando toca pagarlo.</p>
+    <div class="field"><input class="input" name="nombre" required placeholder="ej. Publicidad Facebook"></div>
+    <div class="field"><select class="input" name="categoria">{% for c in categorias %}<option {{ 'selected' if c == 'Publicidad' }}>{{ c }}</option>{% endfor %}</select></div>
+    <div class="form-row" style="grid-template-columns:1fr 1fr">
+      <div class="field"><label>Valor mensual</label><input class="input" name="valor" inputmode="numeric" required></div>
+      <div class="field"><label>Día de pago</label><input class="input" name="dia" value="5" inputmode="numeric"></div>
+    </div>
+    <div class="field"><label>Medio habitual</label><select class="input" name="medio_id">{% for m in medios %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}</select></div>
+    <button class="btn sec">Programar</button>
+  </form>
+    {% if fijos_todos %}
+    <div style="margin-top:12px">
+      {% for gf in fijos_todos %}
+      <details style="margin-bottom:6px"><summary>{{ gf.nombre }} · {{ gf.valor|pesos }} · día {{ gf.dia }}</summary>
+        <form method="post" action="{{ url_for('gastos_fijos_guardar') }}" style="margin-top:6px">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ gf.id }}">
+          <div class="field"><input class="input" name="nombre" value="{{ gf.nombre }}" required></div>
+          <div class="field"><select class="input" name="categoria">{% for c in categorias %}<option {{ 'selected' if c == gf.categoria }}>{{ c }}</option>{% endfor %}</select></div>
+          <div class="form-row" style="grid-template-columns:1fr 1fr"><div class="field"><input class="input" name="valor" value="{{ gf.valor|round|int }}" required></div><div class="field"><input class="input" name="dia" value="{{ gf.dia }}"></div></div>
+          <div class="field"><select class="input" name="medio_id">{% for m in medios %}<option value="{{ m.id }}" {{ 'selected' if m.id == gf.medio_id }}>{{ m.nombre }}</option>{% endfor %}</select></div>
+          <div style="display:flex;gap:6px"><button class="btn sec sm">Guardar</button><button class="btn ghost sm" name="accion" value="desactivar">Dejar de repetir</button></div>
+        </form>
+      </details>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </div>
   <form class="card" method="post">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <h2 style="margin-bottom:10px">Registrar gasto</h2>
+    <h2 style="margin-bottom:10px">Registrar gasto ocasional</h2>
     <div class="field"><label>Categoría</label><select class="input" name="categoria" required>{% for c in categorias %}<option>{{ c }}</option>{% endfor %}</select></div>
     <div class="field"><label>Descripción</label><input class="input" name="descripcion" required placeholder="ej. Arriendo noviembre"></div>
     <div class="form-row" style="grid-template-columns:1fr 1fr">
@@ -25,5 +79,6 @@
     <label class="check" style="margin-bottom:12px"><input type="checkbox" name="desde_caja" value="1" {{ 'disabled' if not turno }}> Sale de la caja abierta</label>
     <button class="btn">Guardar gasto</button>
   </form>
+  </div>
 </div>
 {% endblock %}

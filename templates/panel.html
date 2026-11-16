@@ -23,6 +23,12 @@
   <div class="kpi"><div class="lbl">Ganancia neta del mes</div><div class="val {{ 'pos' if r_mes.neta >= 0 else 'neg' }}">{{ r_mes.neta|pesos }}</div><div class="sub">después de gastos y nómina</div></div>
 </div>
 
+{% if fijos_pend %}
+<div class="flash warn" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+  <span>📅 Gastos fijos por pagar: {% for x in fijos_pend %}<b>{{ x.fijo.nombre }}</b> {{ x.fijo.valor|pesos }}{{ ' (vencido)' if x.atraso > 0 else (' (hoy)' if x.atraso == 0 else ' (día ' ~ x.fijo.dia ~ ')') }}{{ ', ' if not loop.last }}{% endfor %}</span>
+  <a class="btn sm dark" href="{{ url_for('gastos') }}#fijos">Pagar</a>
+</div>
+{% endif %}
 {% if tope and tope.tope %}
 <div class="card" style="margin-bottom:16px;{{ 'border-left:4px solid var(--red)' if tope.nivel != 'ok' else '' }}">
   <div class="card-head"><h2>Tope de facturación electrónica {{ tope.anio }}</h2><a href="{{ url_for('configuracion') }}#fe">Configurar</a></div>

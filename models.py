@@ -174,6 +174,7 @@ class Config(db.Model):
     fe_uvt = db.Column(db.Float, nullable=False, default=52374)      # valor UVT del año
     fe_tope_uvt = db.Column(db.Float, nullable=False, default=3500)  # tope de ingresos para no estar obligado
     fe_aviso_pct = db.Column(db.Float, nullable=False, default=80)   # avisar desde este % del tope
+    fecha_apertura = db.Column(db.Date)                 # día en que el negocio abrió al público
 
 
 class MedioPago(db.Model):
@@ -976,6 +977,81 @@ class Gasto(db.Model):
     anulado = db.Column(db.Boolean, nullable=False, default=False)
     usuario_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
     usuario = db.relationship("Usuario")
+    gasto_fijo_id = db.Column(db.Integer, db.ForeignKey("ts_gastos_fijos.id"), index=True)
+    gasto_fijo = db.relationship("GastoFijo")
+    periodo = db.Column(db.String(7))   # "2026-11": mes al que corresponde el pago de un gasto fijo
+
+
+class GastoFijo(db.Model):
+    """Gasto que se repite cada mes (publicidad en Facebook, arriendo, internet…)."""
+    __tablename__ = "ts_gastos_fijos"
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(120), nullable=False)
+    categoria = db.Column(db.String(60), nullable=False)
+    valor = db.Column(db.Float, nullable=False)          # valor de referencia (al pagar se puede ajustar)
+    dia = db.Column(db.Integer, nullable=False, default=1)  # día del mes en que se paga
+    medio_id = db.Column(db.Integer, db.ForeignKey("ts_medios_pago.id"))
+    medio = db.relationship("MedioPago")
+    desde = db.Column(db.Date)                            # primer mes que aplica
+    activo = db.Column(db.Boolean, nullable=False, default=True)
+    nota = db.Column(db.String(200))
+
+
+# ---------------------------------------------------------------- inversión inicial (fundación del negocio)
+CATEGORIAS_INVERSION = {
+    "Local": "gasto", "Adecuaciones del local": "activo", "Muebles y estanterías": "activo",
+    "Equipos (computador, impresora, cajón)": "activo", "Mercancía inicial": "inventario",
+    "Trámites y legalización": "gasto", "Imagen y publicidad de lanzamiento": "gasto",
+    "Software y servicios": "gasto", "Herramientas": "activo", "Otros": "gasto",
+}
+TIPOS_INVERSION = {"activo": "Activo (dura años)", "gasto": "Gasto preoperativo", "inventario": "Inventario"}
+
+
+class Socio(db.Model):
+    __tablename__ = "ts_socios"
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(120), nullable=False)
+    documento = db.Column(db.String(30))
+    telefono = db.Column(db.String(30))
+    nota = db.Column(db.String(200))
+    activo = db.Column(db.Boolean, nullable=False, default=True)
+
+
+class AporteSocio(db.Model):
+    """Dinero que un socio entrega al fondo común del negocio (no ligado a una compra puntual)."""
+    __tablename__ = "ts_aportes_socios"
+    id = db.Column(db.Integer, primary_key=True)
+    fecha = db.Column(db.Date, nullable=False)
+    socio_id = db.Column(db.Integer, db.ForeignKey("ts_socios.id"), nullable=False, index=True)
+    socio = db.relationship("Socio")
+    valor = db.Column(db.Float, nullable=False)
+    medio = db.Column(db.String(60))
+    nota = db.Column(db.String(200))
+    anulado = db.Column(db.Boolean, nullable=False, default=False)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
+    creado = db.Column(db.DateTime, nullable=False, default=ahora)
+
+
+class Inversion(db.Model):
+    """Cada cosa que se pagó para montar el negocio, antes de abrir."""
+    __tablename__ = "ts_inversiones"
+    id = db.Column(db.Integer, primary_key=True)
+    fecha = db.Column(db.Date, nullable=False, index=True)
+    concepto = db.Column(db.String(200), nullable=False)
+    categoria = db.Column(db.String(60), nullable=False)
+    tipo = db.Column(db.String(12), nullable=False, default="gasto")   # activo / gasto / inventario
+    valor = db.Column(db.Float, nullable=False)
+    socio_id = db.Column(db.Integer, db.ForeignKey("ts_socios.id"), index=True)  # quién lo pagó (vacío = fondo común)
+    socio = db.relationship("Socio")
+    proveedor = db.Column(db.String(120))
+    medio = db.Column(db.String(60))
+    nota = db.Column(db.String(300))
+    soporte = db.deferred(db.Column(db.LargeBinary))
+    soporte_mime = db.Column(db.String(60))
+    soporte_v = db.Column(db.Integer, nullable=False, default=0)
+    anulado = db.Column(db.Boolean, nullable=False, default=False)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
+    creado = db.Column(db.DateTime, nullable=False, default=ahora)
 
 
 @event.listens_for(Producto, "before_insert")

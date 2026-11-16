@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% block title %}Inversión inicial{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Inversión inicial</h1><p>Cómo se fundó {{ cfg.nombre }}: todo lo que se pagó para montar el negocio, quién lo pagó y cuándo.</p></div>
+  <div class="actions"><a class="btn sec" href="{{ url_for('inversion_excel') }}">⤓ Descargar Excel</a></div>
+</div>
+
+<div class="kpis">
+  <div class="kpi hl"><div class="lbl">Total invertido</div><div class="val">{{ r.total|pesos }}</div><div class="sub">{{ r.invs|length }} registro(s){% if r.primera %} · desde {{ r.primera|f }}{% endif %}</div></div>
+  <div class="kpi"><div class="lbl">Activos</div><div class="val">{{ r.por_tipo.get('activo', 0)|pesos }}</div><div class="sub">muebles, equipos, adecuaciones</div></div>
+  <div class="kpi"><div class="lbl">Gastos preoperativos</div><div class="val">{{ r.por_tipo.get('gasto', 0)|pesos }}</div><div class="sub">trámites, lanzamiento, local</div></div>
+  <div class="kpi"><div class="lbl">Mercancía inicial</div><div class="val">{{ r.por_tipo.get('inventario', 0)|pesos }}</div><div class="sub">en la app: {{ r.inv_app|pesos }}</div></div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Recuperación de la inversión</h2></div>
+  <form method="post" action="{{ url_for('inversion_apertura') }}" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap;margin-bottom:10px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field" style="margin:0"><label>Fecha de apertura al público</label><input class="input" type="date" name="fecha_apertura" value="{{ cfg.fecha_apertura.isoformat() if cfg.fecha_apertura else '' }}"></div>
+    <button class="btn sec sm">Guardar</button>
+  </form>
+  {% if r.rec %}
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:6px"><span>Ganancia neta desde la apertura <b>{{ r.rec.neta|pesos }}</b> de {{ r.total|pesos }} invertidos</span><b>{{ r.rec.pct|round(1) }} %</b></div>
+    <div style="height:12px;background:#eee;border-radius:6px;overflow:hidden;margin:8px 0"><div style="height:100%;width:{{ r.rec.pct }}%;background:var(--green, #1a9b5c)"></div></div>
+    <p class="muted" style="margin:0">
+      {% if r.rec.falta <= 0 %}🎉 La inversión ya se recuperó.
+      {% elif r.rec.meses_faltan %}Faltan {{ r.rec.falta|pesos }}. Al ritmo actual ({{ r.rec.ritmo|pesos }} de ganancia neta al mes) se recupera en unos <b>{{ r.rec.meses_faltan|round|int }} mes(es)</b>.
+      {% elif r.rec.meses_abierto < 1 %}Faltan {{ r.rec.falta|pesos }}. En el primer mes se calcula en cuánto tiempo se recupera.
+      {% else %}Faltan {{ r.rec.falta|pesos }}. Con la ganancia neta actual todavía no se puede calcular cuándo se recupera.{% endif %}
+    </p>
+  {% elif not cfg.fecha_apertura %}<p class="muted" style="margin:0">Escribe la fecha de apertura para ver cuánto de la inversión se ha recuperado con la ganancia del negocio.</p>
+  {% else %}<p class="muted" style="margin:0">Registra lo que se invirtió para ver la recuperación.</p>{% endif %}
+</div>
+
+<div class="grid g-main">
+  <div>
+    <div class="card">
+      <div class="card-head"><h2>Detalle (en orden de fecha)</h2></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Fecha</th><th>Concepto</th><th>Pagó</th><th class="num">Valor</th><th></th></tr></thead>
+        <tbody>{% for i in r.invs %}<tr>
+          <td>{{ i.fecha|f }}</td>
+          <td><b>{{ i.concepto }}</b><br><small class="muted">{{ i.categoria }} · {{ tipos[i.tipo] }}{% if i.proveedor %} · {{ i.proveedor }}{% endif %}{% if i.medio %} · {{ i.medio }}{% endif %}</small>{% if i.nota %}<br><small>{{ i.nota }}</small>{% endif %}</td>
+          <td>{{ i.socio.nombre if i.socio else 'Fondo común' }}</td>
+          <td class="num">{{ i.valor|pesos }}</td>
+          <td style="white-space:nowrap">{% if i.soporte_v %}<a class="btn ghost sm" href="{{ url_for('inversion_soporte', iid=i.id) }}" target="_blank" title="Ver soporte">📎</a>{% endif %}
+            <form method="post" action="{{ url_for('inversion_anular', iid=i.id) }}" style="display:inline" data-confirm="¿Quitar «{{ i.concepto }}» de la inversión?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn ghost sm">✕</button></form></td>
+        </tr>{% else %}<tr><td colspan="5" class="empty">Aún no hay nada registrado. Empieza con el formulario de la derecha.</td></tr>{% endfor %}</tbody>
+      </table></div>
+    </div>
+
+    {% if r.por_cat %}
+    <div class="card">
+      <h2 style="margin-bottom:10px">Por categoría</h2>
+      {% set mx = r.por_cat[0][1] %}
+      {% for k, v in r.por_cat %}
+      <div class="sum-row"><span>{{ k }}</span><b>{{ v|pesos }} <small class="muted">{{ (v / r.total * 100)|round|int }} %</small></b></div>
+      <div style="height:6px;background:#eee;border-radius:4px;margin:-4px 0 8px"><div style="height:100%;width:{{ v / mx * 100 }}%;background:var(--accent);border-radius:4px"></div></div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="card">
+      <h2 style="margin-bottom:10px">Socios y participación</h2>
+      {% if r.por_socio %}
+      <div class="table-wrap"><table>
+        <thead><tr><th>Socio</th><th class="num">Aportes en dinero</th><th class="num">Compras que pagó</th><th class="num">Total</th><th class="num">%</th></tr></thead>
+        <tbody>{% for x in r.por_socio %}<tr><td><b>{{ x.socio.nombre }}</b>{% if not x.socio.activo %} <span class="badge">retirado</span>{% endif %}<br><small class="muted">{{ x.socio.documento or '' }} {{ x.socio.telefono or '' }}</small></td>
+          <td class="num">{{ x.aportes|pesos }}</td><td class="num">{{ x.pagos|pesos }}</td><td class="num"><b>{{ x.total|pesos }}</b></td><td class="num"><b>{{ x.pct|round(1) }} %</b></td></tr>{% endfor %}</tbody>
+      </table></div>
+      <div class="sum-row" style="margin-top:8px"><span>Fondo común: aportado {{ (r.fondo + r.del_fondo)|pesos }} · gastado {{ r.del_fondo|pesos }}</span><b class="{{ 'neg' if r.fondo < 0 }}">{{ 'Sin gastar' if r.fondo >= 0 else 'Faltante' }} {{ r.fondo|abs|pesos }}</b></div>
+      {% if r.fondo < 0 %}<p class="hint">Se pagaron cosas «con el fondo común» por más de lo que los socios aportaron: registra los aportes que faltan o marca quién pagó cada compra.</p>{% endif %}
+      <p class="hint">La participación sale de lo que cada uno puso (aportes + compras que pagó). Es una referencia: lo que acordaron los socios por escrito es lo que vale.</p>
+      {% else %}<p class="muted">Agrega a los socios abajo para saber cuánto puso cada uno.</p>{% endif %}
+      {% if r.aportes %}
+      <details style="margin-top:8px"><summary>Aportes en dinero ({{ r.aportes|length }})</summary>
+        {% for a in r.aportes %}<div class="sum-row"><span>{{ a.fecha|f }} · {{ a.socio.nombre }}{% if a.medio %} · {{ a.medio }}{% endif %}{% if a.nota %}<br><small class="muted">{{ a.nota }}</small>{% endif %}</span>
+          <span><b>{{ a.valor|pesos }}</b> <form method="post" action="{{ url_for('inversion_aporte') }}" style="display:inline" data-confirm="¿Anular este aporte?"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="anular" value="{{ a.id }}"><button class="btn ghost sm">✕</button></form></span></div>{% endfor %}
+      </details>
+      {% endif %}
+    </div>
+  </div>
+
+  <div>
+    <form class="card" method="post" action="{{ url_for('inversion_registro') }}" enctype="multipart/form-data" id="f-inv">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <h2 style="margin-bottom:10px">Registrar lo que se pagó</h2>
+      <div class="field"><label>Concepto</label><input class="input" name="concepto" required placeholder="ej. Estantería metálica 5 niveles"></div>
+      <div class="field"><label>Categoría</label><select class="input" name="categoria" id="inv-cat">{% for c, t in categorias.items() %}<option data-tipo="{{ t }}">{{ c }}</option>{% endfor %}</select></div>
+      <div class="field"><label>Tipo</label><select class="input" name="tipo" id="inv-tipo">{% for k, t in tipos.items() %}<option value="{{ k }}">{{ t }}</option>{% endfor %}</select>
+        <div class="hint">Activo: dura años (estantería, computador). Gasto: se consume (trámites, publicidad).</div></div>
+      <div class="form-row" style="grid-template-columns:1fr 1fr">
+        <div class="field"><label>Valor</label><input class="input" name="valor" inputmode="numeric" required></div>
+        <div class="field"><label>Fecha</label><input class="input" type="date" name="fecha" value="{{ hoy }}"></div>
+      </div>
+      <div class="field"><label>¿Quién lo pagó?</label><select class="input" name="socio_id"><option value="">Fondo común (dinero aportado por los socios)</option>{% for s in r.socios if s.activo %}<option value="{{ s.id }}">{{ s.nombre }} (de su bolsillo)</option>{% endfor %}</select></div>
+      <div class="form-row" style="grid-template-columns:1fr 1fr">
+        <div class="field"><label>Se le compró a</label><input class="input" name="proveedor" placeholder="Proveedor o almacén"></div>
+        <div class="field"><label>Medio</label><input class="input" name="medio" list="medios-inv" placeholder="Efectivo, Nequi…"><datalist id="medios-inv">{% for m in medios %}<option>{{ m }}</option>{% endfor %}</datalist></div>
+      </div>
+      <div class="field"><label>Nota</label><input class="input" name="nota" placeholder="Opcional"></div>
+      <div class="field"><label>Soporte (foto de la factura o PDF)</label><input class="input" type="file" name="soporte" accept="image/*,.pdf"></div>
+      <button class="btn">Guardar</button>
+      {% if r.inv_app > r.mercancia_registrada %}
+      <p class="hint" style="margin-top:10px">La mercancía cargada en la app como inventario inicial vale <b>{{ r.inv_app|pesos }}</b> al costo{% if r.mercancia_registrada %} y aquí hay registrados {{ r.mercancia_registrada|pesos }}{% endif %}.
+        <a href="#" id="usar-merc" data-v="{{ (r.inv_app - r.mercancia_registrada)|round|int }}">Registrar {{ (r.inv_app - r.mercancia_registrada)|pesos }} como mercancía inicial</a> y elige quién la pagó.</p>
+      {% endif %}
+    </form>
+
+    <form class="card" method="post" action="{{ url_for('inversion_aporte') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <h2 style="margin-bottom:4px">Aporte de un socio</h2>
+      <p class="hint" style="margin-top:0">Dinero que un socio entregó para el negocio (no una compra puntual).</p>
+      <div class="field"><select class="input" name="socio_id" required>{% for s in r.socios if s.activo %}<option value="{{ s.id }}">{{ s.nombre }}</option>{% else %}<option value="">Primero agrega un socio</option>{% endfor %}</select></div>
+      <div class="form-row" style="grid-template-columns:1fr 1fr">
+        <div class="field"><input class="input" name="valor" placeholder="Valor" inputmode="numeric" required></div>
+        <div class="field"><input class="input" type="date" name="fecha" value="{{ hoy }}"></div>
+      </div>
+      <div class="field"><input class="input" name="medio" list="medios-inv" placeholder="Medio (efectivo, transferencia…)"></div>
+      <div class="field"><input class="input" name="nota" placeholder="Nota (opcional)"></div>
+      <button class="btn sec" {{ 'disabled' if not r.socios }}>Registrar aporte</button>
+    </form>
+
+    <div class="card">
+      <h2 style="margin-bottom:8px">Socios</h2>
+      {% for s in r.socios %}
+      <details style="margin-bottom:6px"><summary><b>{{ s.nombre }}</b>{% if not s.activo %} <span class="badge">retirado</span>{% endif %}</summary>
+        <form method="post" action="{{ url_for('inversion_socio') }}" style="margin-top:6px">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="id" value="{{ s.id }}">
+          <div class="field"><input class="input" name="nombre" value="{{ s.nombre }}" required></div>
+          <div class="form-row" style="grid-template-columns:1fr 1fr"><div class="field"><input class="input" name="documento" value="{{ s.documento or '' }}" placeholder="Cédula"></div><div class="field"><input class="input" name="telefono" value="{{ s.telefono or '' }}" placeholder="Celular"></div></div>
+          <label class="check"><input type="checkbox" name="retirado" value="1" {{ 'checked' if not s.activo }}> Ya no es socio</label>
+          <button class="btn sec sm">Guardar</button>
+        </form>
+      </details>
+      {% endfor %}
+      <form method="post" action="{{ url_for('inversion_socio') }}" style="margin-top:8px">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <div class="field"><input class="input" name="nombre" placeholder="Nombre del socio" required></div>
+        <div class="form-row" style="grid-template-columns:1fr 1fr"><div class="field"><input class="input" name="documento" placeholder="Cédula"></div><div class="field"><input class="input" name="telefono" placeholder="Celular"></div></div>
+        <button class="btn sec">＋ Agregar socio</button>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+const cat = document.getElementById('inv-cat'), tipo = document.getElementById('inv-tipo');
+const ponTipo = () => { tipo.value = cat.selectedOptions[0].dataset.tipo; };
+cat.addEventListener('change', ponTipo); ponTipo();
+const um = document.getElementById('usar-merc');
+if (um) um.addEventListener('click', e => { e.preventDefault(); const f = document.getElementById('f-inv');
+  f.concepto.value = 'Mercancía inicial (repuestos cargados en la app)'; cat.value = 'Mercancía inicial'; ponTipo();
+  f.valor.value = um.dataset.v; f.socio_id.focus(); f.scrollIntoView({behavior: 'smooth'}); });
+</script>
+{% endblock %}

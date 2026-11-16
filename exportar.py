@@ -253,3 +253,98 @@ def inventario_excel(productos, reservado, por_surtir, movimientos, ve_costos, c
     wb.save(buf)
     buf.seek(0)
     return buf
+
+
+def inversion_excel(r, cfg, url_soporte):
+    """Inversión inicial: resumen, detalle con soportes, aportes y participación de socios."""
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Resumen"
+    neg = (cfg.nombre or "Moto Speed").upper()
+    _titulo(ws, f"{neg} · Inversión inicial", f"Generado el {datetime.now():%d/%m/%Y %I:%M %p}", 2)
+    fila = 4
+
+    def par(t, v, fmt=PESOS, negrita=False):
+        nonlocal fila
+        ws.cell(row=fila, column=1, value=t).font = Font(name=F, bold=negrita)
+        c = ws.cell(row=fila, column=2, value=v)
+        c.font = Font(name=F, bold=True)
+        if fmt:
+            c.number_format = fmt
+        fila += 1
+
+    ndet = len(r["invs"])
+    par("Total invertido", f"=SUM(Detalle!E4:E{ndet + 3})" if ndet else 0, negrita=True)
+    for t, k in (("Activos (duran años)", "activo"), ("Gastos preoperativos", "gasto"), ("Inventario", "inventario")):
+        par("   " + t, r["por_tipo"].get(k, 0))
+    if cfg.fecha_apertura:
+        par("Fecha de apertura", cfg.fecha_apertura, "dd/mm/yyyy")
+    if r["rec"]:
+        par("Ganancia neta desde la apertura", r["rec"]["neta"])
+        par("Recuperado de la inversión", r["rec"]["pct"] / 100, "0.0%")
+    fila += 1
+    ws.cell(row=fila, column=1, value="Por categoría").font = Font(name=F, bold=True)
+    fila += 1
+    for k, v in r["por_cat"]:
+        par(k, v)
+    ws.column_dimensions["A"].width = 42
+    ws.column_dimensions["B"].width = 18
+
+    d = wb.create_sheet("Detalle")
+    _titulo(d, "Detalle de la inversión inicial", "Cada cosa que se pagó para montar el negocio", 0)
+    cols = [("Fecha", 12), ("Concepto", 40), ("Categoría", 26), ("Tipo", 18), ("Valor", 14), ("Pagó", 20),
+            ("Proveedor", 22), ("Medio", 14), ("Nota", 30), ("Soporte", 14)]
+    _encabezado(d, [c[0] for c in cols], [c[1] for c in cols])
+    from models import TIPOS_INVERSION
+    for n_, i in enumerate(r["invs"], 4):
+        vals = [i.fecha, i.concepto, i.categoria, TIPOS_INVERSION.get(i.tipo, i.tipo), i.valor,
+                i.socio.nombre if i.socio else "Fondo común", i.proveedor or "", i.medio or "", i.nota or ""]
+        for k, v in enumerate(vals, 1):
+            c = d.cell(row=n_, column=k, value=v)
+            c.font = Font(name=F)
+        d.cell(row=n_, column=1).number_format = "dd/mm/yyyy"
+        d.cell(row=n_, column=5).number_format = PESOS
+        if i.soporte_v:
+            c = d.cell(row=n_, column=10, value="Ver soporte")
+            c.hyperlink = url_soporte.replace("/0/", f"/{i.id}/")
+            c.font = Font(name=F, color="0563C1", underline="single")
+    if ndet:
+        d.auto_filter.ref = f"A3:J{ndet + 3}"
+        c = d.cell(row=ndet + 5, column=4, value="Total")
+        c.font = Font(name=F, bold=True)
+        c = d.cell(row=ndet + 5, column=5, value=f"=SUBTOTAL(109,E4:E{ndet + 3})")
+        c.font = Font(name=F, bold=True)
+        c.number_format = PESOS
+    d.freeze_panes = "C4"
+
+    s = wb.create_sheet("Socios")
+    _titulo(s, "Lo que puso cada socio", "Aportes al fondo común + compras que pagó directamente", 0)
+    _encabezado(s, ["Socio", "Documento", "Aportes en dinero", "Compras que pagó", "Total", "Participación"],
+                [26, 16, 18, 18, 16, 14])
+    nsoc = len(r["por_socio"])
+    for n_, x in enumerate(r["por_socio"], 4):
+        vals = [x["socio"].nombre, x["socio"].documento or "", x["aportes"], x["pagos"], f"=C{n_}+D{n_}",
+                f"=IF(SUM($E$4:$E${nsoc + 3})=0,0,E{n_}/SUM($E$4:$E${nsoc + 3}))"]
+        for k, v in enumerate(vals, 1):
+            c = s.cell(row=n_, column=k, value=v)
+            c.font = Font(name=F)
+            c.number_format = PESOS if k in (3, 4, 5) else ("0.0%" if k == 6 else "General")
+    s.cell(row=nsoc + 5, column=1, value="Fondo común sin gastar").font = Font(name=F, bold=True)
+    c = s.cell(row=nsoc + 5, column=5, value=r["fondo"])
+    c.font = Font(name=F, bold=True)
+    c.number_format = PESOS
+
+    a = wb.create_sheet("Aportes")
+    _titulo(a, "Aportes en dinero al fondo común", "", 0)
+    _encabezado(a, ["Fecha", "Socio", "Valor", "Medio", "Nota"], [12, 26, 16, 16, 36])
+    for n_, x in enumerate(r["aportes"], 4):
+        for k, v in enumerate([x.fecha, x.socio.nombre, x.valor, x.medio or "", x.nota or ""], 1):
+            c = a.cell(row=n_, column=k, value=v)
+            c.font = Font(name=F)
+        a.cell(row=n_, column=1).number_format = "dd/mm/yyyy"
+        a.cell(row=n_, column=3).number_format = PESOS
+
+    buf = BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf
