@@ -1315,6 +1315,8 @@ def producto_form(pid=None):
         p.destacado = bool(f.get("destacado"))
         p.activo = bool(f.get("activo")) if not nuevo else True
         errores = []
+        if "virtual_form" in f:
+            p.volver_virtual = bool(f.get("volver_virtual"))
         quiere_virtual = bool(f.get("virtual"))
         if quiere_virtual and not p.virtual and (p.stock or 0) > TOL_STOCK:
             errores.append("Solo un repuesto sin unidades (stock 0) puede pasar a la bodega virtual.")

@@ -89,6 +89,11 @@ def salida(p, cantidad, tipo, doc, doc_tipo, doc_id, usuario_id, nota=None, perm
     costo = p.costo_promedio or 0
     p.stock = (p.stock or 0) - cantidad
     _kardex(p, tipo, -cantidad, costo, doc, doc_tipo, doc_id, usuario_id, nota)
+    if tipo == "venta" and p.volver_virtual and not p.virtual and abs(p.stock or 0) <= TOL:
+        # se vendió la última unidad: vuelve a la bodega virtual para seguir vendiéndolo sin tenerlo
+        p.virtual = True
+        p.stock = 0
+        p.costo_virtual = round(p.ultimo_costo or p.costo_promedio or p.costo_virtual or 0)
     return costo
 
 

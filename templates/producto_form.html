@@ -76,6 +76,10 @@
         {% set es_virtual = (f.get('virtual') if f else p.virtual) %}
         <label class="check"><input type="checkbox" name="virtual" value="1" id="chk-virtual" {{ 'checked' if es_virtual }} {{ 'disabled' if p.id and not p.virtual and (p.stock or 0) > 0 }}> Está en la bodega virtual</label>
         {% if p.id and not p.virtual and (p.stock or 0) > 0 %}<div class="hint">Tiene {{ p.stock|cant }} unidades reales; solo un repuesto en 0 puede volver a la bodega virtual.</div>{% endif %}
+        <input type="hidden" name="virtual_form" value="1">
+        {% set vv = (f.get('volver_virtual') if f else (p.volver_virtual if p.id else p.virtual)) %}
+        <label class="check" style="margin-top:8px"><input type="checkbox" name="volver_virtual" value="1" {{ 'checked' if vv }}> Volver a la bodega virtual cuando se venda la última unidad</label>
+        <div class="hint">Al comprarlo entra al inventario real; cuando se agote por ventas, vuelve solo a virtual con el último costo de compra y se sigue vendiendo sin tenerlo.</div>
         <div class="field" id="campo-cv" style="margin-top:10px;{{ '' if es_virtual else 'display:none' }}"><label>Costo virtual *</label><input class="input" name="costo_virtual" id="cv" value="{{ (f.get('costo_virtual') if f else ((p.costo_virtual|round|int) if p.costo_virtual else '')) or '' }}" inputmode="numeric"><div class="hint">Lo que te costaría comprarlo (precio del proveedor).</div></div>
       </div>
       {% if not p.id %}

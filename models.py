@@ -256,6 +256,8 @@ class Producto(db.Model):
     # hasta que se compre de verdad; ahí pasa al inventario real con costo promedio.
     virtual = db.Column(db.Boolean, nullable=False, default=False)
     costo_virtual = db.Column(db.Float, nullable=False, default=0)
+    # al vender la última unidad real vuelve solo a la bodega virtual (con el último costo de compra)
+    volver_virtual = db.Column(db.Boolean, nullable=False, default=False)
 
     def texto_base(self):
         """Texto de búsqueda sin las equivalencias (para filtrar las variantes de la tienda)."""
