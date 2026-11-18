@@ -105,3 +105,10 @@ body.shop { background: #f4f4f1; }
 .cod-grande { display: inline-flex; align-items: center; gap: 8px; background: #fff6cc; border: 1px solid #f2df8a; border-radius: 8px; padding: 6px 10px; margin: 2px 0 6px; font-size: 1rem; }
 .cod-grande b { font-family: var(--mono, ui-monospace, monospace); font-size: 1.15rem; letter-spacing: .05em; }
 .cod-grande .copiar { border: 0; background: #121418; color: #fff; border-radius: 6px; padding: 4px 8px; font-size: .75rem; cursor: pointer; }
+
+/* equivalencias: cada modelo de moto como variante */
+.s-modelo { display: inline-block; width: fit-content; align-self: flex-start; margin: 2px 0 4px; padding: 2px 8px; border-radius: 999px; background: #111; color: #ffd400; font-size: .78rem; font-weight: 700; }
+.s-modelo.grande { font-size: .95rem; padding: 4px 12px; margin: 2px 0 8px; }
+.s-equiv { margin: 8px 0; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.s-equiv a { padding: 3px 10px; border: 1px solid #ddd; border-radius: 999px; font-size: .85rem; text-decoration: none; color: inherit; background: #fff; }
+.s-equiv a:hover { border-color: #ffd400; background: #fff8d6; }

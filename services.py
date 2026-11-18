@@ -846,13 +846,16 @@ def crear_pedido(datos, items):
     if errores:
         raise ErrorNegocio(errores)
     pedidos = {}
+    lineas = {}          # (producto, variante) → cantidad: cada modelo de moto queda como línea aparte
     for it in items:
         try:
             pid, q = int(it["producto_id"]), int(it["cantidad"])
-        except (KeyError, TypeError, ValueError):
+            nv = int(it.get("v") or 0)
+        except (KeyError, TypeError, ValueError, AttributeError):
             raise ErrorNegocio("Hay un producto inválido en el carrito.")
         if 0 < q <= 500:
             pedidos[pid] = pedidos.get(pid, 0) + q
+            lineas[(pid, nv)] = lineas.get((pid, nv), 0) + q
     prods = bloquear(list(pedidos))
     reservado = reservado_por_producto()
     p_items = []
@@ -865,7 +868,13 @@ def crear_pedido(datos, items):
         if q > disp + TOL:
             errores.append(f"De «{p.nombre}» solo hay {cant(max(disp, 0))} disponibles.")
             continue
-        p_items.append(PedidoItem(producto=p, codigo=p.codigo, nombre=p.nombre, cantidad=q, precio=p.precio_detal))
+        cods = {n: c for n, _, c in p.variantes()}
+        for (lp, nv), lq in lineas.items():
+            if lp != pid:
+                continue
+            modelo = p.modelo_variante(nv)
+            nombre_l = f"{p.nombre} · {modelo} (cód. {cods[nv]})" if modelo else p.nombre
+            p_items.append(PedidoItem(producto=p, codigo=p.codigo, nombre=nombre_l[:200], cantidad=lq, precio=p.precio_detal))
         total += q * p.precio_detal
     if errores:
         raise ErrorNegocio(errores)

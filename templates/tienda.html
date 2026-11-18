@@ -23,7 +23,7 @@
         <select class="input" name="orden" onchange="this.form.submit()" style="padding:6px 10px"><option value="">Relevancia</option><option value="menor" {{ 'selected' if orden == 'menor' }}>Menor precio</option><option value="mayor" {{ 'selected' if orden == 'mayor' }}>Mayor precio</option></select></form>
     </div>
     {% if prods %}
-    <div class="s-grid">{% for p in prods %}{% include "_tarjeta.html" %}{% endfor %}</div>
+    <div class="s-grid">{% for p, vn, vm, vc in prods %}{% include "_tarjeta.html" %}{% endfor %}</div>
     {% else %}
     <div class="card empty">
       <h2>No encontramos ese repuesto</h2>

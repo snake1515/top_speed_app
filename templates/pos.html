@@ -204,7 +204,7 @@ function pintarResultados(lista, titulo = '') {
     return `<div class="res ${i === 0 ? 'sel' : ''}" data-i="${i}">
       <img class="thumb" src="${p.img || '{{ url_for('static', filename='sin-foto.svg') }}'}" alt="" loading="lazy">
       <div style="min-width:0"><div class="nm">${esc(p.nombre)}</div>
-        <div class="meta">${p.interno ? '<b class="mono">' + esc(p.interno) + '</b> · ' : ''}<span class="mono">${esc(p.codigo)}</span>${p.marca ? ' · ' + esc(p.marca) : ''}${p.ubicacion ? ' · 📍' + esc(p.ubicacion) : ''}${p.compat ? ' · 🏍 ' + esc(p.compat) : ''}</div></div>
+        <div class="meta">${p.interno ? '<b class="mono">' + esc(p.interno) + '</b> · ' : ''}<span class="mono">${esc(p.codigo)}</span>${p.marca ? ' · ' + esc(p.marca) : ''}${p.ubicacion ? ' · 📍' + esc(p.ubicacion) : ''}${p.compat ? ' · 🏍 ' + esc(p.compat) : ''}${p.equiv ? ' · 🔁 ' + esc(p.equiv) : ''}</div></div>
       <div><div class="pr">${COP(precioLista(p))}</div><div class="st">${st}${VE_COSTO ? ' · costo ' + COP(p.costo) : ''}</div></div></div>`;
   }).join('') : ($('buscar').value.trim() ? '<p class="empty">Sin resultados. Revisa el código o busca por otra palabra.</p>'
     : '<p class="empty">Escribe el código, el nombre del repuesto o la moto, o pasa el lector de código de barras.<br><small>Marca repuestos como «Destacado» para verlos aquí siempre.</small></p>'));

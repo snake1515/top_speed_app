@@ -34,6 +34,10 @@
         </div>
         <div class="field"><label>Compatible con (motos)</label><input class="input" name="compatibilidad" value="{{ v('compatibilidad') }}" placeholder="ej. Pulsar 180, Pulsar 200 NS, Discover 125">
           <div class="hint">Se busca por aquí en el POS y en la tienda: «pastillas ns 200» lo encuentra.</div></div>
+        <div class="field"><label>Equivalencias (modelos de moto)</label>
+          <textarea class="input" name="equivalencias" id="equiv" rows="4" placeholder="Un modelo por línea (o separados por coma):&#10;Pulsar 135&#10;Pulsar NS 200&#10;AKT 100">{{ (f.get('equivalencias') if f and f.get('equivalencias') is not none else (p.equivalencias or '')) }}</textarea>
+          <div class="hint">Cada modelo sale en la tienda como un producto aparte, con la misma foto, precio y stock, y código {{ p.codigo_interno or '0001' }}-1, -2, -3… El buscador del POS y de la tienda también los encuentra por aquí.</div>
+          <div class="note" id="equiv-prev" style="display:none;margin-top:6px"></div></div>
         <div class="form-row">
           <div class="field"><label>Ubicación en bodega</label><input class="input" name="ubicacion" value="{{ v('ubicacion') }}" placeholder="ej. E3-C2"></div>
           <div class="field"><label>Unidad</label><select class="input" name="unidad">{% for u in unidades %}<option {{ 'selected' if v('unidad', 'unidad') == u }}>{{ u }}</option>{% endfor %}</select></div>
@@ -159,6 +163,22 @@
   sugerir();
 </script>
 {% endif %}
+<script>
+(function () {
+  const ta = document.getElementById('equiv'), box = document.getElementById('equiv-prev');
+  if (!ta) return;
+  const base = {{ (p.codigo_interno or '')|tojson }} || 'nuevo';
+  const esc = s => s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  function prev() {
+    const vistos = new Set(), lista = [];
+    ta.value.split(/[\n,;]+/).map(x => x.trim().replace(/\s+/g, ' ')).forEach(x => { if (x && !vistos.has(x.toLowerCase())) { vistos.add(x.toLowerCase()); lista.push(x); } });
+    if (!lista.length) { box.style.display = 'none'; return; }
+    box.style.display = '';
+    box.innerHTML = '<b>En la tienda saldrá así:</b><br>' + lista.map((m, i) => `<span class="mono">${esc(base)}-${i + 1}</span> · ${esc(m)}`).join('<br>');
+  }
+  ta.addEventListener('input', prev); prev();
+})();
+</script>
 <style>
   .buscar-fijo { position: sticky; top: 0; z-index: 18; background: var(--bg, #f4f4f2); padding: 8px 0 10px; margin: -8px 0 10px; }
   .bf-caja { display: flex; gap: 8px; align-items: center; background: #fff; border: 2px solid #f5c400; border-radius: 12px; padding: 6px 8px; box-shadow: 0 4px 14px rgba(0,0,0,.08); }

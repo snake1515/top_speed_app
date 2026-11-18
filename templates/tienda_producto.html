@@ -1,26 +1,34 @@
 {% extends "tienda_base.html" %}
-{% block title %}{{ p.nombre }} · {{ cfg.nombre }}{% endblock %}
+{% set nom = (p.nombre ~ ' · ' ~ var_modelo) if var_modelo else p.nombre %}
+{% set cod = var_cod or p.codigo_interno %}
+{% block title %}{{ nom }} · {{ cfg.nombre }}{% endblock %}
 {% block content %}
+{% set nom = (p.nombre ~ ' · ' ~ var_modelo) if var_modelo else p.nombre %}
+{% set cod = var_cod or p.codigo_interno %}
 {% set img = url_for('img_producto', pid=p.id, v=p.imagen_v) if p.imagen_v else url_for('static', filename='sin-foto.svg') %}
 <p><a href="{{ url_for('tienda', cat=p.categoria_id) if p.categoria_id else url_for('tienda') }}">← {{ p.categoria.nombre if p.categoria else 'Volver a la tienda' }}</a></p>
 <div class="s-prod">
-  <div class="foto"><img src="{{ img }}" alt="{{ p.nombre }}"></div>
+  <div class="foto"><img src="{{ img }}" alt="{{ nom }}"></div>
   <div>
-    {% if p.codigo_interno %}<div class="cod-grande">Código <b>{{ p.codigo_interno }}</b> <button type="button" class="copiar" data-copiar="{{ p.codigo_interno }}" title="Copiar código">Copiar</button></div>{% endif %}
+    {% if cod %}<div class="cod-grande">Código <b>{{ cod }}</b> <button type="button" class="copiar" data-copiar="{{ cod }}" title="Copiar código">Copiar</button></div>{% endif %}
     <div class="mono muted" style="font-size:.8rem">Ref. fabricante {{ p.codigo }}{% if p.referencia %} · {{ p.referencia }}{% endif %}</div>
     <h1>{{ p.nombre }}</h1>
+    {% if var_modelo %}<div class="s-modelo grande">🏍 Para {{ var_modelo }}</div>{% endif %}
     {% if p.marca %}<p style="margin:4px 0"><b>Marca:</b> {{ p.marca }}</p>{% endif %}
-    {% if p.compatibilidad %}<p style="margin:4px 0"><b>🏍 Sirve para:</b> {{ p.compatibilidad }}</p>{% endif %}
+    {% if p.compatibilidad %}<p style="margin:4px 0"><b>{{ 'Medida / notas:' if p.lista_equivalencias else '🏍 Sirve para:' }}</b> {{ p.compatibilidad }}</p>{% endif %}
+    {% set otras = p.variantes() %}
+    {% if otras %}<div class="s-equiv"><b>{{ 'También sirve para:' if var_modelo else 'Sirve para:' }}</b>
+      {% for nv, mo, cv in otras %}{% if nv != var_n %}<a href="{{ url_for('tienda_producto', pid=p.id, v=nv) }}">{{ mo }}</a>{% endif %}{% endfor %}</div>{% endif %}
     <div class="precio">{{ p.precio_detal|pesos }}</div>
     {% if disp > 0 %}
       <span class="badge ok">{{ 'Disponible' if disp > 3 else 'Últimas ' ~ (disp|cant) ~ ' unidades' }}</span>
       <div class="s-qty"><label for="qty" style="margin:0">Cantidad</label><input class="input" id="qty" type="number" min="1" max="{{ disp|int }}" value="1"></div>
-      <button class="btn lg" type="button" data-qty="qty" data-add='{{ {"id": p.id, "nombre": p.nombre, "codigo": p.codigo_interno or p.codigo, "precio": p.precio_detal, "img": img, "disp": disp}|tojson|forceescape }}'>Agregar al carrito</button>
+      <button class="btn lg" type="button" data-qty="qty" data-add='{{ {"id": p.id, "v": var_n, "nombre": nom, "codigo": cod or p.codigo, "precio": p.precio_detal, "img": img, "disp": disp}|tojson|forceescape }}'>Agregar al carrito</button>
     {% else %}
       <span class="badge dark">Agotado</span>
       <p>Escríbenos y te avisamos cuando llegue.</p>
     {% endif %}
-    {% if cfg.whatsapp %}<p><a href="https://wa.me/{{ ('57' ~ cfg.whatsapp) if cfg.whatsapp|length == 10 else cfg.whatsapp }}?text={{ ('Hola, pregunto por ' ~ p.nombre ~ ' (cód. ' ~ (p.codigo_interno or p.codigo) ~ ')')|urlencode }}" target="_blank" rel="noopener">¿Dudas? Pregunta por WhatsApp si le sirve a tu moto</a></p>{% endif %}
+    {% if cfg.whatsapp %}<p><a href="https://wa.me/{{ ('57' ~ cfg.whatsapp) if cfg.whatsapp|length == 10 else cfg.whatsapp }}?text={{ ('Hola, pregunto por ' ~ nom ~ ' (cód. ' ~ (cod or p.codigo) ~ ')')|urlencode }}" target="_blank" rel="noopener">¿Dudas? Pregunta por WhatsApp si le sirve a tu moto</a></p>{% endif %}
     {% if p.descripcion %}<div style="margin-top:14px;white-space:pre-line">{{ p.descripcion }}</div>{% endif %}
     {% if medios %}<p class="muted" style="margin-top:14px">Pagos: {{ medios|map(attribute='nombre')|join(', ') }}.</p>{% endif %}
   </div>

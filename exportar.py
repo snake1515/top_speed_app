@@ -89,6 +89,7 @@ def _columnas(ve_costos):
         ("Marca", 14, None, lambda p, x: p.marca or ""),
         ("Referencia", 14, None, lambda p, x: p.referencia or ""),
         ("Compatibilidad / medida", 36, None, lambda p, x: p.compatibilidad or ""),
+        ("Equivalencias", 40, None, lambda p, x: "; ".join(p.lista_equivalencias)),
         ("Ubicación", 11, None, lambda p, x: p.ubicacion or ""),
         ("Unidad", 9, None, lambda p, x: p.unidad or ""),
         ("Bodega", 10, None, lambda p, x: "Virtual" if p.virtual else "Real"),

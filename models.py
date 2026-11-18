@@ -226,6 +226,8 @@ class Producto(db.Model):
     marca = db.Column(db.String(80))           # marca del repuesto (ej. NGK, Yuasa, original Bajaj)
     referencia = db.Column(db.String(80))      # referencia del fabricante
     compatibilidad = db.Column(db.String(400))  # motos donde sirve
+    # modelos de moto equivalentes, uno por línea: en la tienda cada uno sale como variante 0001-1, 0001-2…
+    equivalencias = db.Column(db.Text)
     ubicacion = db.Column(db.String(60))       # estante / cajón
     unidad = db.Column(db.String(20), nullable=False, default="unidad")
     stock = db.Column(db.Float, nullable=False, default=0)
@@ -255,9 +257,26 @@ class Producto(db.Model):
     virtual = db.Column(db.Boolean, nullable=False, default=False)
     costo_virtual = db.Column(db.Float, nullable=False, default=0)
 
+    def texto_base(self):
+        """Texto de búsqueda sin las equivalencias (para filtrar las variantes de la tienda)."""
+        return normalizar(" ".join(str(x) for x in (self.codigo_interno, self.codigo, self.codigo_barras, self.nombre, self.marca,
+                                                    self.referencia, self.compatibilidad, self.ubicacion) if x))
+
     def actualizar_busqueda(self):
-        self.busqueda = normalizar(" ".join(str(x) for x in (self.codigo_interno, self.codigo, self.codigo_barras, self.nombre, self.marca,
-                                                             self.referencia, self.compatibilidad, self.ubicacion) if x))
+        self.busqueda = normalizar(self.texto_base() + " " + " ".join(self.lista_equivalencias))
+
+    @property
+    def lista_equivalencias(self):
+        return separar_equivalencias(self.equivalencias)
+
+    def variantes(self):
+        """[(n, modelo, código)] · código = código interno + -n (0001-1, 0001-2…)."""
+        base = self.codigo_interno or self.codigo
+        return [(i, mod, f"{base}-{i}") for i, mod in enumerate(self.lista_equivalencias, 1)]
+
+    def modelo_variante(self, n):
+        eq = self.lista_equivalencias
+        return eq[n - 1] if n and 0 < n <= len(eq) else None
 
     def precio(self, lista="detal"):
         p = {"detal": self.precio_detal, "mayor": self.precio_mayor, "taller": self.precio_taller}.get(lista)
@@ -1207,6 +1226,18 @@ Inversion.soportes = db.relationship(InversionSoporte, order_by=InversionSoporte
 @event.listens_for(Producto, "before_update")
 def _busqueda_producto(mapper, conn, p):
     p.actualizar_busqueda()
+
+
+def separar_equivalencias(texto):
+    """Modelos separados por línea, coma o punto y coma; sin repetidos (sin importar mayúsculas), en el orden escrito."""
+    import re as _re
+    vistos, out = set(), []
+    for x in _re.split(r"[\n,;]+", str(texto or "")):
+        x = " ".join(x.split())
+        if x and x.lower() not in vistos:
+            vistos.add(x.lower())
+            out.append(x[:80])
+    return out
 
 
 def config():

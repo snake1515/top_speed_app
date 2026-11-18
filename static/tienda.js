@@ -29,18 +29,22 @@
   async function refrescar() {
     if (!carrito.length) return pintar();
     try {
-      const r = await fetch(URLS.disp, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF }, body: JSON.stringify({ ids: carrito.map(i => i.id) }) });
+      const r = await fetch(URLS.disp, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF }, body: JSON.stringify({ ids: [...new Set(carrito.map(i => i.id))] }) });
       const d = await r.json();
       carrito = carrito.filter(it => d[it.id] && d[it.id].precio > 0).map(it => ({ ...it, precio: d[it.id].precio, disp: d[it.id].disp, img: d[it.id].img || it.img }));
       guardar();
     } catch (e) {}
     pintar();
   }
+  // cada variante (modelo de moto) es una línea aparte, pero el stock es del mismo repuesto
+  const llave = it => it.id + '-' + (it.v || 0);
+  const delMismo = id => carrito.filter(i => i.id === id).reduce((a, i) => a + i.cantidad, 0);
   window.agregarCarrito = function (p, cantidad = 1) {
-    const ex = carrito.find(it => it.id === p.id);
-    if (ex) ex.cantidad += cantidad; else carrito.push({ id: p.id, nombre: p.nombre, codigo: p.codigo, precio: p.precio, img: p.img, cantidad, disp: p.disp });
-    const it = carrito.find(it => it.id === p.id);
-    if (p.disp !== undefined && it.cantidad > p.disp) { it.cantidad = Math.max(p.disp, 0); toast(`Solo hay ${p.disp} disponible(s)`); }
+    const k = llave(p);
+    const ex = carrito.find(it => llave(it) === k);
+    if (ex) ex.cantidad += cantidad; else carrito.push({ id: p.id, v: p.v || 0, nombre: p.nombre, codigo: p.codigo, precio: p.precio, img: p.img, cantidad, disp: p.disp });
+    const it = carrito.find(it => llave(it) === k);
+    if (p.disp !== undefined && delMismo(p.id) > p.disp) { it.cantidad = Math.max(it.cantidad - (delMismo(p.id) - p.disp), 0); toast(`Solo hay ${p.disp} disponible(s)`); }
     else toast('Agregado al carrito ✓');
     carrito = carrito.filter(i => i.cantidad > 0);
     guardar(); pintar();
@@ -71,7 +75,7 @@
     const f = e.target, btn = $('enviar');
     btn.disabled = true; btn.textContent = 'Enviando…';
     const datos = Object.fromEntries(new FormData(f).entries());
-    datos.items = carrito.map(it => ({ producto_id: it.id, cantidad: it.cantidad }));
+    datos.items = carrito.map(it => ({ producto_id: it.id, cantidad: it.cantidad, v: it.v || 0 }));
     let j;
     try {
       const r = await fetch(URLS.pedido, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF }, body: JSON.stringify(datos) });

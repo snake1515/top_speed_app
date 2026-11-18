@@ -47,7 +47,7 @@ async function buscar(q) { return (await fetch('{{ url_for('preventa_productos')
 $('buscar').addEventListener('input', () => { clearTimeout(t); const q = $('buscar').value.trim(); if (!q) { $('resultados').innerHTML = ''; return; }
   t = setTimeout(async () => { res = await buscar(q);
     $('resultados').innerHTML = res.length ? res.map((p, i) => `<div class="res" data-i="${i}"><img class="thumb" src="${p.img || '{{ url_for('static', filename='sin-foto.svg') }}'}" alt="">
-      <div style="min-width:0"><div class="nm">${esc(p.nombre)}</div><div class="meta">${esc(p.codigo)}${p.compat ? ' · 🏍 ' + esc(p.compat) : ''}</div></div>
+      <div style="min-width:0"><div class="nm">${esc(p.nombre)}</div><div class="meta">${esc(p.codigo)}${p.compat ? ' · 🏍 ' + esc(p.compat) : ''}${p.equiv ? ' · 🔁 ' + esc(p.equiv) : ''}</div></div>
       <div><div class="pr">${COP(p.precio)}</div><div class="st ${p.disp <= 0 ? 'neg' : 'muted'}">${p.disp <= 0 ? 'Agotado' : (p.virtual ? '<span class="badge virtual">Virtual</span>' : 'Disp. ' + NUM(p.disp))}</div></div></div>`).join('') : '<p class="empty">Sin resultados.</p>'; }, 200); });
 $('resultados').addEventListener('click', e => { const el = e.target.closest('.res'); if (!el) return; const p = res[el.dataset.i];
   if (p.disp <= 0) { alert('Ese repuesto está agotado.'); return; }

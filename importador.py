@@ -14,7 +14,7 @@ import unicodedata
 
 from sqlalchemy.exc import IntegrityError
 
-from models import CargaLote, CargaMasiva, Categoria, Config, Producto, config, db, formato_codigo_interno, letra_lote, siguiente
+from models import CargaLote, CargaMasiva, Categoria, Config, Producto, config, db, formato_codigo_interno, letra_lote, separar_equivalencias, siguiente
 from services import ErrorNegocio, entrada
 
 COLUMNAS = [
@@ -25,6 +25,7 @@ COLUMNAS = [
     ("marca", "Marca", "Marca del repuesto"),
     ("referencia", "Referencia fabricante", ""),
     ("compatibilidad", "Compatible con", "Motos donde sirve, separadas por coma"),
+    ("equivalencias", "Equivalencias", "Modelos de moto separados por coma o punto y coma; cada uno sale en la tienda como variante 0001-1, 0001-2…"),
     ("ubicacion", "Ubicación", "Estante o cajón"),
     ("codigo_barras", "Código de barras", ""),
     ("unidad", "Unidad", "unidad, par, juego, kit, litro…"),
@@ -56,7 +57,7 @@ def plantilla():
             c.comment = Comment(COLUMNAS[i][2], "Moto Speed")
         ws.column_dimensions[c.column_letter].width = 20
     ws.append(["", "EJEMPLO-001", "Kit de arrastre 428 (borrar esta fila)", "Transmisión (kit de arrastre)", "Riffel",
-               "KA-428", "Boxer 100, CT 100", "E2-C3", "", "kit", 3, 85000, 129000, 115000, 120000, 2, 0, "SI", "NO"])
+               "KA-428", "Boxer 100, CT 100", "Boxer 100, CT 100, Platino 100", "E2-C3", "", "kit", 3, 85000, 129000, 115000, 120000, 2, 0, "SI", "NO"])
     ws.freeze_panes = "A2"
     buf = BytesIO()
     wb.save(buf)
@@ -99,6 +100,7 @@ ALIAS = {
     "categoria": ["categoria", "grupo", "linea"],
     "marca": ["marca"],
     "referencia": ["referencia", "referencia_fabricante", "ref", "prorefe"],
+    "equivalencias": ["equivalencias", "equivalencia", "modelos", "modelos_compatibles"],
     "compatibilidad": ["compatibilidad", "compatible_con", "aplica_para", "motos", "compatibilidad_medida"],
     "ubicacion": ["ubicacion", "proubica", "estante"],
     "codigo_barras": ["codigo_barras", "codigo_de_barras", "barras", "ean", "procodbar"],
@@ -158,7 +160,7 @@ def normalizar_fila(fila):
 def plantilla_csv():
     enc = [c[0] for c in COLUMNAS]
     ej = ["", "EJEMPLO-001", "Kit de arrastre 428 (borrar esta fila)", "Transmisión (kit de arrastre)", "Riffel",
-          "KA-428", "Boxer 100, CT 100", "E2-C3", "", "kit", "3", "85000", "129000", "115000", "120000", "2", "0",
+          "KA-428", "Boxer 100, CT 100", "Boxer 100, CT 100, Platino 100", "E2-C3", "", "kit", "3", "85000", "129000", "115000", "120000", "2", "0",
           "SI", "NO"]
     texto = ";".join(enc) + "\r\n" + ";".join(f'"{x}"' if "," in x or ";" in x else x for x in ej) + "\r\n"
     return ("\ufeff" + texto).encode("utf-8")
@@ -258,6 +260,9 @@ def _validar(d, existe):
              "activo": d.get("activo", "").strip().upper(),
              "codigo_interno": d.get("codigo_interno", "").strip().removesuffix(".0")[:20],
              "auto": bool(d.get("_auto"))}
+    if d.get("equivalencias", "").strip():   # vacía = se dejan las que ya tiene; un guion las quita
+        eq = d["equivalencias"].strip()
+        datos["texto"]["equivalencias"] = None if eq in ("-", "—") else ("\n".join(separar_equivalencias(eq)) or None)
     if datos["texto"].get("unidad"):
         datos["texto"]["unidad"] = datos["texto"]["unidad"].lower()
     return datos, None

@@ -25,7 +25,7 @@ import exportar
 import importador
 import nomina as nom
 import reportes as rpt
-from models import (CATEGORIAS_CAJA_MENOR, asignar_codigo_interno, leido_por, marcar_leido, mensajes_de, mensajes_sin_leer, normalizar, DIAS, RESULTADOS_VISITA, Ruta, Visita, CargaMasiva, migrar, CATEGORIAS_GASTO, LISTAS_PRECIO, MOTIVOS_AJUSTE, ROLES, TIPOS_MEDIO, TIPOS_MOV,
+from models import (CATEGORIAS_CAJA_MENOR, separar_equivalencias, asignar_codigo_interno, leido_por, marcar_leido, mensajes_de, mensajes_sin_leer, normalizar, DIAS, RESULTADOS_VISITA, Ruta, Visita, CargaMasiva, migrar, CATEGORIAS_GASTO, LISTAS_PRECIO, MOTIVOS_AJUSTE, ROLES, TIPOS_MEDIO, TIPOS_MOV,
                     TIPOS_PAGO_EMP, UNIDADES, Ajuste, Categoria, Cliente, Compra, Cotizacion,
                     AporteSocio, CATEGORIAS_INVERSION, GastoFijo, Inversion, InversionPago, InversionSoporte, Socio, TIPOS_INVERSION,
                     Empleado, Gasto, MedioPago, Mensaje, MovCaja, Movimiento, PagoNomina, Pedido, Producto,
@@ -465,6 +465,7 @@ def panel():
 def producto_json(p, reservado=None, ver_costo=False):
     d = {"id": p.id, "codigo": p.codigo, "interno": p.codigo_interno or "", "barras": p.codigo_barras or "", "nombre": p.nombre,
          "marca": p.marca or "", "compat": p.compatibilidad or "", "ubicacion": p.ubicacion or "",
+         "equiv": ", ".join(p.lista_equivalencias),
          "unidad": p.unidad, "stock": p.stock, "reservado": (reservado or {}).get(p.id, 0), "virtual": bool(p.virtual),
          "detal": p.precio_detal, "mayor": p.precio_mayor or p.precio_detal, "taller": p.precio_taller or p.precio_detal,
          "iva": p.iva_pct, "img": url_for("img_producto", pid=p.id, v=p.imagen_v) if p.imagen_v else ""}
@@ -1293,6 +1294,8 @@ def producto_form(pid=None):
         p.nombre = (f.get("nombre") or "").strip()[:200]
         p.codigo_barras = (f.get("codigo_barras") or "").strip()[:60] or None
         p.categoria_id = int(f.get("categoria_id")) if (f.get("categoria_id") or "").isdigit() else None
+        if "equivalencias" in f:
+            p.equivalencias = "\n".join(separar_equivalencias(f.get("equivalencias"))) or None
         for campo, largo in (("marca", 80), ("referencia", 80), ("compatibilidad", 400), ("ubicacion", 60)):
             setattr(p, campo, (f.get(campo) or "").strip()[:largo] or None)
         p.unidad = f.get("unidad") if f.get("unidad") in UNIDADES else "unidad"
@@ -2924,13 +2927,20 @@ def tienda():
         query = query.filter(hay)
     if cat:
         query = query.filter(Producto.categoria_id == cat)
+    palabras = []
     if q:
         # código interno exacto (con o sin ceros a la izquierda): directo a la ficha del repuesto
         if q.isdigit() and len(q) <= 8:
             exacto = query.filter(Producto.codigo_interno.in_({q, q.zfill(4)})).all()
             if len(exacto) == 1:
                 return redirect(url_for("tienda_producto", pid=exacto[0].id))
-        for palabra in normalizar(q).split()[:6]:
+        mv = re.fullmatch(r"(\d{1,8})\s*-\s*(\d{1,3})", q)   # código de variante: 0001-2
+        if mv:
+            exacto = query.filter(Producto.codigo_interno.in_({mv.group(1), mv.group(1).zfill(4)})).all()
+            if len(exacto) == 1 and exacto[0].modelo_variante(int(mv.group(2))):
+                return redirect(url_for("tienda_producto", pid=exacto[0].id, v=int(mv.group(2))))
+        palabras = normalizar(q).split()[:6]
+        for palabra in palabras:
             query = query.filter(Producto.busqueda.like(f"%{palabra}%"))
     orden = request.args.get("orden", "")
     if orden == "menor":
@@ -2939,9 +2949,26 @@ def tienda():
         query = query.order_by(Producto.precio_detal.desc())
     else:
         query = query.order_by(Producto.destacado.desc(), hay.desc(), Producto.imagen_v.desc(), Producto.nombre)
-    total = query.count()
+    # cada equivalencia (modelo de moto) sale como una tarjeta propia: mismo repuesto, misma foto y stock
+    items = []
+    for p in query.all():
+        variantes = p.variantes()
+        if not variantes:
+            items.append((p, 0, None, None))
+            continue
+        base = p.texto_base() if palabras else ""
+        for nv, modelo, cod in variantes:
+            if palabras:
+                texto = base + " " + normalizar(modelo)
+                if not all(w in texto for w in palabras):
+                    continue
+            items.append((p, nv, modelo, cod))
+    if palabras and not items:   # la búsqueda pegaba en varias equivalencias a la vez: se muestran todas
+        for p in query.all():
+            items += [(p, nv, mo, cod) for nv, mo, cod in p.variantes()] or [(p, 0, None, None)]
+    total = len(items)
     por_pagina = 24
-    prods = query.offset((pagina - 1) * por_pagina).limit(por_pagina).all()
+    prods = items[(pagina - 1) * por_pagina: pagina * por_pagina]
     reservado = reservado_por_producto()
     cats = (db.session.query(Categoria, db.func.count(Producto.id)).join(Producto, Producto.categoria_id == Categoria.id)
             .filter(Producto.activo.is_(True), Producto.en_tienda.is_(True)).group_by(Categoria.id)
@@ -2952,11 +2979,14 @@ def tienda():
 
 
 @app.route("/tienda/p/<int:pid>")
-def tienda_producto(pid):
+@app.route("/tienda/p/<int:pid>/<int:v>")
+def tienda_producto(pid, v=0):
     cfg = config()
     p = db.session.get(Producto, pid)
     if not cfg.tienda_activa or p is None or not p.activo or not p.en_tienda:
         abort(404)
+    if v and not p.modelo_variante(v):
+        return redirect(url_for("tienda_producto", pid=pid))
     reservado = reservado_por_producto()
     disp = p.disponible(reservado)
     relacionados = (Producto.query.filter(Producto.activo.is_(True), Producto.en_tienda.is_(True), Producto.id != p.id,
@@ -2964,6 +2994,7 @@ def tienda_producto(pid):
                                           db.or_(Producto.stock > 0, Producto.virtual.is_(True)))
                     .order_by(Producto.imagen_v.desc()).limit(8).all()) if p.categoria_id else []
     return render_template("tienda_producto.html", p=p, disp=disp, relacionados=relacionados, reservado=reservado,
+                           var_n=v, var_modelo=p.modelo_variante(v), var_cod=dict((n, c) for n, _, c in p.variantes()).get(v),
                            medios=MedioPago.query.filter_by(activo=True).order_by(MedioPago.orden).all())
 
 
