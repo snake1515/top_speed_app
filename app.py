@@ -529,7 +529,7 @@ def pos():
 @app.route("/api/productos")
 @login_required
 def api_productos():
-    res = buscar_productos(request.args.get("q"), 30)
+    res = buscar_productos(request.args.get("q"), 30, solo_activos=not request.args.get("todos"))
     reservado = reservado_por_producto()
     return jsonify([producto_json(p, reservado, current_user.ve_costos) for p in res])
 
@@ -1377,9 +1377,11 @@ def producto_form(pid=None):
                 errores_flash(e)
                 return redirect(url_for("producto_form"))
         db.session.commit()
-        flash("Repuesto guardado.", "ok")
+        flash(f"Repuesto guardado: {p.codigo} · {p.nombre}. Busca arriba el siguiente para editarlo.", "ok")
         if f.get("otro"):
             return redirect(url_for("producto_form"))
+        if not nuevo:                 # al editar se queda en la ficha con el buscador arriba
+            return redirect(url_for("producto_form", pid=p.id, guardado=1))
         return redirect(url_for("producto_detalle", pid=p.id))
     return render_template("producto_form.html", p=p, categorias=Categoria.query.order_by(Categoria.nombre).all(),
                            unidades=UNIDADES, f={})

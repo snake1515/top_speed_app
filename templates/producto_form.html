@@ -3,6 +3,15 @@
 {% macro money(campo) %}{% set x = f.get(campo) if f and f.get(campo) is not none else p[campo] %}{{ (x|round|int) if x is number and x else (x or '') }}{% endmacro %}
 {% block title %}{{ 'Editar' if p.id else 'Nuevo' }} repuesto{% endblock %}
 {% block content %}
+<div class="buscar-fijo no-print">
+  <div class="bf-caja">
+    <span class="bf-lupa">🔍</span>
+    <input class="input" id="bf-q" type="search" autocomplete="off" placeholder="Buscar otro repuesto para editar: nombre, código, marca, moto…">
+    {% if p.id %}<a class="btn sm sec" href="{{ url_for('producto_detalle', pid=p.id) }}">Ver ficha</a>{% endif %}
+    <a class="btn sm sec" href="{{ url_for('productos') }}">Inventario</a>
+  </div>
+  <div class="bf-res" id="bf-res" hidden></div>
+</div>
 <div class="page-head"><div><h1>{{ p.nombre if p.id else 'Nuevo repuesto' }}</h1>{% if p.id %}<p>Stock {{ p.stock|cant }} · costo promedio {{ p.costo_promedio|pesos }} (cambian solo con compras, ventas y ajustes)</p>{% endif %}</div></div>
 <form method="post" enctype="multipart/form-data">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -150,4 +159,62 @@
   sugerir();
 </script>
 {% endif %}
+<style>
+  .buscar-fijo { position: sticky; top: 0; z-index: 18; background: var(--bg, #f4f4f2); padding: 8px 0 10px; margin: -8px 0 10px; }
+  .bf-caja { display: flex; gap: 8px; align-items: center; background: #fff; border: 2px solid #f5c400; border-radius: 12px; padding: 6px 8px; box-shadow: 0 4px 14px rgba(0,0,0,.08); }
+  .bf-caja .input { border: 0; box-shadow: none; flex: 1; min-width: 0; font-size: 1rem; }
+  .bf-lupa { padding-left: 4px; }
+  .bf-res { position: absolute; left: 0; right: 0; top: calc(100% - 4px); background: #fff; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,.18); max-height: 60vh; overflow: auto; }
+  .bf-it { display: flex; justify-content: space-between; gap: 10px; padding: 10px 14px; border-bottom: 1px solid #eee; cursor: pointer; color: inherit; text-decoration: none; }
+  .bf-it:hover, .bf-it.on { background: #fff7cc; }
+  .bf-it small { color: #777; }
+  .bf-it .der { text-align: right; white-space: nowrap; }
+  .bf-vacio { padding: 12px 14px; color: #777; }
+  @media (max-width: 860px) { .buscar-fijo { top: 58px; } .bf-caja .btn { display: none; } }
+</style>
+<script>
+(function () {
+  const q = document.getElementById('bf-q'), res = document.getElementById('bf-res');
+  const form = document.querySelector('form[method=post]');
+  const actual = {{ p.id or 0 }};
+  let cambios = false, t = null, items = [], sel = -1;
+  form && form.addEventListener('input', e => { if (!e.target.closest('.buscar-fijo')) cambios = true; });
+  form && form.addEventListener('submit', () => { cambios = false; });
+  const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+  const cop = v => '$ ' + Math.round(v || 0).toLocaleString('es-CO');
+  const ir = id => {
+    if (cambios && !confirm('Tienes cambios sin guardar en este repuesto. ¿Salir sin guardarlos?')) return;
+    cambios = false; location.href = '/productos/' + id + '/editar';
+  };
+  function pintar() {
+    if (!items.length) { res.innerHTML = '<div class="bf-vacio">No encontré repuestos con esa búsqueda.</div>'; res.hidden = false; return; }
+    res.innerHTML = items.map((p, i) => `<a class="bf-it${i === sel ? ' on' : ''}" data-id="${p.id}" href="/productos/${p.id}/editar">
+      <span><b>${esc(p.nombre)}</b>${p.id === actual ? ' <small>(este)</small>' : ''}<br><small>${esc(p.interno ? '#' + p.interno + ' · ' : '')}${esc(p.codigo)}${p.marca ? ' · ' + esc(p.marca) : ''}</small></span>
+      <span class="der">${cop(p.detal)}<br><small>Stock ${p.virtual ? 'virtual' : (+p.stock).toLocaleString('es-CO')}</small></span></a>`).join('');
+    res.hidden = false;
+  }
+  q.addEventListener('input', () => {
+    clearTimeout(t);
+    const txt = q.value.trim();
+    if (txt.length < 2) { res.hidden = true; items = []; return; }
+    t = setTimeout(async () => {
+      try {
+        const r = await fetch('/api/productos?todos=1&q=' + encodeURIComponent(txt));
+        if (txt !== q.value.trim()) return;
+        items = await r.json(); sel = items.length ? 0 : -1; pintar();
+      } catch (e) {}
+    }, 220);
+  });
+  q.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown' && items.length) { sel = Math.min(sel + 1, items.length - 1); pintar(); e.preventDefault(); }
+    else if (e.key === 'ArrowUp' && items.length) { sel = Math.max(sel - 1, 0); pintar(); e.preventDefault(); }
+    else if (e.key === 'Enter') { e.preventDefault(); if (items[sel]) ir(items[sel].id); }
+    else if (e.key === 'Escape') { res.hidden = true; }
+  });
+  res.addEventListener('click', e => { const a = e.target.closest('.bf-it'); if (a) { e.preventDefault(); ir(+a.dataset.id); } });
+  document.addEventListener('click', e => { if (!e.target.closest('.buscar-fijo')) res.hidden = true; });
+  q.addEventListener('focus', () => { if (items.length) res.hidden = false; });
+  if (/[?&]guardado=1/.test(location.search)) { q.focus(); history.replaceState(null, '', location.pathname); }
+})();
+</script>
 {% endblock %}
