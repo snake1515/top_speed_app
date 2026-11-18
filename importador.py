@@ -322,8 +322,9 @@ def _aplicar(datos, p, cats, carga, doc_lote, usuario_id, internos=None):
         p.iva_pct = n["iva"]
     if datos["en_tienda"]:
         p.en_tienda = datos["en_tienda"] not in ("NO", "N", "0", "FALSE", "FALSO")
-    if datos["descripcion"] is not None:   # la columna existe: lo que diga (vacía = sin descripción)
-        p.descripcion = datos["descripcion"] or None
+    # descripción vacía = se deja la que ya tiene · un guion "-" = quitar la descripción
+    if datos["descripcion"]:
+        p.descripcion = None if datos["descripcion"].strip() in ("-", "—") else datos["descripcion"]
     if datos["activo"]:
         p.activo = datos["activo"] not in ("NO", "N", "0", "FALSE", "FALSO")
     if datos["virtual"] is not None:
