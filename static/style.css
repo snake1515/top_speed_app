@@ -229,6 +229,8 @@ details summary { cursor: pointer; font-weight: 700; }
 .pay-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; }
 .pay-btn { padding: 10px 6px; border: 2px solid var(--line); border-radius: 9px; background: #fff; cursor: pointer; font-weight: 700; font-size: .9rem; }
 .pay-btn.on { border-color: var(--ink); background: var(--accent); color: var(--accent-ink); }
+.pay-btn.credito { border-style: dashed; }
+.pay-btn.credito.on { border-style: solid; background: #111; color: #ffd400; }
 .pay-line { display: grid; grid-template-columns: 1fr 130px 28px; gap: 6px; align-items: center; margin-top: 6px; }
 .quick-cash { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 6px; }
 .quick-cash button { flex: 1; padding: 6px 4px; border-radius: 6px; border: 1px solid var(--line); background: #f6f6f3; cursor: pointer; font-weight: 600; font-size: .82rem; }
