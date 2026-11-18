@@ -1325,8 +1325,13 @@ def semilla():
 
 
 def migrar():
-    """Agrega columnas nuevas a tablas que ya existían (create_all no lo hace)."""
+    """Agrega columnas nuevas a tablas que ya existían (create_all no lo hace).
+    En Postgres cada ALTER espera como máximo unos segundos el bloqueo de la tabla (la versión anterior
+    de la app puede seguir usándola durante el deploy) y reintenta, para no quedarse colgado al arrancar."""
+    import time
     from sqlalchemy import inspect, text
+    from sqlalchemy.exc import DBAPIError
+    pg = db.engine.dialect.name == "postgresql"
     insp = inspect(db.engine)
     tablas = set(insp.get_table_names())
     for tabla in db.metadata.sorted_tables:
@@ -1337,8 +1342,23 @@ def migrar():
             if col.name in existentes:
                 continue
             tipo = col.type.compile(dialect=db.engine.dialect)
-            db.session.execute(text(f'ALTER TABLE {tabla.name} ADD COLUMN {col.name} {tipo}'))
             defecto = col.default.arg if col.default is not None and not callable(col.default.arg) else None
-            if defecto is not None:
-                db.session.execute(text(f"UPDATE {tabla.name} SET {col.name} = :v"), {"v": defecto})
+            for intento in range(1, 13):
+                try:
+                    if pg:
+                        db.session.execute(text("SET LOCAL lock_timeout = '8s'"))
+                        db.session.execute(text(f'ALTER TABLE {tabla.name} ADD COLUMN IF NOT EXISTS {col.name} {tipo}'))
+                    else:
+                        db.session.execute(text(f'ALTER TABLE {tabla.name} ADD COLUMN {col.name} {tipo}'))
+                    if defecto is not None:
+                        db.session.execute(text(f"UPDATE {tabla.name} SET {col.name} = :v"), {"v": defecto})
+                    db.session.commit()
+                    print(f"migrar: columna {tabla.name}.{col.name} agregada", flush=True)
+                    break
+                except DBAPIError as e:
+                    db.session.rollback()
+                    if not pg or intento == 12:
+                        raise
+                    print(f"migrar: {tabla.name} ocupada ({e.orig.__class__.__name__}), reintento {intento}", flush=True)
+                    time.sleep(3)
     db.session.commit()
