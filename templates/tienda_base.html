@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=STATIC_V) }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='tienda.css', v=STATIC_V) }}">
   <link rel="icon" href="{{ url_for('logo', v=cfg.logo_v, f='c') if cfg.logo_v else url_for('static', filename='favicon-64.png', v=STATIC_V) }}">
-  <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='apple-touch-icon.png', v='la9b') }}">
   <meta name="theme-color" content="#0b0a07">
   <meta name="csrf" content="{{ csrf_token() }}">
 </head>
