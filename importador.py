@@ -152,7 +152,9 @@ def normalizar_fila(fila):
             d[campo] = v
     if d.pop("_suma", False) and not d.get("stock"):
         d["stock"] = str(extra)
-    if not d.get("nombre") and d.get("descripcion"):   # archivos que solo traen «descripción» (ej. Stocka)
+    # archivos SIN columna de nombre que solo traen «descripción» (ej. Stocka): la descripción es el nombre.
+    # Si la columna Nombre existe pero viene vacía, se deja el nombre que ya tiene el repuesto.
+    if "nombre" not in d and d.get("descripcion"):
         d["nombre"] = d.pop("descripcion")
     return d
 
