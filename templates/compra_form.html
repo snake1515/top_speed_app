@@ -25,6 +25,7 @@
           <div id="m-credito" style="display:none;margin-top:10px"><div class="field"><label>Plazo (días)</label><input class="input" name="plazo" value="30" inputmode="numeric"></div></div>
         </fieldset>
         <div class="field"><input class="input" name="nota" placeholder="Nota (opcional)"></div>
+        {% if current_user.ve_costos %}<label class="check" style="display:flex;gap:6px;align-items:flex-start;margin:6px 0 10px"><input type="checkbox" name="actualizar_precios" value="1"> <span>Subir el precio detal con la regla de ganancia de cada repuesto (% general, % propio o valor fijo). Nunca baja un precio.</span></label>{% endif %}
         <button class="btn lg" style="width:100%">Registrar compra</button>
       </div>
     </div>

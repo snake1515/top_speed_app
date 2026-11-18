@@ -239,6 +239,9 @@ class Producto(db.Model):
     descripcion = db.Column(db.Text)
     en_tienda = db.Column(db.Boolean, nullable=False, default=True)
     destacado = db.Column(db.Boolean, nullable=False, default=False)
+    # regla de ganancia del precio detal: vacío = % general de Configuración · "pct" = % propio · "valor" = pesos fijos
+    ganancia_tipo = db.Column(db.String(5))
+    ganancia_valor = db.Column(db.Float)
     activo = db.Column(db.Boolean, nullable=False, default=True)
     imagen = deferred(db.Column(db.LargeBinary))
     imagen_mime = db.Column(db.String(40))
@@ -277,6 +280,29 @@ class Producto(db.Model):
     @property
     def bajo_minimo(self):
         return not self.virtual and (self.stock_minimo or 0) > 0 and (self.stock or 0) <= self.stock_minimo
+
+    def precio_por_regla(self, cfg, costo=None):
+        """Precio detal que sale de la regla de ganancia de este repuesto (con IVA si aplica), o None sin costo.
+        % → costo × (1 + %) redondeado hacia arriba a 100 · valor fijo → costo + pesos, redondeado a 100."""
+        c = self.costo_ref if costo is None else costo
+        if not c or c <= 0:
+            return None
+        if self.ganancia_tipo == "valor" and (self.ganancia_valor or 0) > 0:
+            base = c + self.ganancia_valor
+        else:
+            pct_ = self.ganancia_valor if self.ganancia_tipo == "pct" and self.ganancia_valor is not None else (cfg.margen_detal or 0)
+            base = c * (1 + pct_ / 100)
+        base *= 1 + (self.iva_pct or 0) / 100
+        paso = 100 if base < 20000 else 500
+        return int(-(-round(base) // paso) * paso)
+
+    @property
+    def regla_txt(self):
+        if self.ganancia_tipo == "valor" and self.ganancia_valor:
+            return f"+ ${self.ganancia_valor:,.0f}".replace(",", ".")
+        if self.ganancia_tipo == "pct" and self.ganancia_valor is not None:
+            return f"{self.ganancia_valor:g} %"
+        return None
 
     @property
     def margen_detal(self):

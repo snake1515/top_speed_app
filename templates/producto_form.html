@@ -42,6 +42,18 @@
           {% if cfg.cobra_iva %}<div class="field"><label>IVA %</label><input class="input" name="iva_pct" value="{{ v('iva_pct', cfg.iva_defecto)|replace('.0','') }}"></div>{% endif %}
         </div>
         {% if current_user.ve_costos %}
+        {% set gt = p.ganancia_tipo or '' %}
+        <div class="form-row c4" style="margin-top:6px">
+          <div class="field"><label>Ganancia del precio detal</label>
+            <select class="input" name="ganancia_tipo" id="gtipo">
+              <option value="" {{ 'selected' if not gt }}>% general ({{ (cfg.margen_detal or 0)|round(1)|replace('.0','') }} %)</option>
+              <option value="pct" {{ 'selected' if gt == 'pct' }}>% propio de este repuesto</option>
+              <option value="valor" {{ 'selected' if gt == 'valor' }}>Valor fijo en pesos</option>
+            </select>
+            <div class="hint">Para repuestos baratos usa un valor fijo: costo $800 + $1.200 = precio $2.000.</div></div>
+          <div class="field" id="campo-gv" style="{{ '' if gt else 'display:none' }}"><label id="lbl-gv">{{ 'Pesos que se le ganan' if gt == 'valor' else 'Porcentaje' }}</label>
+            <input class="input" name="ganancia_valor" id="gvalor" inputmode="numeric" value="{% if p.ganancia_valor is not none %}{{ '{:,.0f}'.format(p.ganancia_valor).replace(',', '.') if gt == 'valor' else (p.ganancia_valor|string).replace('.0','') }}{% endif %}"></div>
+        </div>
         <div class="note" id="sug" style="display:none"></div>
         {% endif %}
       </div>
@@ -107,14 +119,34 @@
     const c = (virt ? num(document.getElementById('cv')?.value) : num(document.getElementById('ci')?.value)) || costoActual;
     const box = document.getElementById('sug');
     if (!c) { box.style.display = 'none'; return; }
-    const r = v => Math.ceil(v / 500) * 500;
-    const s = { pd: r(c * (1 + M.pd / 100)), pm: r(c * (1 + M.pm / 100)), pt: r(c * (1 + M.pt / 100)) };
+    const r = v => { const p = v < 20000 ? 100 : 500; return Math.ceil(Math.round(v) / p) * p; };
+    const gt = document.getElementById('gtipo')?.value || '';
+    const gv = gt === 'valor' ? num(document.getElementById('gvalor')?.value) : parseFloat(String(document.getElementById('gvalor')?.value || '').replace(',', '.')) || 0;
+    let det = c * (1 + M.pd / 100), regla = `${M.pd} % general`;
+    if (gt === 'pct' && gv > 0) { det = c * (1 + gv / 100); regla = `${gv} % propio`; }
+    if (gt === 'valor' && gv > 0) { det = c + gv; regla = `+ ${COP(gv)} fijos`; }
+    const s = { pd: r(det), pm: r(c * (1 + M.pm / 100)), pt: r(c * (1 + M.pt / 100)) };
+    if (s.pm > s.pd) s.pm = s.pd;
+    if (s.pt > s.pd) s.pt = s.pd;
     box.style.display = '';
-    box.innerHTML = `Sugerido con tus márgenes (costo ${COP(c)}): detal <b>${COP(s.pd)}</b> · mayor <b>${COP(s.pm)}</b> · taller <b>${COP(s.pt)}</b> <button type="button" class="btn sm sec" id="usar-sug">Usar</button>`;
+    box.innerHTML = `Sugerido (costo ${COP(c)}, detal ${regla}): detal <b>${COP(s.pd)}</b> · mayor <b>${COP(s.pm)}</b> · taller <b>${COP(s.pt)}</b> <button type="button" class="btn sm sec" id="usar-sug">Usar</button>`;
     document.getElementById('usar-sug').onclick = () => { for (const k in s) document.getElementById(k).value = s[k].toLocaleString('es-CO'); };
   }
   document.getElementById('ci')?.addEventListener('input', sugerir);
   document.getElementById('cv')?.addEventListener('input', sugerir);
+  document.getElementById('gvalor')?.addEventListener('input', e => {
+    const g = e.target;
+    if (document.getElementById('gtipo').value === 'valor') { const d = g.value.replace(/\D/g, ''); g.value = d ? Number(d).toLocaleString('es-CO') : ''; }
+    sugerir();
+  });
+  document.getElementById('gtipo')?.addEventListener('change', () => {
+    const t = document.getElementById('gtipo').value, g = document.getElementById('gvalor');
+    document.getElementById('campo-gv').style.display = t ? '' : 'none';
+    document.getElementById('lbl-gv').textContent = t === 'valor' ? 'Pesos que se le ganan' : 'Porcentaje';
+    if (t === 'valor') g.setAttribute('data-pesos', ''); else g.removeAttribute('data-pesos');
+    g.value = ''; sugerir();
+  });
+  if (document.getElementById('gtipo')?.value === 'valor') document.getElementById('gvalor').setAttribute('data-pesos', '');
   sugerir();
 </script>
 {% endif %}

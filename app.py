@@ -1301,6 +1301,12 @@ def producto_form(pid=None):
         p.precio_detal = max(round(n(f.get("precio_detal"))), 0)
         p.precio_mayor = max(round(n(f.get("precio_mayor"))), 0)
         p.precio_taller = max(round(n(f.get("precio_taller"))), 0)
+        gt = f.get("ganancia_tipo") or ""
+        if "ganancia_tipo" in f:
+            if gt in ("pct", "valor") and n(f.get("ganancia_valor")) > 0:
+                p.ganancia_tipo, p.ganancia_valor = gt, (pct(f.get("ganancia_valor")) if gt == "pct" else round(n(f.get("ganancia_valor"))))
+            else:
+                p.ganancia_tipo, p.ganancia_valor = None, None
         p.iva_pct = pct(f.get("iva_pct")) if cfg.cobra_iva else (p.iva_pct or 0)
         p.en_tienda = bool(f.get("en_tienda"))
         p.destacado = bool(f.get("destacado"))
@@ -1682,9 +1688,13 @@ def compra_nueva():
             c = registrar_compra(current_user, prov, items_desde_form(), f.get("factura"), f.get("nota"),
                                  fecha_form(f.get("fecha")),
                                  {"modo": f.get("modo"), "medio": medio, "desde_caja": bool(f.get("desde_caja"))},
-                                 int(n(f.get("plazo"), 30)))
+                                 int(n(f.get("plazo"), 30)), actualizar_precios=bool(f.get("actualizar_precios")))
+            cambios = list(c.precios_cambiados)
             db.session.commit()
             flash(f"Compra C-{c.numero:05d} registrada: el stock y el costo promedio quedaron actualizados.", "ok")
+            if cambios:
+                flash("Precio detal actualizado: " + " · ".join(f"{p.codigo} {p.nombre[:30]} {pesos(a)} → {pesos(b)}" for p, a, b in cambios[:15])
+                      + (f" y {len(cambios) - 15} más" if len(cambios) > 15 else ""), "ok")
             return redirect(url_for("compra_detalle", cid=c.id))
         except ErrorNegocio as e:
             db.session.rollback()

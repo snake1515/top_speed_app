@@ -590,8 +590,11 @@ def devolver(venta, usuario, cantidades, medio, motivo):
 
 
 # ================================================================== compras
-def registrar_compra(usuario, proveedor, items, factura="", nota="", fecha=None, pago=None, plazo_dias=0):
-    """items: [{producto_id, cantidad, costo}] · pago: {modo: contado|credito, medio, desde_caja, valor}"""
+def registrar_compra(usuario, proveedor, items, factura="", nota="", fecha=None, pago=None, plazo_dias=0,
+                     actualizar_precios=False):
+    """items: [{producto_id, cantidad, costo}] · pago: {modo: contado|credito, medio, desde_caja, valor}
+    actualizar_precios: sube el precio detal con la regla de ganancia de cada repuesto (nunca lo baja).
+    Deja en c.precios_cambiados la lista [(producto, antes, después)]."""
     errores = []
     limpios = []
     for it in items or []:
@@ -617,6 +620,7 @@ def registrar_compra(usuario, proveedor, items, factura="", nota="", fecha=None,
     db.session.flush()
     doc = f"Compra C-{c.numero:05d}" + (f" · Fact. {c.factura}" if c.factura else "")
     total = 0.0
+    cambiados = []
     for pid, q, cu in limpios:
         p = prods.get(pid)
         if p is None:
@@ -625,6 +629,13 @@ def registrar_compra(usuario, proveedor, items, factura="", nota="", fecha=None,
         c.items.append(CompraItem(producto=p, cantidad=q, costo_unitario=cu))
         total += q * cu
         surtir_pendientes(p, usuario.id)
+        if actualizar_precios:
+            from models import config as _cfg
+            nuevo = p.precio_por_regla(_cfg(), costo=cu)
+            if nuevo and nuevo > (p.precio_detal or 0):
+                cambiados.append((p, p.precio_detal or 0, nuevo))
+                p.precio_detal = nuevo
+    c.precios_cambiados = cambiados
     c.total = round(total)
     pago = pago or {}
     if pago.get("modo") == "credito":
