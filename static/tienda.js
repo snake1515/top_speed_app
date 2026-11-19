@@ -60,6 +60,23 @@
     const x = e.target.closest('[data-x]');
     if (x) { carrito.splice(Number(x.dataset.x), 1); guardar(); pintar(); }
   });
+  // Compartir producto: en el celular abre el menú de compartir (WhatsApp, etc.); en PC abre WhatsApp.
+  // El mensaje termina con el enlace del producto para que WhatsApp muestre la foto, nombre y precio.
+  const compartir = async (b, e) => {
+    e.preventDefault(); e.stopPropagation();
+    const d = JSON.parse(b.dataset.compartir);
+    const esCel = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    if (navigator.share && (esCel || b.tagName === 'BUTTON')) {
+      try { await navigator.share({ title: d.titulo, text: d.texto, url: d.url }); return; }
+      catch (err) { if (err && err.name === 'AbortError') return; }
+    }
+    window.open('https://wa.me/?text=' + encodeURIComponent(d.texto + '\n' + d.url), '_blank', 'noopener');
+  };
+  document.addEventListener('click', e => { const b = e.target.closest('[data-compartir]'); if (b) compartir(b, e); }, true);
+  document.addEventListener('keydown', e => {
+    const b = e.target.closest && e.target.closest('[data-compartir]');
+    if (b && (e.key === 'Enter' || e.key === ' ')) compartir(b, e);
+  });
   document.addEventListener('click', e => {
     const b = e.target.closest('[data-add]'); if (!b) return;
     const p = JSON.parse(b.dataset.add);

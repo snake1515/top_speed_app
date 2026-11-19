@@ -5,9 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ cfg.nombre }} · {{ cfg.eslogan or 'Repuestos para moto' }}{% endblock %}</title>
   <meta name="description" content="{{ cfg.nombre }}: {{ cfg.eslogan or 'repuestos para moto' }}. {{ cfg.tienda_mensaje or '' }}">
+  {% block og %}
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="{{ cfg.nombre }}">
   <meta property="og:title" content="{{ cfg.nombre }}">
   <meta property="og:description" content="{{ cfg.eslogan or 'Repuestos para moto' }}">
   <meta property="og:image" content="{{ url_for('logo', v=cfg.logo_v, _external=True) if cfg.logo_v else url_for('static', filename='og-image.jpg', _external=True) }}">
+  {% endblock %}
   <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:ital,wght@0,600;0,700;1,700&family=Orbitron:wght@700;900&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css', v=STATIC_V) }}">

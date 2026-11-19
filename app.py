@@ -40,6 +40,10 @@ from services import (ErrorNegocio, abrir_turno, anular_ajuste, anular_compra, a
 load_dotenv()
 
 app = Flask(__name__)
+# Render atiende en https y reenvía al app en http: con esto los enlaces absolutos (vista previa de
+# WhatsApp, enlaces para compartir) salen con https y el dominio correcto.
+from werkzeug.middleware.proxy_fix import ProxyFix
+app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 app.config["SECRET_KEY"] = os.getenv("SECRET_KEY") or secrets.token_hex(32)
 db_url = (os.getenv("DATABASE_URL") or "sqlite:///topspeed.db").strip().strip('"').strip("'")
 if "[YOUR-PASSWORD]" in db_url:
@@ -432,9 +436,33 @@ def img_producto(pid):
     p = db.session.get(Producto, pid)
     if p is None or not p.imagen:
         return redirect(url_for("static", filename="sin-foto.svg"))
+    if request.args.get("s") == "og":
+        # Vista previa al compartir (WhatsApp/Facebook): JPEG cuadrado de 600 px, liviano (< 300 KB)
+        return send_file(BytesIO(imagen_vista_previa(p.id, p.imagen_v or 0, p.imagen)), mimetype="image/jpeg",
+                         max_age=2592000)
     r = send_file(BytesIO(p.imagen), mimetype=p.imagen_mime or "image/jpeg")
     r.headers["Cache-Control"] = "public, max-age=2592000"
     return r
+
+
+_VISTA_PREVIA = {}
+
+
+def imagen_vista_previa(pid, version, datos):
+    clave = (pid, version)
+    if clave not in _VISTA_PREVIA:
+        from PIL import Image, ImageOps
+        try:
+            img = ImageOps.exif_transpose(Image.open(BytesIO(datos))).convert("RGB")
+            img = ImageOps.pad(img, (600, 600), color=(255, 255, 255))
+            buf = BytesIO()
+            img.save(buf, "JPEG", quality=80, optimize=True)
+            if len(_VISTA_PREVIA) > 300:
+                _VISTA_PREVIA.clear()
+            _VISTA_PREVIA[clave] = buf.getvalue()
+        except Exception:
+            return datos
+    return _VISTA_PREVIA[clave]
 
 
 # ================================================================== login
