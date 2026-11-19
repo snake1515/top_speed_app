@@ -94,6 +94,7 @@
   .kpi .l::before { margin-right: 4px; }
   .kpi.k-ven { border-top: 4px solid var(--amar); } .kpi.k-gan { border-top: 4px solid var(--verde); }
   .kpi.k-gas { border-top: 4px solid var(--rojo); } .kpi.k-com { border-top: 4px solid #555; }
+  .kpi.k-inv { grid-column: 1 / -1; border-top: 4px solid #1f6feb; }
   header { background: linear-gradient(180deg, #000 0%, #151515 100%); }
   @media (min-width: 640px) {
     .hero { padding-right: 200px; min-height: 210px; }
@@ -153,6 +154,7 @@
     <div class="kpi k-gan"><div class="l">📈 Ganancia bruta</div><div class="v">{{ P.utilidad_bruta|pesos }}</div><div class="c">Margen {{ '%.0f'|format(P.margen) }} %</div></div>
     <div class="kpi k-gas"><div class="l">💸 Gastos</div><div class="v">{{ (P.gastos + P.nomina)|pesos }}</div><div class="c">{{ var(d.comp.gastos, True) }}</div></div>
     <div class="kpi k-com"><div class="l">📦 Compras</div><div class="v">{{ d.total_compras|pesos }}</div><div class="c">{{ d.compras|length }} compra(s)</div></div>
+    <div class="kpi k-inv"><div class="l">🏷️ Inventario hoy (al costo)</div><div class="v">{{ d.inventario.costo|pesos }}</div><div class="c">{{ d.inventario.unidades|cant }} unidades · {{ d.inventario.refs }} repuestos · a precio de venta <span style="white-space:nowrap">{{ d.inventario.venta|pesos }}</span></div></div>
   </div>
 
   <!-- ================= GASTOS ================= -->
@@ -206,6 +208,26 @@
       <small>C-{{ '%05d'|format(c.numero) }} · {{ c.fecha.strftime('%d/%m/%Y') }}{% if c.factura %} · factura {{ c.factura }}{% endif %} · {{ c.items|length }} repuesto(s)</small></div>
       <div class="der">{{ c.total|pesos }}<small>{% if c.saldo > 0.5 %}<span class="badge amar">Debe {{ c.saldo|pesos }}</span>{% else %}<span class="badge verde">Pagada</span>{% endif %}</small></div></div>
     {% else %}<div class="vacio">No hubo compras en este periodo.</div>{% endfor %}
+  </div></details>
+
+  <!-- ================= INVENTARIO ================= -->
+  {% set I = d.inventario %}
+  <details class="sec"><summary>🏷️ Inventario <span class="tot">{{ I.costo|pesos }}</span></summary>
+  <div class="cuerpo">
+    <div class="vacio" style="padding-top:0">Mercancía que hay hoy en el local (no depende del periodo).</div>
+    <div class="fila"><div class="izq"><b>Valor al costo</b><small>Lo que costó la mercancía que hay</small></div><div class="der">{{ I.costo|pesos }}</div></div>
+    <div class="fila"><div class="izq"><b>Valor a precio de venta</b><small>Si se vendiera todo a precio detal</small></div><div class="der">{{ I.venta|pesos }}</div></div>
+    <div class="fila"><div class="izq"><b>Ganancia que contiene</b><small>Precio de venta − costo</small></div><div class="der">{{ I.ganancia|pesos }}</div></div>
+    <div class="fila"><div class="izq"><b>Unidades</b><small>{{ I.refs }} repuestos con existencia</small></div><div class="der">{{ I.unidades|cant }}</div></div>
+    <div class="fila"><div class="izq"><b>Agotados</b>{% if I.bajos %}<small>{{ I.bajos }} bajo el mínimo</small>{% endif %}</div><div class="der">{{ I.agotados }}</div></div>
+    <div class="fila"><div class="izq"><b>En bodega virtual</b><small>Se venden sin tenerlos; se compran al vender</small></div><div class="der">{{ I.virtuales }}</div></div>
+    {% if I.por_cat %}<div class="sub">Por categoría (al costo)</div>
+    {% set maxi = I.por_cat[0].costo %}
+    {% for c in I.por_cat %}
+    <div class="fila" style="display:block"><div style="display:flex;justify-content:space-between;gap:8px"><b>{{ c.nombre }}</b><b>{{ c.costo|pesos }}</b></div>
+      <small style="color:var(--mut);font-size:.76rem">{{ c.unidades|cant }} und · {{ c.refs }} repuestos · venta {{ c.venta|pesos }}</small>
+      <div class="barra"><i style="width:{{ (c.costo / maxi * 100) if maxi else 0 }}%"></i></div></div>
+    {% endfor %}{% endif %}
   </div></details>
 
   <!-- ================= CUENTAS POR PAGAR ================= -->

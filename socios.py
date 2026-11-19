@@ -5,7 +5,7 @@ from datetime import date, datetime, timedelta
 
 import reportes as rpt
 from inversion import fijos_del_mes, reporte_aportes
-from models import Compra, Gasto, Venta, ahora
+from models import Compra, Gasto, Producto, Venta, ahora
 from services import resumen_turno, turno_abierto
 
 MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre",
@@ -109,7 +109,29 @@ def datos(cfg, per="hoy", desde_txt=None, hasta_txt=None):
         caja = {"turno": t, "esperado": rt["efectivo_esperado"], "ventas": rt["ventas_total"], "num": rt["num_ventas"],
                 "medios": [(d["medio"].nombre, d["neto"]) for d in rt["medios"]]}
 
+    # inventario hoy (mismo cálculo de la pantalla Repuestos: stock real × costo promedio, repuestos activos)
+    prods = Producto.query.filter(Producto.activo.is_(True)).all()
+    con_stock = [p for p in prods if (p.stock or 0) > 0 and not p.virtual]
+    por_cat = defaultdict(lambda: {"costo": 0.0, "venta": 0.0, "unidades": 0.0, "refs": 0})
+    for p in con_stock:
+        c = por_cat[p.categoria.nombre if p.categoria else "Sin categoría"]
+        c["costo"] += p.valor_inventario
+        c["venta"] += (p.stock or 0) * (p.precio_detal or 0)
+        c["unidades"] += p.stock or 0
+        c["refs"] += 1
+    inv_costo = sum(p.valor_inventario for p in con_stock)
+    inv_venta = sum((p.stock or 0) * (p.precio_detal or 0) for p in con_stock)
+    inventario = {
+        "costo": inv_costo, "venta": inv_venta, "ganancia": inv_venta - inv_costo,
+        "unidades": sum(p.stock or 0 for p in con_stock), "refs": len(con_stock),
+        "agotados": sum(1 for p in prods if not p.virtual and (p.stock or 0) <= 0),
+        "bajos": sum(1 for p in con_stock if (p.stock_minimo or 0) > 0 and (p.stock or 0) <= p.stock_minimo),
+        "virtuales": sum(1 for p in prods if p.virtual),
+        "por_cat": sorted(({"nombre": k, **v} for k, v in por_cat.items()), key=lambda x: -x["costo"]),
+    }
+
     return {
+        "inventario": inventario,
         "clave": clave, "desde": desde, "hasta": hasta, "nombre": nombre, "r": r, "ant": ant, "comp": comp,
         "d_ant": d_ant, "h_ant": h_ant,
         "gastos": gastos, "fijos": fijos, "compras": compras,
