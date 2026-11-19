@@ -236,7 +236,7 @@ AVISOS_CAMBIOS = {
     "inversion_socio": "Inversión inicial", "inversion_apertura": "Inversión inicial",
     "gastos": "Gastos", "gastos_fijos_guardar": "Gastos", "gasto_fijo_pagar": "Gastos", "gasto_anular": "Gastos",
     "empleado_form": "Nómina", "nomina_nueva": "Nómina", "nomina_anular": "Nómina",
-    "venta_devolucion": "Ventas", "pedido_cancelar": "Pedidos",
+    "venta_devolucion": "Ventas", "venta_abono": "Cartera", "pedido_cancelar": "Pedidos",
     "cliente_form": "Clientes", "cliente_archivar": "Clientes",
     "caja_movimiento": "Caja", "caja_ajuste": "Caja",
     "usuario_form": "Usuarios", "configuracion": "Configuración",
@@ -645,6 +645,17 @@ def pos_venta():
     except ErrorNegocio as e:
         db.session.rollback()
         return jsonify(ok=False, errores=e.errores), 400
+    if v.credito and (v.saldo or 0) > 0.5:
+        try:   # aviso para los demás: venta que queda en cartera
+            pagado = (v.total or 0) - (v.saldo or 0)
+            avisar_cambio("Cartera", f"Venta a crédito {v.folio} a {v.cliente_nombre or 'cliente'} por {pesos(v.total)}",
+                          f"Quedó a crédito: {pesos(v.saldo)}" + (f" · abonó {pesos(pagado)} al comprar" if pagado > 0.5 else "")
+                          + (f" · vence el {v.vence.strftime('%d/%m/%Y')}" if v.vence else "")
+                          + "\n" + "\n".join(f"{cant(it.cantidad)} × {it.nombre[:50]}" for it in v.items[:10]),
+                          url_for("venta_detalle", vid=v.id))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
     return jsonify(ok=True, id=v.id, folio=v.folio, total=v.total, cambio=v.cambio, saldo=v.saldo,
                    ticket=url_for("venta_ticket", vid=v.id), detalle=url_for("venta_detalle", vid=v.id),
                    whatsapp=wa_link(v.cliente_tel, texto_recibo(v)) if v.cliente_tel else "")
@@ -801,9 +812,12 @@ def venta_abono(vid):
     try:
         if medio is None:
             raise ErrorNegocio("Elige el medio de pago.")
-        registrar_abono(v, current_user, n(request.form.get("valor")), medio, request.form.get("referencia"))
+        valor = n(request.form.get("valor"))
+        registrar_abono(v, current_user, valor, medio, request.form.get("referencia"))
         db.session.commit()
-        flash("Abono registrado.", "ok")
+        flash(f"Abono de {pesos(valor)} a la venta {v.folio} ({v.cliente_nombre or 'cliente'}) registrado.", "ok")
+        g.aviso_texto = (f"Medio: {medio.nombre}" + (f" · ref. {request.form.get('referencia')}" if request.form.get("referencia") else "")
+                         + (f"\nSaldo pendiente: {pesos(v.saldo)}" if (v.saldo or 0) > 0.5 else "\nLa venta quedó pagada."))
     except ErrorNegocio as e:
         db.session.rollback()
         errores_flash(e)
