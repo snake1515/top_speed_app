@@ -13,7 +13,7 @@ from urllib.parse import quote
 
 from dotenv import load_dotenv
 from flask import (Flask, Response, abort, flash, jsonify, redirect, render_template, request,
-                   send_file, session, url_for)
+                   g, send_file, session, url_for)
 from flask_login import LoginManager, current_user, login_required, login_user, logout_user
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
@@ -220,6 +220,64 @@ def proteger_post():
                 return jsonify(ok=False, errores=["La sesión expiró. Recarga la página."]), 400
             flash("La página estaba vieja. Intenta de nuevo.", "err")
             return redirect(request.referrer or url_for("login"))
+
+
+# =============================================== avisos de cambios para todos los usuarios
+# endpoint → pestaña. Cada POST exitoso (redirige y no dejó errores) deja un mensaje para los demás usuarios
+# en el mismo buzón de las ventas anuladas. No incluye la operación diaria (ventas, caja, tienda, preventa).
+AVISOS_CAMBIOS = {
+    "producto_form": "Repuestos", "producto_foto_borrar": "Repuestos", "productos_imagenes_zip": "Repuestos",
+    "categorias": "Categorías",
+    "compra_nueva": "Compras", "compra_pago": "Compras", "compra_devolver": "Compras", "compra_anular": "Compras",
+    "proveedor_form": "Proveedores",
+    "ajuste_nuevo": "Ajustes de inventario", "ajuste_anular": "Ajustes de inventario",
+    "inversion_registro": "Inversión inicial", "inversion_anular": "Inversión inicial",
+    "inversion_soporte_quitar": "Inversión inicial", "inversion_aporte": "Inversión inicial",
+    "inversion_socio": "Inversión inicial", "inversion_apertura": "Inversión inicial",
+    "gastos": "Gastos", "gastos_fijos_guardar": "Gastos", "gasto_fijo_pagar": "Gastos", "gasto_anular": "Gastos",
+    "empleado_form": "Nómina", "nomina_nueva": "Nómina", "nomina_anular": "Nómina",
+    "venta_devolucion": "Ventas", "pedido_cancelar": "Pedidos",
+    "cliente_form": "Clientes", "cliente_archivar": "Clientes",
+    "caja_movimiento": "Caja", "caja_ajuste": "Caja",
+    "usuario_form": "Usuarios", "configuracion": "Configuración",
+    "ruta_form": "Rutas", "ruta_clientes": "Rutas",
+}
+
+
+def avisar_cambio(modulo, titulo, texto="", url=None, usuario=None):
+    """Mensaje para todos los usuarios (el que hizo el cambio no lo recibe como pendiente)."""
+    u = usuario or current_user
+    db.session.add(Mensaje(tipo="cambio", para="todos", titulo=f"{modulo} · {titulo}"[:160],
+                           texto=(f"Hecho por {u.nombre}" + (f"\n{texto}" if texto else ""))[:600],
+                           url=(url or None) and url[:200], autor_id=u.id))
+
+
+@app.before_request
+def _contar_flashes():
+    g.flashes_antes = len(session.get("_flashes", []))
+
+
+@app.after_request
+def _aviso_cambios(resp):
+    try:
+        if (request.method != "POST" or request.endpoint not in AVISOS_CAMBIOS or not current_user.is_authenticated
+                or resp.status_code not in (301, 302, 303) or g.get("sin_aviso")):
+            return resp
+        nuevos = session.get("_flashes", [])[g.get("flashes_antes", 0):]
+        if any(cat == "err" for cat, _ in nuevos):
+            return resp
+        oks = [msg for cat, msg in nuevos if cat == "ok"]
+        titulo = (oks[0].split(" Busca arriba")[0] if oks else f"{current_user.nombre} hizo un cambio")
+        texto = "\n".join(x for x in [g.get("aviso_texto") or "", *oks[1:]] if x)
+        destino = resp.location or ""
+        if destino.startswith("http"):
+            destino = "/" + destino.split("/", 3)[-1] if destino.count("/") >= 3 else ""
+        destino = re.sub(r"^(/productos/\d+)/editar.*$", r"\1", destino)   # el aviso abre la ficha, no la edición
+        avisar_cambio(AVISOS_CAMBIOS[request.endpoint], titulo, texto, destino or None)
+        db.session.commit()
+    except Exception:          # un aviso nunca debe tumbar la acción que ya se guardó
+        db.session.rollback()
+    return resp
 
 
 @app.context_processor
@@ -1277,6 +1335,54 @@ def productos_excel():
                      mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 
+CAMPOS_AVISO = [("nombre", "Nombre"), ("codigo", "Código proveedor"), ("codigo_barras", "Código de barras"),
+                 ("categoria", "Categoría"), ("marca", "Marca"), ("referencia", "Referencia"),
+                 ("compatibilidad", "Compatible con"), ("equivalencias", "Equivalencias"), ("ubicacion", "Ubicación"),
+                 ("unidad", "Unidad"), ("precio_detal", "Precio detal"), ("precio_mayor", "Precio mayor"),
+                 ("precio_taller", "Precio taller"), ("regla", "Ganancia"), ("stock_minimo", "Stock mínimo"),
+                 ("virtual", "Bodega virtual"), ("costo_virtual", "Costo virtual"), ("volver_virtual", "Volver a virtual"),
+                 ("descripcion", "Descripción"), ("foto", "Foto"), ("en_tienda", "En la tienda"),
+                 ("destacado", "Destacado"), ("activo", "Activo")]
+PESOS_AVISO = {"precio_detal", "precio_mayor", "precio_taller", "costo_virtual"}
+
+
+def _foto_producto(p):
+    """Valores del repuesto para comparar antes y después de editarlo."""
+    d = {k: getattr(p, k, None) for k, _ in CAMPOS_AVISO if hasattr(p, k)}
+    d["categoria"] = p.categoria.nombre if getattr(p, "categoria", None) else None
+    d["equivalencias"] = ", ".join(p.lista_equivalencias)
+    d["regla"] = p.regla_txt or "% general"
+    d["foto"] = p.imagen_v
+    return d
+
+
+def _diferencias_producto(a, b):
+    def txt(k, v):
+        if isinstance(v, bool) or k in ("virtual", "volver_virtual", "en_tienda", "destacado", "activo"):
+            return "sí" if v else "no"
+        if k in PESOS_AVISO:
+            return pesos(v or 0)
+        if v in (None, ""):
+            return "—"
+        if isinstance(v, float):
+            return cant(v)
+        return str(v)[:80]
+    out = []
+    for k, etq in CAMPOS_AVISO:
+        va, vb = (a or {}).get(k), b.get(k)
+        if k in PESOS_AVISO or k == "stock_minimo":
+            va, vb = round(va or 0), round(vb or 0)
+        if (va or None) == (vb or None):
+            continue
+        if k == "descripcion":
+            out.append("Descripción: cambió")
+        elif k == "foto":
+            out.append("Foto: " + ("la quitó" if not vb else "cambió"))
+        else:
+            out.append(f"{etq}: {txt(k, va)} → {txt(k, vb)}")
+    return out
+
+
 @app.route("/productos/nuevo", methods=["GET", "POST"])
 @app.route("/productos/<int:pid>/editar", methods=["GET", "POST"])
 @requiere("bodega")
@@ -1290,6 +1396,7 @@ def producto_form(pid=None):
     if request.method == "POST":
         f = request.form
         nuevo = p.id is None
+        antes = _foto_producto(p) if not nuevo else None
         p.codigo = (f.get("codigo") or "").strip()[:60]
         p.nombre = (f.get("nombre") or "").strip()[:200]
         p.codigo_barras = (f.get("codigo_barras") or "").strip()[:60] or None
@@ -1382,6 +1489,14 @@ def producto_form(pid=None):
                 errores_flash(e)
                 return redirect(url_for("producto_form"))
         db.session.commit()
+        if nuevo:
+            g.aviso_texto = (f"Repuesto nuevo {p.codigo_interno or ''} · {p.nombre}\nPrecio detal {pesos(p.precio_detal)}"
+                             + (" · bodega virtual" if p.virtual else "") + (f" · stock inicial {cant(stock_ini)}" if stock_ini > 0 else ""))
+        else:
+            cambios = _diferencias_producto(antes, _foto_producto(p))
+            if not cambios:
+                g.sin_aviso = True        # guardó sin cambiar nada: no molesta a nadie
+            g.aviso_texto = f"{p.codigo_interno or p.codigo} · {p.nombre}\n" + "\n".join(cambios)
         flash(f"Repuesto guardado: {p.codigo} · {p.nombre}. Busca arriba el siguiente para editarlo.", "ok")
         if f.get("otro"):
             return redirect(url_for("producto_form"))
@@ -1527,6 +1642,8 @@ def fotos_zip_lote():
         return jsonify(ok=False, error=" ".join(e.errores)), 400
     fin = desde + FOTOS_LOTE >= r["total"]
     if fin:
+        avisar_cambio("Repuestos", f"Subió fotos de repuestos por ZIP ({r['total']} fotos en el archivo)", "", "/productos")
+        db.session.commit()
         try:
             os.remove(ruta)
         except OSError:
@@ -1586,6 +1703,11 @@ def carga_lote():
 def carga_finalizar():
     datos, carga = _json_carga()
     r = importador.finalizar_carga(carga)
+    try:
+        avisar_cambio("Repuestos", f"Carga por Excel {carga.consecutivo}: {carga.creados} nuevos, {carga.actualizados} actualizados",
+                      f"Archivo: {carga.archivo or '—'}", url_for("carga_detalle", cid=carga.id))
+    except Exception:
+        pass
     db.session.commit()
     return jsonify(ok=True, url=url_for("carga_detalle", cid=carga.id), **r)
 
@@ -1698,6 +1820,10 @@ def compra_nueva():
                                  int(n(f.get("plazo"), 30)), actualizar_precios=bool(f.get("actualizar_precios")))
             cambios = list(c.precios_cambiados)
             db.session.commit()
+            g.aviso_texto = (f"Proveedor: {c.proveedor.nombre if c.proveedor else '—'} · factura {c.factura or '—'} · total {pesos(c.total)}"
+                             + (" · a crédito" if (c.total or 0) - (getattr(c, 'pagado', 0) or 0) > 0.5 else "") + "\n"
+                             + "\n".join(f"{cant(it.cantidad)} × {it.producto.nombre[:50]} a {pesos(it.costo_unitario)}" for it in c.items[:12])
+                             + (f"\n… y {len(c.items) - 12} más" if len(c.items) > 12 else ""))
             flash(f"Compra C-{c.numero:05d} registrada: el stock y el costo promedio quedaron actualizados.", "ok")
             if cambios:
                 flash("Precio detal actualizado: " + " · ".join(f"{p.codigo} {p.nombre[:30]} {pesos(a)} → {pesos(b)}" for p, a, b in cambios[:15])

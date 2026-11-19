@@ -2,7 +2,7 @@
 {% block title %}Mensajes{% endblock %}
 {% block content %}
 <div class="page-head">
-  <div><h1>Buzón de mensajes</h1><p>Avisos de acciones importantes: ventas anuladas{% if current_user.puede('admin') %}, reversiones de caja{% endif %}, etc.</p></div>
+  <div><h1>Buzón de mensajes</h1><p>Avisos de lo que cambian los demás: ventas anuladas, repuestos y precios, compras, inversión inicial, ajustes, gastos{% if current_user.puede('admin') %}, reversiones de caja{% endif %}, etc.</p></div>
   {% if ver == 'pendientes' and mensajes %}<form method="post" action="{{ url_for('mensajes_leer_todos') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn sec">✔ Marcar todos como leídos</button></form>{% endif %}
 </div>
 <div class="tabs">
