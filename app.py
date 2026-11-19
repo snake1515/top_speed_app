@@ -2590,6 +2590,27 @@ def usuario_form(uid=None):
 
 
 # ========================================================= configuración
+@app.route("/socios/<token>")
+def socios_reporte(token):
+    """Reporte de solo consulta para los socios: enlace secreto, sin usuario ni clave."""
+    import socios as rep_socios
+    cfg = config()
+    if not (cfg.socios_activo and cfg.socios_token and secrets.compare_digest(token, cfg.socios_token)):
+        abort(404)
+    d = rep_socios.datos(cfg, request.args.get("p", "hoy"), request.args.get("desde"), request.args.get("hasta"))
+    try:
+        cfg.socios_visitas = (cfg.socios_visitas or 0) + 1
+        cfg.socios_ultima = ahora()
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    resp = Response(render_template("socios_reporte.html", d=d, token=token, PERIODOS=rep_socios.PERIODOS))
+    resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+    resp.headers["Cache-Control"] = "no-store"
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    return resp
+
+
 @app.route("/configuracion", methods=["GET", "POST"])
 @requiere("admin")
 def configuracion():
@@ -2633,6 +2654,20 @@ def configuracion():
             cfg.tienda_mensaje = (f.get("tienda_mensaje") or "").strip()[:300] or None
             cfg.tienda_envio = (f.get("tienda_envio") or "").strip()[:300] or None
             cfg.reserva_horas = max(int(n(f.get("reserva_horas"), 48)), 1)
+        elif sec == "socios":
+            accion = f.get("accion")
+            if accion == "nuevo" or (accion == "activar" and not cfg.socios_token):
+                cfg.socios_token = secrets.token_urlsafe(24)
+                cfg.socios_activo = True
+            elif accion == "activar":
+                cfg.socios_activo = True
+            elif accion == "desactivar":
+                cfg.socios_activo = False
+            db.session.commit()
+            flash({"nuevo": "Enlace nuevo generado: el anterior ya no funciona. Compártelo otra vez con los socios.",
+                   "activar": "Enlace para socios activado.", "desactivar": "Enlace para socios desactivado: ya nadie puede abrirlo."}
+                  .get(accion, "Listo."), "ok")
+            return redirect(url_for("configuracion") + "#socios")
         elif sec == "fe":
             cfg.fe_activa = bool(f.get("fe_activa"))
             try:

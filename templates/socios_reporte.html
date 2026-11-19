@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#111111">
+<title>Reporte para socios · {{ cfg.nombre }}</title>
+<link rel="icon" href="{{ url_for('static', filename='logo-192.png') }}">
+<style>
+  :root { --ink: #111; --amar: #ffd400; --bg: #f3f3f1; --card: #fff; --mut: #6b6b6b; --line: #e8e8e5;
+          --verde: #12805c; --rojo: #c62828; }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { background: var(--ink); color: #fff; padding: 14px 16px 12px; position: sticky; top: 0; z-index: 10;
+           padding-top: max(14px, env(safe-area-inset-top)); }
+  .top { display: flex; align-items: center; gap: 10px; max-width: 760px; margin: 0 auto; }
+  .top img { width: 40px; height: 40px; border-radius: 10px; background: #000; }
+  .top h1 { font-size: 1.05rem; margin: 0; line-height: 1.15; }
+  .top small { color: #bbb; font-size: .78rem; }
+  .chips { display: flex; gap: 6px; overflow-x: auto; max-width: 760px; margin: 10px auto 0; padding-bottom: 2px;
+           scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip { flex: 0 0 auto; padding: 8px 13px; border-radius: 999px; background: #2a2a2a; color: #eee; text-decoration: none;
+          font-size: .88rem; font-weight: 600; border: 0; cursor: pointer; }
+  .chip.on { background: var(--amar); color: #000; }
+  main { max-width: 760px; margin: 0 auto; padding: 12px 12px 40px; }
+  .periodo { font-weight: 700; margin: 4px 2px 10px; font-size: .95rem; }
+  .periodo span { color: var(--mut); font-weight: 400; font-size: .8rem; display: block; }
+  .rango { display: none; background: var(--card); border-radius: 14px; padding: 12px; margin-bottom: 12px; gap: 8px; flex-wrap: wrap; align-items: end; }
+  .rango.abierto { display: flex; }
+  .rango label { font-size: .8rem; color: var(--mut); display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 130px; }
+  .rango input { font: inherit; padding: 9px; border: 1px solid #ccc; border-radius: 10px; width: 100%; }
+  .rango button { padding: 10px 16px; border-radius: 10px; border: 0; background: var(--ink); color: var(--amar); font-weight: 700; font: inherit; }
+  .kpis { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+  .kpi { background: var(--card); border-radius: 14px; padding: 12px; min-width: 0; }
+  .kpi .l { font-size: .76rem; color: var(--mut); text-transform: uppercase; letter-spacing: .02em; }
+  .kpi .v { font-size: 1.28rem; font-weight: 800; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kpi .c { font-size: .76rem; margin-top: 2px; color: var(--mut); }
+  .kpi.grande { grid-column: 1 / -1; background: var(--ink); color: #fff; }
+  .kpi.grande .l, .kpi.grande .c { color: #bbb; }
+  .kpi.grande .v { font-size: 1.7rem; color: var(--amar); }
+  .sube { color: var(--verde) !important; font-weight: 700; }
+  .baja { color: var(--rojo) !important; font-weight: 700; }
+  details.sec { background: var(--card); border-radius: 16px; margin-bottom: 12px; overflow: hidden; }
+  details.sec > summary { list-style: none; cursor: pointer; padding: 14px 14px; display: flex; justify-content: space-between;
+                      align-items: center; gap: 10px; font-weight: 800; font-size: 1rem; }
+  details.sec > summary::-webkit-details-marker { display: none; }
+  details > summary::after { content: "▾"; color: var(--mut); transition: transform .15s; }
+  details[open] > summary::after { transform: rotate(180deg); }
+  summary .tot { margin-left: auto; font-weight: 800; white-space: nowrap; }
+  .cuerpo { padding: 0 14px 14px; }
+  .fila { display: flex; justify-content: space-between; gap: 10px; padding: 9px 0; border-top: 1px solid var(--line); }
+  .fila:first-child { border-top: 0; }
+  .fila .izq { min-width: 0; flex: 1; }
+  .fila .izq b { display: block; font-size: .93rem; overflow-wrap: anywhere; }
+  .fila .izq small { color: var(--mut); font-size: .78rem; display: block; overflow-wrap: anywhere; }
+  .fila .der { text-align: right; white-space: nowrap; font-weight: 700; }
+  .fila .der small { display: block; font-weight: 400; color: var(--mut); font-size: .76rem; }
+  .barra { height: 6px; background: #eee; border-radius: 99px; margin-top: 5px; overflow: hidden; }
+  .barra i { display: block; height: 100%; background: var(--amar); border-radius: 99px; }
+  .sub { font-size: .8rem; font-weight: 800; text-transform: uppercase; color: var(--mut); margin: 14px 0 4px; letter-spacing: .03em; }
+  .badge { display: inline-block; font-size: .7rem; font-weight: 700; padding: 1px 7px; border-radius: 99px; background: #eee; vertical-align: middle; }
+  .badge.rojo { background: #fde3e3; color: var(--rojo); }
+  .badge.verde { background: #dff3ea; color: var(--verde); }
+  .badge.amar { background: #fff3b0; color: #6b5500; }
+  .vacio { color: var(--mut); font-size: .9rem; padding: 6px 0; }
+  .socio { border-top: 1px solid var(--line); padding: 10px 0; }
+  .socio:first-child { border-top: 0; }
+  .socio .n { display: flex; justify-content: space-between; gap: 8px; font-weight: 800; }
+  .socio .det { color: var(--mut); font-size: .8rem; margin-top: 2px; }
+  .partes { margin-top: 4px; display: flex; flex-wrap: wrap; gap: 4px; }
+  .partes span { font-size: .76rem; background: #f4f4f2; border-radius: 8px; padding: 2px 7px; }
+  footer { text-align: center; color: var(--mut); font-size: .76rem; margin-top: 18px; }
+  /* Valkira: saludo con el resumen del periodo */
+  .hero { position: relative; background: radial-gradient(120% 140% at 100% 0%, #3a2f00 0%, #151515 55%, #0b0b0b 100%);
+          color: #fff; border-radius: 20px; padding: 16px 132px 16px 16px; margin-bottom: 12px; min-height: 186px; overflow: hidden;
+          box-shadow: 0 10px 28px rgba(0,0,0,.18); }
+  .hero::before { content: ""; position: absolute; right: -40px; bottom: -60px; width: 220px; height: 220px; border-radius: 50%;
+                  background: radial-gradient(circle, rgba(255,212,0,.35), rgba(255,212,0,0) 70%); }
+  .hero img { position: absolute; right: -6px; bottom: -8px; height: 196px; width: auto; filter: drop-shadow(0 6px 14px rgba(0,0,0,.5));
+              animation: flota 3.2s ease-in-out infinite; transform-origin: bottom center; }
+  @keyframes flota { 0%, 100% { transform: translateY(0) rotate(-1.5deg); } 50% { transform: translateY(-6px) rotate(1.5deg); } }
+  @media (prefers-reduced-motion: reduce) { .hero img { animation: none; } }
+  .hero .hola { font-size: .8rem; color: var(--amar); font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+  .hero .l { font-size: .78rem; color: #bbb; margin-top: 8px; }
+  .hero .v { font-size: 1.85rem; font-weight: 900; color: var(--amar); line-height: 1.1; letter-spacing: -.01em; }
+  .hero .c { font-size: .78rem; color: #bbb; margin-top: 2px; }
+  .burbuja { position: relative; background: #fff; color: #111; border-radius: 14px; padding: 9px 11px; font-size: .86rem; font-weight: 600;
+             margin-top: 12px; line-height: 1.3; box-shadow: 0 4px 12px rgba(0,0,0,.25); }
+  .burbuja::after { content: ""; position: absolute; right: -8px; top: 14px; border: 8px solid transparent; border-left-color: #fff; border-right: 0; }
+  .kpi .l::before { margin-right: 4px; }
+  .kpi.k-ven { border-top: 4px solid var(--amar); } .kpi.k-gan { border-top: 4px solid var(--verde); }
+  .kpi.k-gas { border-top: 4px solid var(--rojo); } .kpi.k-com { border-top: 4px solid #555; }
+  header { background: linear-gradient(180deg, #000 0%, #151515 100%); }
+  @media (min-width: 640px) {
+    .hero { padding-right: 200px; min-height: 210px; }
+    .hero img { height: 230px; right: 6px; }
+    .kpis { grid-template-columns: repeat(4, 1fr); }
+    .kpi.grande { grid-column: span 2; }
+    main { padding: 16px 16px 50px; }
+  }
+</style>
+</head>
+<body>
+{% set P = d.r %}
+{% macro var(x, invertir=False) -%}
+  {%- if x is not none -%}
+    {%- set bueno = (x < 0) if invertir else (x >= 0) -%}
+    <span class="{{ 'sube' if bueno else 'baja' }}">{{ '▲' if x >= 0 else '▼' }} {{ '%.0f'|format(x|abs) }} %</span> vs. periodo anterior
+  {%- else -%}sin datos del periodo anterior{%- endif -%}
+{%- endmacro %}
+<header>
+  <div class="top">
+    <img src="{{ url_for('static', filename='logo-192.png') }}" alt="">
+    <div><h1>{{ cfg.nombre }} · Reporte para socios</h1><small>Solo consulta · actualizado {{ d.generado.strftime('%d/%m/%Y %I:%M %p').lower() }}</small></div>
+  </div>
+  <nav class="chips">
+    {% for k, etq in PERIODOS %}<a class="chip {{ 'on' if d.clave == k }}" href="?p={{ k }}">{{ etq }}</a>{% endfor %}
+    <button class="chip {{ 'on' if d.clave == 'rango' }}" type="button" onclick="document.getElementById('rango').classList.toggle('abierto')">📅 Fechas</button>
+  </nav>
+</header>
+
+<main>
+  <form class="rango {{ 'abierto' if d.clave == 'rango' }}" id="rango" method="get">
+    <label>Desde<input type="date" name="desde" value="{{ d.desde.isoformat() }}" required></label>
+    <label>Hasta<input type="date" name="hasta" value="{{ d.hasta.isoformat() }}" required></label>
+    <button>Ver</button>
+  </form>
+
+  <div class="periodo">{{ d.nombre }}<span>Comparado con {{ d.d_ant.strftime('%d/%m/%Y') }}{% if d.h_ant != d.d_ant %} al {{ d.h_ant.strftime('%d/%m/%Y') }}{% endif %}</span></div>
+
+  <!-- ================= RESUMEN ================= -->
+  {% set neta = P.neta %}
+  <div class="hero">
+    <img src="{{ url_for('static', filename='mascota.webp') }}" alt="Valkira, la mascota de {{ cfg.nombre }}">
+    <div class="hola">¡Hola, socios! 👋</div>
+    <div class="l">Lo que va quedando (ganancia neta)</div>
+    <div class="v">{{ neta|pesos }}</div>
+    <div class="c">{{ var(d.comp.neta) }}</div>
+    <div class="burbuja">
+      {% if P.num_ventas == 0 and not P.gastos %}Todavía no hay movimiento en este periodo. ¡Aquí les cuento apenas arranque!
+      {% elif neta > 0 %}¡Vamos bien! Las ventas ya cubren los gastos y van quedando <b style="white-space:nowrap">{{ neta|pesos }}</b>. 🔥
+      {% elif P.utilidad_bruta > 0 %}Las ventas dejan <b style="white-space:nowrap">{{ P.utilidad_bruta|pesos }}</b>, pero los gastos van <b style="white-space:nowrap">{{ (P.gastos + P.nomina + P.perdidas)|pesos }}</b>. ¡A vender más! 💪
+      {% else %}Por ahora hay más gastos que ganancia. ¡Con cada venta lo recuperamos! 💪{% endif %}
+    </div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi k-ven"><div class="l">🛒 Ventas</div><div class="v">{{ P.ventas_netas|pesos }}</div><div class="c">{{ var(d.comp.ventas_netas) }}</div></div>
+    <div class="kpi k-gan"><div class="l">📈 Ganancia bruta</div><div class="v">{{ P.utilidad_bruta|pesos }}</div><div class="c">Margen {{ '%.0f'|format(P.margen) }} %</div></div>
+    <div class="kpi k-gas"><div class="l">💸 Gastos</div><div class="v">{{ (P.gastos + P.nomina)|pesos }}</div><div class="c">{{ var(d.comp.gastos, True) }}</div></div>
+    <div class="kpi k-com"><div class="l">📦 Compras</div><div class="v">{{ d.total_compras|pesos }}</div><div class="c">{{ d.compras|length }} compra(s)</div></div>
+  </div>
+
+  <!-- ================= GASTOS ================= -->
+  <details class="sec" open><summary>💸 Gastos <span class="tot">{{ (P.gastos + P.nomina)|pesos }}</span></summary>
+  <div class="cuerpo">
+    {% if P.gastos_cat or P.nomina %}
+      <div class="sub">Por categoría</div>
+      {% set maxc = (P.gastos_cat[0][1] if P.gastos_cat else 0) if (P.gastos_cat[0][1] if P.gastos_cat else 0) > P.nomina else P.nomina %}
+      {% for cat, v in P.gastos_cat %}
+      <div class="fila" style="display:block"><div style="display:flex;justify-content:space-between;gap:8px"><b>{{ cat }}</b><b>{{ v|pesos }}</b></div>
+        <div class="barra"><i style="width:{{ (v / maxc * 100) if maxc else 0 }}%"></i></div></div>
+      {% endfor %}
+      {% if P.nomina %}<div class="fila" style="display:block"><div style="display:flex;justify-content:space-between;gap:8px"><b>Nómina</b><b>{{ P.nomina|pesos }}</b></div>
+        <div class="barra"><i style="width:{{ (P.nomina / maxc * 100) if maxc else 0 }}%"></i></div></div>{% endif %}
+      <div class="sub">Uno por uno</div>
+      {% for g in d.gastos %}
+      <div class="fila"><div class="izq"><b>{{ g.descripcion }}</b><small>{{ g.fecha.strftime('%d/%m %I:%M %p').lower() }} · {{ g.categoria }}{% if g.medio %} · {{ g.medio.nombre }}{% endif %}{% if g.usuario %} · {{ g.usuario.nombre }}{% endif %}</small></div>
+        <div class="der">{{ g.valor|pesos }}</div></div>
+      {% else %}<div class="vacio">Sin gastos sueltos en este periodo.</div>{% endfor %}
+    {% else %}<div class="vacio">No hubo gastos en este periodo.</div>{% endif %}
+    {% if d.fijos %}
+      <div class="sub">Gastos fijos de este mes</div>
+      {% for x in d.fijos %}
+      <div class="fila"><div class="izq"><b>{{ x.fijo.nombre }}</b><small>{{ x.fijo.categoria }} · se paga el día {{ x.fijo.dia }}</small></div>
+        <div class="der">{{ (x.pago.valor if x.pago else x.fijo.valor)|pesos }}
+          <small>{% if x.pago %}<span class="badge verde">Pagado</span>{% elif x.atraso > 0 %}<span class="badge rojo">Atrasado {{ x.atraso }} d</span>{% else %}<span class="badge amar">Pendiente</span>{% endif %}</small></div></div>
+      {% endfor %}
+    {% endif %}
+  </div></details>
+
+  <!-- ================= VENTAS ================= -->
+  <details class="sec"><summary>🛒 Ventas <span class="tot">{{ P.ventas_netas|pesos }}</span></summary>
+  <div class="cuerpo">
+    <div class="fila"><div class="izq"><b>Número de ventas</b></div><div class="der">{{ P.num_ventas }}</div></div>
+    <div class="fila"><div class="izq"><b>Venta promedio</b></div><div class="der">{{ P.ticket_promedio|pesos }}</div></div>
+    {% if P.devoluciones %}<div class="fila"><div class="izq"><b>Devoluciones</b></div><div class="der">−{{ P.devoluciones|pesos }}</div></div>{% endif %}
+    <div class="fila"><div class="izq"><b>Costo de lo vendido</b></div><div class="der">{{ P.costo|pesos }}</div></div>
+    <div class="fila"><div class="izq"><b>Quedó a crédito</b><small>Saldo pendiente de estas ventas</small></div><div class="der">{{ P.credito|pesos }}</div></div>
+    <div class="sub">Dinero que entró por medio de pago</div>
+    {% for nom, v in P.por_medio %}<div class="fila"><div class="izq"><b>{{ nom }}</b></div><div class="der">{{ v|pesos }}</div></div>
+    {% else %}<div class="vacio">No entró dinero en este periodo.</div>{% endfor %}
+    {% if d.top %}<div class="sub">Lo más vendido</div>
+    {% for t in d.top %}<div class="fila"><div class="izq"><b>{{ t.nombre }}</b><small>{{ t.cantidad|cant }} und · ganancia {{ t.utilidad|pesos }}</small></div><div class="der">{{ t.ventas|pesos }}</div></div>{% endfor %}{% endif %}
+  </div></details>
+
+  <!-- ================= COMPRAS ================= -->
+  <details class="sec"><summary>📦 Compras <span class="tot">{{ d.total_compras|pesos }}</span></summary>
+  <div class="cuerpo">
+    {% for c in d.compras %}
+    <div class="fila"><div class="izq"><b>{{ c.proveedor.nombre if c.proveedor else 'Sin proveedor' }}</b>
+      <small>C-{{ '%05d'|format(c.numero) }} · {{ c.fecha.strftime('%d/%m/%Y') }}{% if c.factura %} · factura {{ c.factura }}{% endif %} · {{ c.items|length }} repuesto(s)</small></div>
+      <div class="der">{{ c.total|pesos }}<small>{% if c.saldo > 0.5 %}<span class="badge amar">Debe {{ c.saldo|pesos }}</span>{% else %}<span class="badge verde">Pagada</span>{% endif %}</small></div></div>
+    {% else %}<div class="vacio">No hubo compras en este periodo.</div>{% endfor %}
+  </div></details>
+
+  <!-- ================= CUENTAS POR PAGAR ================= -->
+  <details class="sec"><summary>🧾 Cuentas por pagar <span class="tot">{{ d.total_por_pagar|pesos }}</span></summary>
+  <div class="cuerpo">
+    <div class="vacio" style="padding-top:0">Lo que se debe hoy a proveedores{% if d.vencido_por_pagar %} · <span class="badge rojo">vencido {{ d.vencido_por_pagar|pesos }}</span>{% endif %}</div>
+    {% for x in d.por_pagar %}
+    <div class="fila"><div class="izq"><b>{{ x.nombre }}</b><small>{{ x.compras }} compra(s){% if x.proximo %} · vence {{ x.proximo.strftime('%d/%m/%Y') }}{% endif %}</small></div>
+      <div class="der">{{ x.saldo|pesos }}{% if x.vencido %}<small><span class="badge rojo">Vencido {{ x.vencido|pesos }}</span></small>{% endif %}</div></div>
+    {% else %}<div class="vacio">No se le debe nada a proveedores.</div>{% endfor %}
+  </div></details>
+
+  <!-- ================= CARTERA ================= -->
+  <details class="sec"><summary>⏳ Cartera (nos deben) <span class="tot">{{ d.total_cartera|pesos }}</span></summary>
+  <div class="cuerpo">
+    <div class="vacio" style="padding-top:0">Lo que deben hoy los clientes{% if d.vencido_cartera %} · <span class="badge rojo">vencido {{ d.vencido_cartera|pesos }}</span>{% endif %}</div>
+    {% for x in d.cartera %}
+    <div class="fila"><div class="izq"><b>{{ x.nombre }}</b><small>{{ x.ventas }} venta(s) a crédito</small></div>
+      <div class="der">{{ x.saldo|pesos }}{% if x.vencido %}<small><span class="badge rojo">Vencido {{ x.vencido|pesos }}</span></small>{% endif %}</div></div>
+    {% else %}<div class="vacio">Ningún cliente debe.</div>{% endfor %}
+  </div></details>
+
+  <!-- ================= CAJA ================= -->
+  <details class="sec"><summary>🏧 Caja de hoy <span class="tot">{{ 'Abierta' if d.caja else 'Cerrada' }}</span></summary>
+  <div class="cuerpo">
+    {% if d.caja %}
+      <div class="fila"><div class="izq"><b>Caja #{{ d.caja.turno.numero }}</b><small>Abierta {{ d.caja.turno.apertura.strftime('%d/%m %I:%M %p').lower() if d.caja.turno.apertura else '' }}{% if d.caja.turno.usuario %} por {{ d.caja.turno.usuario.nombre }}{% endif %}</small></div><div class="der">{{ d.caja.num }} venta(s)</div></div>
+      <div class="fila"><div class="izq"><b>Ventas de la caja</b></div><div class="der">{{ d.caja.ventas|pesos }}</div></div>
+      <div class="fila"><div class="izq"><b>Efectivo que debería haber</b><small>Base + entradas − salidas en efectivo</small></div><div class="der">{{ d.caja.esperado|pesos }}</div></div>
+      {% for nom, v in d.caja.medios %}<div class="fila"><div class="izq"><small>{{ nom }} (neto)</small></div><div class="der">{{ v|pesos }}</div></div>{% endfor %}
+    {% else %}<div class="vacio">No hay caja abierta en este momento.</div>{% endif %}
+  </div></details>
+
+  <!-- ================= APORTES DE SOCIOS ================= -->
+  {% set A = d.aportes %}
+  <details class="sec" open><summary>🤝 Aportes de cada socio <span class="tot">{{ A.total_socios|pesos }}</span></summary>
+  <div class="cuerpo">
+    <div class="vacio" style="padding-top:0">Todo lo que ha puesto cada socio desde el inicio: dinero al fondo común + compras que pagó de su bolsillo.</div>
+    {% for x in A.socios %}
+    <div class="socio">
+      <div class="n"><span>{{ x.socio.nombre }}{% if x.socio.pareja %} <span class="badge">{{ x.socio.pareja }}</span>{% endif %}</span><span>{{ x.total|pesos }}</span></div>
+      <div class="det">Dinero {{ x.aportes|pesos }} · pagó de su bolsillo {{ x.pagos|pesos }} · {{ '%.1f'|format(x.pct) }} % del total</div>
+      <div class="barra"><i style="width:{{ x.pct }}%"></i></div>
+    </div>
+    {% else %}<div class="vacio">Aún no hay socios registrados.</div>{% endfor %}
+
+    {% if A.tot_grupo and A.grupos_cols|length > 1 %}
+      <div class="sub">Por pareja</div>
+      {% for gname in A.grupos_cols %}
+      <div class="fila"><div class="izq"><b>{{ gname }}</b></div><div class="der">{{ A.tot_grupo[gname]|pesos }}<small>{{ '%.1f'|format(A.tot_grupo[gname] / A.total_sencillo * 100 if A.total_sencillo else 0) }} %</small></div></div>
+      {% endfor %}
+    {% endif %}
+
+    <div class="sub">Resumen del dinero</div>
+    <div class="fila"><div class="izq"><b>Total invertido en el negocio</b></div><div class="der">{{ A.total_invertido|pesos }}</div></div>
+    <div class="fila"><div class="izq"><b>Dinero aportado al fondo común</b></div><div class="der">{{ A.total_aportes|pesos }}</div></div>
+    <div class="fila"><div class="izq"><b>{{ 'Queda en el fondo común' if A.fondo >= 0 else 'Faltante del fondo común' }}</b></div><div class="der">{{ A.fondo|pesos }}</div></div>
+
+    <div class="sub">Cada aporte</div>
+    {% for x in A.sencillo|reverse %}
+    <div class="fila"><div class="izq"><b>{{ x.concepto }}</b>
+      <small>{{ x.fecha.strftime('%d/%m/%Y') }} · {{ x.tipo }}{% if x.folio %} · {{ x.folio }}{% endif %}{% if x.detalle %} · {{ x.detalle }}{% endif %}</small>
+      <div class="partes">{% for so, v in x.partes %}<span>{{ so.nombre }}: {{ v|pesos }}</span>{% endfor %}</div></div>
+      <div class="der">{{ x.valor|pesos }}</div></div>
+    {% else %}<div class="vacio">Aún no hay aportes registrados.</div>{% endfor %}
+  </div></details>
+
+  <footer><img src="{{ url_for('static', filename='mascota.webp') }}" alt="" style="height:64px;display:block;margin:0 auto 6px;opacity:.9">{{ cfg.nombre }} · reporte de solo consulta. No compartas este enlace fuera del grupo de socios.</footer>
+</main>
+<script>document.querySelector(".chip.on")?.scrollIntoView({inline: "center", block: "nearest"});</script>
+</body>
+</html>

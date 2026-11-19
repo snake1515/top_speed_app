@@ -148,6 +148,11 @@ class Config(db.Model):
     margen_taller = db.Column(db.Float, default=25.0)
     # tienda online
     tienda_activa = db.Column(db.Boolean, nullable=False, default=True)
+    # reporte para socios: enlace secreto de solo consulta, sin usuario ni clave
+    socios_token = db.Column(db.String(40))
+    socios_activo = db.Column(db.Boolean, nullable=False, default=False)
+    socios_visitas = db.Column(db.Integer, nullable=False, default=0)
+    socios_ultima = db.Column(db.DateTime)
     tienda_mensaje = db.Column(db.String(300), default="Pide en línea y recoge en el local o te lo enviamos.")
     tienda_envio = db.Column(db.String(300), default="Domicilios en la ciudad con costo según la zona. Envíos nacionales por transportadora (pago contra entrega o anticipado).")
     tienda_muestra_agotados = db.Column(db.Boolean, nullable=False, default=True)

@@ -7,7 +7,7 @@ document.getElementById('gps').addEventListener('click', e => { const b = e.targ
 </script>{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Configuración</h1></div></div>
-<div class="tabs"><a href="#negocio">Negocio</a><a href="#medios">Medios de pago</a><a href="#ventas">Ventas y precios</a><a href="#tienda">Tienda online</a><a href="#categorias">Categorías</a><a href="#nomina">Nómina</a></div>
+<div class="tabs"><a href="#negocio">Negocio</a><a href="#medios">Medios de pago</a><a href="#ventas">Ventas y precios</a><a href="#tienda">Tienda online</a><a href="#socios">Enlace socios</a><a href="#categorias">Categorías</a><a href="#nomina">Nómina</a></div>
 <div class="grid g2">
   <form class="card" method="post" enctype="multipart/form-data" id="negocio">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="seccion" value="negocio">
@@ -78,6 +78,31 @@ document.getElementById('gps').addEventListener('click', e => { const b = e.targ
     <p class="hint">Dirección pública de la tienda: <a href="{{ url_for('tienda', _external=True) }}" target="_blank">{{ url_for('tienda', _external=True) }}</a></p>
     <button class="btn">Guardar</button>
   </form>
+
+  <div class="card" id="socios">
+    <h2 style="margin-bottom:4px">Enlace para socios</h2>
+    <p class="hint" style="margin-top:0">Página de solo consulta, sin usuario ni clave: ventas, gastos, compras, cuentas por pagar, cartera, caja y los aportes de cada socio. Fíjala en el grupo de WhatsApp de los socios.</p>
+    {% if cfg.socios_activo and cfg.socios_token %}{% set enlace = url_for('socios_reporte', token=cfg.socios_token, _external=True) %}
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0">
+        <input class="input mono" id="enlace-socios" value="{{ enlace }}" readonly style="flex:1;min-width:220px">
+        <button type="button" class="btn sm" onclick="navigator.clipboard.writeText(document.getElementById('enlace-socios').value).then(()=>{this.textContent='¡Copiado!'})">Copiar</button>
+        <a class="btn sm sec" href="{{ enlace }}" target="_blank">Abrir</a>
+        <a class="btn sm sec" target="_blank" href="https://wa.me/?text={{ ('Reporte de ' ~ cfg.nombre ~ ' para socios (solo consulta): ' ~ enlace)|urlencode }}">WhatsApp</a>
+      </div>
+      <p class="hint">Abierto {{ cfg.socios_visitas or 0 }} vez(es){% if cfg.socios_ultima %} · última consulta {{ cfg.socios_ultima|fh }}{% endif %}.</p>
+    {% else %}
+      <p><span class="badge">Desactivado</span> Nadie puede abrir el reporte hasta que lo actives.</p>
+    {% endif %}
+    <form method="post" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="seccion" value="socios">
+      {% if cfg.socios_activo and cfg.socios_token %}
+        <button class="btn sec" name="accion" value="nuevo" onclick="return confirm('El enlace actual dejará de funcionar. ¿Generar uno nuevo?')">↻ Generar enlace nuevo</button>
+        <button class="btn sec" name="accion" value="desactivar">⏻ Desactivar</button>
+      {% else %}
+        <button class="btn" name="accion" value="activar">Activar enlace para socios</button>
+      {% endif %}
+    </form>
+  </div>
 
   <div class="card" id="categorias">
     <h2 style="margin-bottom:12px">Categorías de repuestos</h2>
