@@ -82,14 +82,14 @@ document.getElementById('gps').addEventListener('click', e => { const b = e.targ
   <div class="card" id="socios">
     <h2 style="margin-bottom:4px">Enlace para socios</h2>
     <p class="hint" style="margin-top:0">Página de solo consulta, sin usuario ni clave: ventas, gastos, compras, cuentas por pagar, cartera, caja y los aportes de cada socio. Fíjala en el grupo de WhatsApp de los socios.</p>
-    {% if cfg.socios_activo and cfg.socios_token %}{% set enlace = url_for('socios_reporte', token=cfg.socios_token, _external=True) %}
+    {% if cfg.socios_activo and cfg.socios_token %}{% set enlace = 'https://softgestapps.com/motospeed/?ir=' ~ url_for('socios_reporte', token=cfg.socios_token) %}
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:10px 0">
         <input class="input mono" id="enlace-socios" value="{{ enlace }}" readonly style="flex:1;min-width:220px">
         <button type="button" class="btn sm" onclick="navigator.clipboard.writeText(document.getElementById('enlace-socios').value).then(()=>{this.textContent='¡Copiado!'})">Copiar</button>
         <a class="btn sm sec" href="{{ enlace }}" target="_blank">Abrir</a>
         <a class="btn sm sec" target="_blank" href="https://wa.me/?text={{ ('Reporte de ' ~ cfg.nombre ~ ' para socios (solo consulta): ' ~ enlace)|urlencode }}">WhatsApp</a>
       </div>
-      <p class="hint">Abierto {{ cfg.socios_visitas or 0 }} vez(es){% if cfg.socios_ultima %} · última consulta {{ cfg.socios_ultima|fh }}{% endif %}.</p>
+      <p class="hint">El enlace pasa por la pantalla de carga de SoftGest mientras el servidor despierta. Enlace directo: <span class="mono">{{ url_for('socios_reporte', token=cfg.socios_token, _external=True) }}</span><br>Abierto {{ cfg.socios_visitas or 0 }} vez(es){% if cfg.socios_ultima %} · última consulta {{ cfg.socios_ultima|fh }}{% endif %}.</p>
     {% else %}
       <p><span class="badge">Desactivado</span> Nadie puede abrir el reporte hasta que lo actives.</p>
     {% endif %}
