@@ -31,8 +31,10 @@ body.shop { background: #f4f4f1; }
 .s-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
 .s-card { background: #fff; border-radius: 12px; border: 1px solid var(--line); overflow: hidden; display: flex; flex-direction: column; transition: transform .12s, box-shadow .12s; }
 .s-card:hover { transform: translateY(-2px); box-shadow: 0 10px 24px rgba(18, 20, 24, .09); }
-.s-card .img { aspect-ratio: 1; background: #fafaf8; display: block; position: relative; }
-.s-card .img img { width: 100%; height: 100%; object-fit: contain; padding: 8px; }
+.s-card .img { aspect-ratio: 1 / 1; background: #fafaf8; display: block; position: relative; overflow: hidden; min-height: 0; }
+.s-card .img img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center; }
+.s-card .img img[src$='sin-foto.svg'] { object-fit: contain; padding: 18%; }
+.s-card .img .tag { z-index: 1; }
 .s-card .tag { position: absolute; left: 8px; top: 8px; }
 .s-card .bd { padding: 10px 12px 12px; display: flex; flex-direction: column; gap: 4px; flex: 1; }
 .s-card .nm { font-weight: 700; line-height: 1.2; color: var(--ink); font-size: .95rem; }
@@ -45,8 +47,8 @@ body.shop { background: #f4f4f1; }
 .s-pag span.on { background: var(--ink); color: #fff; }
 
 .s-prod { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 28px; background: #fff; border-radius: 16px; padding: 22px; border: 1px solid var(--line); }
-.s-prod .foto { aspect-ratio: 1; background: #fafaf8; border-radius: 12px; display: flex; align-items: center; justify-content: center; }
-.s-prod .foto img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.s-prod .foto { aspect-ratio: 1 / 1; background: #fafaf8; border-radius: 12px; display: flex; align-items: center; justify-content: center; overflow: hidden; position: relative; min-height: 0; }
+.s-prod .foto img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 .s-prod h1 { font-size: 2rem; text-transform: none; }
 .s-prod .precio { font-family: var(--cond); font-size: 2.6rem; font-weight: 700; margin: 10px 0; }
 .s-qty { display: flex; align-items: center; gap: 6px; margin: 12px 0; }
