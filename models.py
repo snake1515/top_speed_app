@@ -263,6 +263,9 @@ class Producto(db.Model):
     costo_virtual = db.Column(db.Float, nullable=False, default=0)
     # al vender la última unidad real vuelve solo a la bodega virtual (con el último costo de compra)
     volver_virtual = db.Column(db.Boolean, nullable=False, default=False)
+    # "arrastre": lo creó el cajero en una venta de arrastre (repuesto que no se tenía y se compra afuera)
+    origen = db.Column(db.String(12))
+    donde_comprar = db.Column(db.String(120))  # proveedor / almacén donde se consigue
 
     def texto_base(self):
         """Texto de búsqueda sin las equivalencias (para filtrar las variantes de la tienda)."""
@@ -805,6 +808,8 @@ class Venta(db.Model):
     credito = db.Column(db.Boolean, nullable=False, default=False)
     vence = db.Column(db.Date)
     origen = db.Column(db.String(12), nullable=False, default="pos")  # pos / tienda
+    # venta de arrastre: incluye repuestos que no se tenían; se compran afuera para entregarlos
+    arrastre = db.Column(db.Boolean, nullable=False, default=False)
     pedido_id = db.Column(db.Integer)
     estado = db.Column(db.String(10), nullable=False, default="pagada")  # pagada / credito / anulada
     nota = db.Column(db.String(300))
@@ -891,6 +896,7 @@ class VentaItem(db.Model):
     # bodega virtual: unidades vendidas que aún no existen físicamente y su costo estimado
     por_surtir = db.Column(db.Float, nullable=False, default=0)
     costo_estimado = db.Column(db.Float, nullable=False, default=0)
+    arrastre = db.Column(db.Boolean, nullable=False, default=False)  # línea vendida como venta de arrastre
 
     @property
     def neto_unitario(self):

@@ -10,7 +10,9 @@ from datetime import timedelta
 
 from models import (CATEGORIAS_CAJA_MENOR, CLASE_EGRESO, Gasto, RESULTADOS_VISITA, Visita, MOTIVOS_AJUSTE, Ajuste, AjusteItem, Cliente, Compra, CompraItem, Cotizacion,
                     Devolucion, MedioPago, Mensaje, MovCaja, ORIGENES_REVERSIBLES, Movimiento, PagoCompra, PagoVenta, Pedido,
-                    PedidoItem, Producto, Turno, Venta, VentaItem, ahora, config, db, siguiente)
+                    PedidoItem, Producto, Turno, Venta, VentaItem, ahora, config, db, siguiente,
+                    Categoria, asignar_codigo_interno)
+from sqlalchemy import or_
 
 TOL = 1e-6
 
@@ -327,6 +329,7 @@ def registrar_venta(usuario, items, pagos, cliente=None, cliente_nombre="", clie
     if turno is None:
         raise ErrorNegocio("La caja está cerrada. Ábrela para poder vender.")
     limpios = []
+    pids_arrastre = set()
     for it in items or []:
         try:
             pid, q, pr = int(it["producto_id"]), float(it["cantidad"]), float(it["precio"])
@@ -338,6 +341,8 @@ def registrar_venta(usuario, items, pagos, cliente=None, cliente_nombre="", clie
         if pr < 0:
             errores.append("Ningún precio puede ser negativo.")
         limpios.append((pid, q, round(pr)))
+        if it.get("arrastre"):
+            pids_arrastre.add(pid)
     if not limpios:
         errores.append("El carrito está vacío.")
     if errores:
@@ -407,6 +412,7 @@ def registrar_venta(usuario, items, pagos, cliente=None, cliente_nombre="", clie
               pedido_id=pedido.id if pedido else None,
               nota=(nota or "").strip()[:300] or None, turno_id=turno.id, usuario_id=usuario.id,
               vendedor_id=(pedido.vendedor_id if pedido and pedido.vendedor_id else usuario.id))
+    v.arrastre = any(pid in pids_arrastre and prods[pid].virtual for (pid, _), _ in agrupado.items())
     if credito and cliente:
         v.vence = ahora().date() + timedelta(days=cliente.plazo_dias or 30)
     db.session.add(v)
@@ -436,7 +442,8 @@ def registrar_venta(usuario, items, pagos, cliente=None, cliente_nombre="", clie
         costo_total += costo * q
         db.session.add(VentaItem(venta_id=v.id, producto=p, codigo=p.codigo, nombre=p.nombre, cantidad=q,
                                  precio=pr, total=linea_total, neto=neto, iva_pct=iva_pct or 0,
-                                 costo_unitario=costo, por_surtir=pend, costo_estimado=costo if pend else 0))
+                                 costo_unitario=costo, por_surtir=pend, costo_estimado=costo if pend else 0,
+                                 arrastre=bool(pend and pid in pids_arrastre)))
     v.costo = round(costo_total, 2)
     v.iva = round(iva_total)
     # registra el dinero: el efectivo entra neto del cambio
@@ -466,6 +473,57 @@ def registrar_venta(usuario, items, pagos, cliente=None, cliente_nombre="", clie
         cotizacion.estado = "vendida"
         cotizacion.venta_id = v.id
     return v
+
+
+def crear_item_arrastre(usuario, d):
+    """Venta de arrastre: el cajero registra un repuesto que no se tiene y que un cliente pide.
+    Queda guardado en la bodega virtual (stock 0, costo virtual = lo que cuesta comprarlo afuera) para
+    venderlo ya; cuando se registre la compra, la venta se surte y la ganancia pasa al costo real."""
+    cfg = config()
+    nombre = (d.get("nombre") or "").strip()[:200]
+    costo = round(float(d.get("costo") or 0))
+    precio = round(float(d.get("precio") or 0))
+    ref = (d.get("referencia") or "").strip()[:60]
+    errores = []
+    if len(nombre) < 3:
+        errores.append("Escribe el nombre del repuesto (ej. Kit arrastre Boxer CT 100).")
+    if costo <= 0:
+        errores.append("Escribe cuánto cuesta comprarlo afuera (costo).")
+    if precio <= 0:
+        errores.append("Escribe el precio de venta.")
+    elif costo > 0 and precio < costo and not usuario.puede("admin"):
+        errores.append("El precio quedaría por debajo del costo. Solo un administrador puede vender así.")
+    if ref:
+        ya = Producto.query.filter(or_(Producto.codigo.ilike(ref), Producto.referencia.ilike(ref))).first()
+        if ya:
+            errores.append(f"Ya existe un repuesto con la referencia «{ref}»: {ya.codigo_interno or ya.codigo} · {ya.nombre}. "
+                           "Búscalo en el punto de venta.")
+    if errores:
+        raise ErrorNegocio(errores)
+    cat_id = int(d.get("categoria_id") or 0) or None
+    if cat_id and not db.session.get(Categoria, cat_id):
+        cat_id = None
+    p = Producto(nombre=nombre, codigo=ref or "ARR-TMP-" + secrets.token_hex(4), referencia=ref or None,
+                 marca=(d.get("marca") or "").strip()[:80] or None,
+                 compatibilidad=(d.get("compatibilidad") or "").strip()[:400] or None,
+                 categoria_id=cat_id, stock=0, costo_promedio=0, ultimo_costo=0,
+                 virtual=True, costo_virtual=costo, precio_detal=precio,
+                 en_tienda=bool(d.get("en_tienda")), origen="arrastre", volver_virtual=True,
+                 donde_comprar=(d.get("donde_comprar") or "").strip()[:120] or None)
+    # precios mayor y taller con los márgenes de Configuración (nunca por encima del detal)
+    for campo, pct_ in (("precio_mayor", cfg.margen_mayor), ("precio_taller", cfg.margen_taller)):
+        base = costo * (1 + (pct_ or 0) / 100)
+        paso = 100 if base < 20000 else 500
+        setattr(p, campo, min(int(-(-round(base) // paso) * paso), precio))
+    db.session.add(p)
+    db.session.flush()
+    asignar_codigo_interno(p)
+    if not ref:
+        p.codigo = f"ARR-{p.codigo_interno or p.id}"
+        if Producto.query.filter(Producto.codigo == p.codigo, Producto.id != p.id).first():
+            p.codigo = f"ARR-{p.id}"
+    p.actualizar_busqueda()
+    return p
 
 
 def saldo_cliente(cliente):

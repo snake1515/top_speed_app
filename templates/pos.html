@@ -17,7 +17,10 @@
   <section>
     <div class="page-head" style="margin-bottom:10px">
       <div><h1>Punto de venta</h1><p>Caja #{{ turno.numero }} · {{ turno.usuario.nombre }} · <span class="kbd">F1</span> buscar <span class="kbd">F2</span> cobrar <span class="kbd">↑↓</span> elegir <span class="kbd">Enter</span> agregar <span class="kbd">F9</span> cajón</p></div>
-      <button type="button" class="btn sec sm" onclick="abrirCajon()" title="Abrir cajón monedero (F9)">🔓 Cajón</button>
+      <div class="actions" style="flex-shrink:0">
+        <button type="button" class="btn sm" id="btn-arrastre" title="Vender un repuesto que no tenemos: se compra afuera y queda en la bodega virtual">＋ Venta de arrastre</button>
+        <button type="button" class="btn sec sm" onclick="abrirCajon()" title="Abrir cajón monedero (F9)">🔓 Cajón</button>
+      </div>
       {% if precarga %}<span class="badge {{ 'blue' if precarga.tipo == 'pedido' else 'warn' }}" style="font-size:.9rem">{{ 'Pedido web' if precarga.tipo == 'pedido' else 'Cotización' }} {{ precarga.folio }}</span>{% endif %}
     </div>
     <div class="pos-search"><input id="buscar" class="input" placeholder="Código, código de barras, nombre, marca o moto (ej. pastillas pulsar)" autocomplete="off" autofocus></div>
@@ -96,6 +99,33 @@
   </div>
 </div>
 
+<!-- modal venta de arrastre -->
+<div class="modal-bg" id="m-arr">
+  <div class="modal">
+    <div class="card-head"><h2>Venta de arrastre</h2><button class="btn ghost" type="button" data-cerrar>✕</button></div>
+    <p class="muted" style="margin-top:-4px">Repuesto que <b>no tenemos</b> y el cliente pide: se lo vendemos, lo compramos afuera y se lo entregamos. Queda guardado en la <b>bodega virtual</b>.</p>
+    <div class="field"><label>Repuesto *</label><input class="input" id="ar-nombre" placeholder="Ej. Kit arrastre Boxer CT 100" autocomplete="off"></div>
+    <div class="form-row">
+      <div class="field"><label>Para qué moto</label><input class="input" id="ar-moto" placeholder="Ej. Boxer CT 100 2020"></div>
+      <div class="field"><label>Marca</label><input class="input" id="ar-marca" placeholder="Opcional"></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>Referencia del fabricante</label><input class="input" id="ar-ref" placeholder="Opcional"></div>
+      <div class="field"><label>Categoría</label><select class="input" id="ar-cat"><option value="">— Sin categoría —</option>{% for c in categorias %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</select></div>
+    </div>
+    <div class="field"><label>Dónde se compra</label><input class="input" id="ar-donde" placeholder="Proveedor o almacén (opcional)"></div>
+    <div class="form-row">
+      <div class="field"><label>Costo afuera (c/u) *</label><input class="input" id="ar-costo" inputmode="numeric" placeholder="Lo que nos cuesta"></div>
+      <div class="field"><label>Precio de venta (c/u) *</label><input class="input" id="ar-precio" inputmode="numeric"><div class="hint" id="ar-sug"></div></div>
+      <div class="field"><label>Cantidad</label><input class="input" id="ar-cant" inputmode="decimal" value="1"></div>
+    </div>
+    <div class="sum-row" id="ar-ganancia" style="margin:4px 0 8px"></div>
+    <label class="check" style="margin-bottom:10px"><input type="checkbox" id="ar-tienda"> Mostrarlo también en la tienda online</label>
+    <div id="ar-err"></div>
+    <button class="btn lg" style="width:100%" type="button" id="ar-guardar">Agregar a la venta</button>
+  </div>
+</div>
+
 <!-- modal cliente nuevo -->
 <div class="modal-bg" id="m-cli">
   <div class="modal">
@@ -118,6 +148,7 @@ const VE_COSTO = {{ 'true' if current_user.ve_costos else 'false' }};
 const ES_ADMIN = {{ 'true' if current_user.puede('admin') else 'false' }};
 const PRECARGA = {{ precarga|tojson }};
 const DESTACADOS = {{ destacados|tojson }};
+const MARGEN_DETAL = {{ (cfg.margen_detal or 0)|float }};
 const $ = id => document.getElementById(id);
 let carrito = [];        // {p, cantidad, precio, manual}
 let cliente = null;
@@ -138,7 +169,7 @@ function pintarCarrito() {
   if (!carrito.length) { box.innerHTML = '<p class="empty">Busca y agrega repuestos.<br><small>El lector de código de barras también funciona aquí.</small></p>'; }
   else box.innerHTML = carrito.map((it, i) => {
     const disp = it.p.virtual ? Infinity : it.p.stock - (it.p.reservado || 0);
-    const alerta = it.p.virtual ? '<span class="badge virtual">Virtual</span>' : it.cantidad > it.p.stock ? `<span class="badge err">solo hay ${NUM(it.p.stock)}</span>` : (it.cantidad > disp ? `<span class="badge warn">${NUM(it.p.reservado)} apartado(s) web</span>` : '');
+    const alerta = it.arrastre ? '<span class="badge virtual">Arrastre</span>' : it.p.virtual ? '<span class="badge virtual">Virtual</span>' : it.cantidad > it.p.stock ? `<span class="badge err">solo hay ${NUM(it.p.stock)}</span>` : (it.cantidad > disp ? `<span class="badge warn">${NUM(it.p.reservado)} apartado(s) web</span>` : '');
     const bajoCosto = VE_COSTO && it.p.costo && it.precio < it.p.costo ? '<span class="badge err">bajo costo</span>' : '';
     return `<div class="ci">
       <div><div class="nm">${esc(it.p.nombre)}</div><div class="cd">${it.p.interno ? '<b>' + esc(it.p.interno) + '</b> · ' : ''}${esc(it.p.codigo)}${it.p.ubicacion ? ' · 📍' + esc(it.p.ubicacion) : ''} ${alerta} ${bajoCosto}</div></div>
@@ -207,7 +238,7 @@ function pintarResultados(lista, titulo = '') {
       <div style="min-width:0"><div class="nm">${esc(p.nombre)}</div>
         <div class="meta">${p.interno ? '<b class="mono">' + esc(p.interno) + '</b> · ' : ''}<span class="mono">${esc(p.codigo)}</span>${p.marca ? ' · ' + esc(p.marca) : ''}${p.ubicacion ? ' · 📍' + esc(p.ubicacion) : ''}${p.compat ? ' · 🏍 ' + esc(p.compat) : ''}${p.equiv ? ' · 🔁 ' + esc(p.equiv) : ''}</div></div>
       <div><div class="pr">${COP(precioLista(p))}</div><div class="st">${st}${VE_COSTO ? ' · costo ' + COP(p.costo) : ''}</div></div></div>`;
-  }).join('') : ($('buscar').value.trim() ? '<p class="empty">Sin resultados. Revisa el código o busca por otra palabra.</p>'
+  }).join('') : ($('buscar').value.trim() ? '<p class="empty">Sin resultados. Revisa el código o busca por otra palabra.<br><button type="button" class="btn sm" style="margin-top:8px" onclick="document.getElementById(\'btn-arrastre\').click()">＋ No lo tenemos: hacer venta de arrastre</button></p>'
     : '<p class="empty">Escribe el código, el nombre del repuesto o la moto, o pasa el lector de código de barras.<br><small>Marca repuestos como «Destacado» para verlos aquí siempre.</small></p>'));
 }
 async function buscar(q) {
@@ -242,6 +273,45 @@ $('buscar').addEventListener('keydown', async e => {
 $('resultados').addEventListener('click', e => {
   const el = e.target.closest('.res'); if (!el) return;
   agregar(resultados[el.dataset.i]); $('buscar').focus(); $('buscar').select();
+});
+
+// ---------- venta de arrastre: repuesto que no tenemos → bodega virtual
+function precioSugerido(costo) {
+  if (!costo) return 0;
+  const base = costo * (1 + MARGEN_DETAL / 100), paso = base < 20000 ? 100 : 500;
+  return Math.ceil(Math.round(base) / paso) * paso;
+}
+let arPrecioManual = false;
+function pintarArrastre() {
+  const costo = num($('ar-costo').value), sug = precioSugerido(costo);
+  if (!arPrecioManual && sug) $('ar-precio').value = sug.toLocaleString('es-CO');
+  $('ar-sug').textContent = sug ? `Sugerido con ${NUM(MARGEN_DETAL)} % sobre el costo: ${COP(sug)}` : '';
+  const precio = num($('ar-precio').value), q = num($('ar-cant').value) || 1;
+  $('ar-ganancia').innerHTML = costo && precio ? `<span>Ganancia de esta venta</span><b class="${precio < costo ? 'neg' : ''}">${COP((precio - costo) * q)}</b>` : '';
+}
+$('btn-arrastre').addEventListener('click', () => {
+  ['ar-nombre', 'ar-moto', 'ar-marca', 'ar-ref', 'ar-donde', 'ar-costo', 'ar-precio'].forEach(id => $(id).value = '');
+  $('ar-cant').value = '1'; $('ar-cat').value = ''; $('ar-tienda').checked = false; $('ar-err').innerHTML = '';
+  const q = $('buscar').value.trim(); if (q && !/^\d+$/.test(q)) $('ar-nombre').value = q;
+  arPrecioManual = false; pintarArrastre(); abrir('m-arr'); setTimeout(() => $('ar-nombre').focus(), 50);
+});
+$('ar-costo').addEventListener('input', pintarArrastre);
+$('ar-cant').addEventListener('input', pintarArrastre);
+$('ar-precio').addEventListener('input', () => { arPrecioManual = !!$('ar-precio').value.trim(); pintarArrastre(); });
+let arEnviando = false;
+$('ar-guardar').addEventListener('click', async () => {
+  if (arEnviando) return; arEnviando = true; $('ar-guardar').disabled = true;
+  const precio = num($('ar-precio').value), q = num($('ar-cant').value) || 1;
+  const j = await postJSON('{{ url_for('pos_arrastre') }}', {
+    nombre: $('ar-nombre').value, compatibilidad: $('ar-moto').value, marca: $('ar-marca').value, referencia: $('ar-ref').value,
+    categoria_id: $('ar-cat').value, donde_comprar: $('ar-donde').value, costo: num($('ar-costo').value), precio,
+    en_tienda: $('ar-tienda').checked });
+  arEnviando = false; $('ar-guardar').disabled = false;
+  if (!j.ok) { $('ar-err').innerHTML = j.errores.map(m => `<div class="flash err">${esc(m)}</div>`).join(''); return; }
+  cerrar('m-arr');
+  carrito.unshift({ p: j.producto, cantidad: q, precio, manual: true, arrastre: true });
+  pintarCarrito(); $('buscar').value = '';
+  aviso(`✓ Venta de arrastre: <b>${esc(j.producto.nombre)}</b> (cód. ${esc(j.producto.interno || j.producto.codigo)}) quedó en la bodega virtual y en la venta.`);
 });
 
 // ---------- clientes
@@ -381,7 +451,7 @@ $('c-credito').addEventListener('change', () => pintarPagos());
 function datosVenta() {
   const t = totales();
   return {
-    items: carrito.map(it => ({ producto_id: it.p.id, cantidad: it.cantidad, precio: it.precio })),
+    items: carrito.map(it => ({ producto_id: it.p.id, cantidad: it.cantidad, precio: it.precio, arrastre: !!it.arrastre })),
     descuento: t.desc, lista: $('lista').value, cliente_id: cliente ? cliente.id : null,
     cliente_nombre: cliente ? '' : ($('cli-q').value.trim() || (PRECARGA && PRECARGA.cliente_nombre) || ''), cliente_doc: $('cli-doc').value.trim() || (PRECARGA && PRECARGA.cliente_doc) || '',
     cliente_tel: $('cli-tel').value,

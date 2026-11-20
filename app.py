@@ -609,6 +609,7 @@ def pos():
                         "items": [{"producto": producto_json(it.producto, ver_costo=current_user.ve_costos),
                                    "cantidad": it.cantidad, "precio": it.precio} for it in ped.items]}
     return render_template("pos.html", medios=medios, turno=turno_abierto(), precarga=precarga,
+                           categorias=Categoria.query.order_by(Categoria.nombre).all(),
                            destacados=[producto_json(p, ver_costo=current_user.ve_costos) for p in
                                        Producto.query.filter_by(activo=True, destacado=True).limit(12).all()])
 
@@ -689,6 +690,20 @@ def pos_venta():
                    whatsapp=wa_link(v.cliente_tel, texto_recibo(v)) if v.cliente_tel else "")
 
 
+@app.route("/pos/arrastre", methods=["POST"])
+@requiere("cajero")
+def pos_arrastre():
+    """Venta de arrastre: crea el repuesto en la bodega virtual y lo devuelve para agregarlo a la venta."""
+    d = request.get_json(silent=True) or {}
+    try:
+        p = services.crear_item_arrastre(current_user, d)
+        db.session.commit()
+    except ErrorNegocio as e:
+        db.session.rollback()
+        return jsonify(ok=False, errores=e.errores), 400
+    return jsonify(ok=True, producto=producto_json(p, ver_costo=current_user.ve_costos))
+
+
 @app.route("/pos/cotizacion", methods=["POST"])
 @requiere("cajero")
 def pos_cotizacion():
@@ -729,8 +744,10 @@ def ventas():
     estado = request.args.get("estado")
     if estado in ("pagada", "credito", "anulada"):
         q = q.filter(Venta.estado == estado)
-    if request.args.get("origen") in ("pos", "tienda"):
+    if request.args.get("origen") in ("pos", "tienda", "preventa"):
         q = q.filter(Venta.origen == request.args["origen"])
+    elif request.args.get("origen") == "arrastre":
+        q = q.filter(Venta.arrastre.is_(True))
     texto = (request.args.get("q") or "").strip()
     if texto:
         num = "".join(ch for ch in texto if ch.isdigit())
