@@ -102,18 +102,24 @@
 <!-- modal venta de arrastre -->
 <div class="modal-bg" id="m-arr">
   <div class="modal">
-    <div class="card-head"><h2>Venta de arrastre</h2><button class="btn ghost" type="button" data-cerrar>✕</button></div>
+    <div class="card-head"><h2 id="ar-titulo">Venta de arrastre</h2><button class="btn ghost" type="button" data-cerrar>✕</button></div>
     <p class="muted" style="margin-top:-4px">Repuesto que <b>no tenemos</b> y el cliente pide: se lo vendemos, lo compramos afuera y se lo entregamos de una vez. Queda guardado en la <b>bodega virtual</b> para la próxima.</p>
     <div class="field"><label>Repuesto *</label><input class="input" id="ar-nombre" placeholder="Ej. Kit arrastre Boxer CT 100" autocomplete="off"></div>
-    <div class="form-row">
+    <div class="form-row" id="ar-extra">
       <div class="field"><label>Para qué moto</label><input class="input" id="ar-moto" placeholder="Ej. Boxer CT 100 2020"></div>
       <div class="field"><label>Marca</label><input class="input" id="ar-marca" placeholder="Opcional"></div>
     </div>
-    <div class="form-row">
+    <div class="form-row" id="ar-extra2">
       <div class="field"><label>Referencia del fabricante</label><input class="input" id="ar-ref" placeholder="Opcional"></div>
       <div class="field"><label>Categoría</label><select class="input" id="ar-cat"><option value="">— Sin categoría —</option>{% for c in categorias %}<option value="{{ c.id }}">{{ c.nombre }}</option>{% endfor %}</select></div>
     </div>
-    <div class="field"><label>Dónde se compra</label><input class="input" id="ar-donde" placeholder="Proveedor o almacén (opcional)"></div>
+    <div class="field"><label>Dónde se compra (proveedor)</label><input class="input" id="ar-donde" placeholder="Ej. Distrimotos centro" list="ar-provs"><datalist id="ar-provs">{% for pv in proveedores %}<option value="{{ pv.nombre }}">{% endfor %}</datalist></div>
+    <div class="field"><label>¿Cómo se paga la compra afuera? *</label>
+      <div class="pay-grid" style="grid-template-columns:1fr 1fr">
+        <button type="button" class="pay-btn" data-arpago="caja">💵 Efectivo de la caja</button>
+        <button type="button" class="pay-btn" data-arpago="credito">🧾 A crédito con el proveedor</button>
+      </div>
+      <div class="hint" id="ar-pago-hint"></div></div>
     <div class="form-row">
       <div class="field"><label>Costo afuera (c/u) *</label><input class="input" id="ar-costo" inputmode="numeric" placeholder="Lo que nos cuesta"></div>
       <div class="field"><label>Precio de venta (c/u) *</label><input class="input" id="ar-precio" inputmode="numeric"><div class="hint" id="ar-sug"></div></div>
@@ -169,7 +175,7 @@ function pintarCarrito() {
   if (!carrito.length) { box.innerHTML = '<p class="empty">Busca y agrega repuestos.<br><small>El lector de código de barras también funciona aquí.</small></p>'; }
   else box.innerHTML = carrito.map((it, i) => {
     const disp = it.p.virtual ? Infinity : it.p.stock - (it.p.reservado || 0);
-    const alerta = it.arrastre ? '<span class="badge virtual">Arrastre</span>' : it.p.virtual ? '<span class="badge virtual">Virtual</span>' : it.cantidad > it.p.stock ? `<span class="badge err">solo hay ${NUM(it.p.stock)}</span>` : (it.cantidad > disp ? `<span class="badge warn">${NUM(it.p.reservado)} apartado(s) web</span>` : '');
+    const alerta = it.arrastre ? `<span class="badge virtual">Arrastre · compra ${it.compra && it.compra.pago === 'credito' ? 'a crédito' : 'con caja'}</span>` : it.p.virtual ? '<span class="badge virtual">Virtual</span>' : it.cantidad > it.p.stock ? `<span class="badge err">solo hay ${NUM(it.p.stock)}</span>` : (it.cantidad > disp ? `<span class="badge warn">${NUM(it.p.reservado)} apartado(s) web</span>` : '');
     const bajoCosto = VE_COSTO && it.p.costo && it.precio < it.p.costo ? '<span class="badge err">bajo costo</span>' : '';
     return `<div class="ci">
       <div><div class="nm">${esc(it.p.nombre)}</div><div class="cd">${it.p.interno ? '<b>' + esc(it.p.interno) + '</b> · ' : ''}${esc(it.p.codigo)}${it.p.ubicacion ? ' · 📍' + esc(it.p.ubicacion) : ''} ${alerta} ${bajoCosto}</div></div>
@@ -199,6 +205,7 @@ function aviso(txt) {
 $('pb-ver').addEventListener('click', () => document.querySelector('.cart').scrollIntoView({ behavior: 'smooth', block: 'start' }));
 $('pb-cobrar').addEventListener('click', () => $('btn-cobrar').click());
 function agregar(p, cantidad = 1, precio = null, callado = false) {
+  if (p.arrastre && p.virtual && !callado) { abrirArrastre(p); return; }
   const ex = carrito.find(it => it.p.id === p.id);
   if (ex) ex.cantidad += cantidad;
   else carrito.unshift({ p, cantidad, precio: precio ?? precioLista(p), manual: precio !== null });
@@ -232,7 +239,7 @@ function pintarResultados(lista, titulo = '') {
   resultados = lista; selIdx = 0;
   $('resultados').innerHTML = (titulo ? `<small class="muted">${titulo}</small>` : '') + (lista.length ? lista.map((p, i) => {
     const disp = p.stock - (p.reservado || 0);
-    const st = p.virtual ? '<span class="badge virtual">Virtual</span>' : p.stock <= 0 ? '<span class="neg">Agotado</span>' : `<span class="${disp <= 0 ? 'neg' : 'muted'}">Stock ${NUM(p.stock)}${p.reservado ? ' · ' + NUM(p.reservado) + ' apart.' : ''}</span>`;
+    const st = p.virtual ? `<span class="badge virtual">${p.arrastre ? 'Arrastre' : 'Virtual'}</span>` : p.stock <= 0 ? '<span class="neg">Agotado</span>' : `<span class="${disp <= 0 ? 'neg' : 'muted'}">Stock ${NUM(p.stock)}${p.reservado ? ' · ' + NUM(p.reservado) + ' apart.' : ''}</span>`;
     return `<div class="res ${i === 0 ? 'sel' : ''}" data-i="${i}">
       <img class="thumb" src="${p.img || '{{ url_for('static', filename='sin-foto.svg') }}'}" alt="" loading="lazy">
       <div style="min-width:0"><div class="nm">${esc(p.nombre)}</div>
@@ -281,7 +288,31 @@ function precioSugerido(costo) {
   const base = costo * (1 + MARGEN_DETAL / 100), paso = base < 20000 ? 100 : 500;
   return Math.ceil(Math.round(base) / paso) * paso;
 }
-let arPrecioManual = false;
+let arPrecioManual = false, arPago = null, arReusar = null;
+function pintarArPago() {
+  document.querySelectorAll('[data-arpago]').forEach(b => b.classList.toggle('on', b.dataset.arpago === arPago));
+  $('ar-pago-hint').textContent = arPago === 'caja' ? 'Al cobrar la venta se registra la compra y la salida de ese efectivo de la caja.'
+    : arPago === 'credito' ? 'Al cobrar la venta se registra la compra como cuenta por pagar al proveedor (30 días).' : '';
+}
+document.querySelectorAll('[data-arpago]').forEach(b => b.addEventListener('click', () => { arPago = b.dataset.arpago; pintarArPago(); }));
+function abrirArrastre(p) {
+  arReusar = p || null;
+  ['ar-nombre', 'ar-moto', 'ar-marca', 'ar-ref', 'ar-donde', 'ar-costo', 'ar-precio'].forEach(id => $(id).value = '');
+  $('ar-cant').value = '1'; $('ar-cat').value = ''; $('ar-tienda').checked = false; $('ar-err').innerHTML = '';
+  arPago = null; arPrecioManual = false; pintarArPago();
+  $('ar-titulo').textContent = p ? 'Venta de arrastre · repuesto de la bodega virtual' : 'Venta de arrastre';
+  $('ar-nombre').readOnly = !!p;
+  ['ar-extra', 'ar-extra2'].forEach(id => $(id).style.display = p ? 'none' : '');
+  $('ar-tienda').closest('label').style.display = p ? 'none' : '';
+  if (p) {
+    $('ar-nombre').value = p.nombre; $('ar-donde').value = p.donde || '';
+    if (p.costo) $('ar-costo').value = Math.round(p.costo).toLocaleString('es-CO');
+    $('ar-precio').value = Math.round(precioLista(p)).toLocaleString('es-CO'); arPrecioManual = true;
+  } else {
+    const q = $('buscar').value.trim(); if (q && !/^\d+$/.test(q)) $('ar-nombre').value = q;
+  }
+  pintarArrastre(); abrir('m-arr'); setTimeout(() => $(p ? 'ar-costo' : 'ar-nombre').focus(), 50);
+}
 function pintarArrastre() {
   const costo = num($('ar-costo').value), sug = precioSugerido(costo);
   if (!arPrecioManual && sug) $('ar-precio').value = sug.toLocaleString('es-CO');
@@ -289,19 +320,29 @@ function pintarArrastre() {
   const precio = num($('ar-precio').value), q = num($('ar-cant').value) || 1;
   $('ar-ganancia').innerHTML = costo && precio ? `<span>Ganancia de esta venta</span><b class="${precio < costo ? 'neg' : ''}">${COP((precio - costo) * q)}</b>` : '';
 }
-$('btn-arrastre').addEventListener('click', () => {
-  ['ar-nombre', 'ar-moto', 'ar-marca', 'ar-ref', 'ar-donde', 'ar-costo', 'ar-precio'].forEach(id => $(id).value = '');
-  $('ar-cant').value = '1'; $('ar-cat').value = ''; $('ar-tienda').checked = false; $('ar-err').innerHTML = '';
-  const q = $('buscar').value.trim(); if (q && !/^\d+$/.test(q)) $('ar-nombre').value = q;
-  arPrecioManual = false; pintarArrastre(); abrir('m-arr'); setTimeout(() => $('ar-nombre').focus(), 50);
-});
+$('btn-arrastre').addEventListener('click', () => abrirArrastre(null));
 $('ar-costo').addEventListener('input', pintarArrastre);
 $('ar-cant').addEventListener('input', pintarArrastre);
 $('ar-precio').addEventListener('input', () => { arPrecioManual = !!$('ar-precio').value.trim(); pintarArrastre(); });
 let arEnviando = false;
 $('ar-guardar').addEventListener('click', async () => {
+  const precio = num($('ar-precio').value), q = num($('ar-cant').value) || 1, costo = num($('ar-costo').value);
+  const prov = $('ar-donde').value.trim(), errs = [];
+  if (!costo) errs.push('Escribe cuánto cuesta comprarlo afuera.');
+  if (!precio) errs.push('Escribe el precio de venta.');
+  if (!arPago) errs.push('Elige cómo se paga la compra afuera: efectivo de la caja o a crédito.');
+  if (arPago === 'credito' && !prov) errs.push('Para comprar a crédito escribe el proveedor.');
+  if (errs.length) { $('ar-err').innerHTML = errs.map(m => `<div class="flash err">${esc(m)}</div>`).join(''); return; }
+  const compra = { costo, pago: arPago, proveedor: prov };
+  if (arReusar) {
+    cerrar('m-arr');
+    carrito = carrito.filter(it => it.p.id !== arReusar.id);
+    carrito.unshift({ p: arReusar, cantidad: q, precio, manual: true, arrastre: true, compra });
+    pintarCarrito(); $('buscar').value = '';
+    aviso(`✓ Venta de arrastre: <b>${esc(arReusar.nombre)}</b>. Al cobrar se registra la compra ${arPago === 'caja' ? 'con efectivo de la caja' : 'a crédito'}.`);
+    return;
+  }
   if (arEnviando) return; arEnviando = true; $('ar-guardar').disabled = true;
-  const precio = num($('ar-precio').value), q = num($('ar-cant').value) || 1;
   const j = await postJSON('{{ url_for('pos_arrastre') }}', {
     nombre: $('ar-nombre').value, compatibilidad: $('ar-moto').value, marca: $('ar-marca').value, referencia: $('ar-ref').value,
     categoria_id: $('ar-cat').value, donde_comprar: $('ar-donde').value, costo: num($('ar-costo').value), precio,
@@ -309,7 +350,7 @@ $('ar-guardar').addEventListener('click', async () => {
   arEnviando = false; $('ar-guardar').disabled = false;
   if (!j.ok) { $('ar-err').innerHTML = j.errores.map(m => `<div class="flash err">${esc(m)}</div>`).join(''); return; }
   cerrar('m-arr');
-  carrito.unshift({ p: j.producto, cantidad: q, precio, manual: true, arrastre: true });
+  carrito.unshift({ p: j.producto, cantidad: q, precio, manual: true, arrastre: true, compra });
   pintarCarrito(); $('buscar').value = '';
   aviso(`✓ Venta de arrastre: <b>${esc(j.producto.nombre)}</b> (cód. ${esc(j.producto.interno || j.producto.codigo)}) quedó en la bodega virtual y en la venta.`);
 });
@@ -451,7 +492,7 @@ $('c-credito').addEventListener('change', () => pintarPagos());
 function datosVenta() {
   const t = totales();
   return {
-    items: carrito.map(it => ({ producto_id: it.p.id, cantidad: it.cantidad, precio: it.precio, arrastre: !!it.arrastre })),
+    items: carrito.map(it => ({ producto_id: it.p.id, cantidad: it.cantidad, precio: it.precio, arrastre: !!it.arrastre, compra: it.compra || null })),
     descuento: t.desc, lista: $('lista').value, cliente_id: cliente ? cliente.id : null,
     cliente_nombre: cliente ? '' : ($('cli-q').value.trim() || (PRECARGA && PRECARGA.cliente_nombre) || ''), cliente_doc: $('cli-doc').value.trim() || (PRECARGA && PRECARGA.cliente_doc) || '',
     cliente_tel: $('cli-tel').value,

@@ -11,7 +11,7 @@ from datetime import timedelta
 from models import (CATEGORIAS_CAJA_MENOR, CLASE_EGRESO, Gasto, RESULTADOS_VISITA, Visita, MOTIVOS_AJUSTE, Ajuste, AjusteItem, Cliente, Compra, CompraItem, Cotizacion,
                     Devolucion, MedioPago, Mensaje, MovCaja, ORIGENES_REVERSIBLES, Movimiento, PagoCompra, PagoVenta, Pedido,
                     PedidoItem, Producto, Turno, Venta, VentaItem, ahora, config, db, siguiente,
-                    Categoria, asignar_codigo_interno)
+                    Categoria, Proveedor, asignar_codigo_interno)
 from sqlalchemy import or_
 
 TOL = 1e-6
@@ -413,6 +413,7 @@ def registrar_venta(usuario, items, pagos, cliente=None, cliente_nombre="", clie
               nota=(nota or "").strip()[:300] or None, turno_id=turno.id, usuario_id=usuario.id,
               vendedor_id=(pedido.vendedor_id if pedido and pedido.vendedor_id else usuario.id))
     v.arrastre = any(pid in pids_arrastre and prods[pid].virtual for (pid, _), _ in agrupado.items())
+    arrastre_virtual = {pid for (pid, _), _ in agrupado.items() if pid in pids_arrastre and prods[pid].virtual}
     if credito and cliente:
         v.vence = ahora().date() + timedelta(days=cliente.plazo_dias or 30)
     db.session.add(v)
@@ -448,7 +449,7 @@ def registrar_venta(usuario, items, pagos, cliente=None, cliente_nombre="", clie
         db.session.add(VentaItem(venta_id=v.id, producto=p, codigo=p.codigo, nombre=p.nombre, cantidad=q,
                                  precio=pr, total=linea_total, neto=neto, iva_pct=iva_pct or 0,
                                  costo_unitario=costo, por_surtir=pend, costo_estimado=costo if pend else 0,
-                                 arrastre=bool(p.virtual and pid in pids_arrastre)))
+                                 arrastre=pid in arrastre_virtual))
     v.costo = round(costo_total, 2)
     v.iva = round(iva_total)
     # registra el dinero: el efectivo entra neto del cambio
@@ -531,6 +532,68 @@ def crear_item_arrastre(usuario, d):
     return p
 
 
+def compras_de_arrastre(venta, usuario, items):
+    """Después de cobrar una venta de arrastre registra la compra afuera de cada repuesto (pagada con
+    efectivo de la caja o a crédito con el proveedor) y la salida inmediata hacia el cliente, así queda
+    trazado en compras, caja, cuentas por pagar y kardex. El repuesto vuelve a la bodega virtual.
+    items: [{producto_id, arrastre, compra: {costo, pago: caja|credito, proveedor}}]"""
+    lineas = {it.producto_id: it for it in venta.items if it.arrastre}
+    if not lineas:
+        return []
+    datos = {}
+    for d in items or []:
+        try:
+            pid = int(d.get("producto_id"))
+        except (TypeError, ValueError):
+            continue
+        if pid in lineas and d.get("compra"):
+            datos[pid] = d["compra"]
+    errores, grupos = [], {}
+    for pid, it in lineas.items():
+        cpr = datos.get(pid) or {}
+        try:
+            costo = round(float(cpr.get("costo") or 0))
+        except (TypeError, ValueError):
+            costo = 0
+        pago = cpr.get("pago") if cpr.get("pago") in ("caja", "credito") else None
+        prov = (cpr.get("proveedor") or "").strip()[:140]
+        if costo <= 0:
+            errores.append(f"«{it.nombre}»: escribe cuánto cuesta comprarlo afuera.")
+        if not pago:
+            errores.append(f"«{it.nombre}»: indica si la compra se paga con efectivo de la caja o a crédito.")
+        if pago == "credito" and not prov:
+            errores.append(f"«{it.nombre}»: para comprar a crédito escribe a qué proveedor.")
+        grupos.setdefault((prov.lower(), pago), {"prov": prov, "pago": pago, "lineas": []})["lineas"].append((it, costo))
+    if errores:
+        raise ErrorNegocio(errores)
+    compras = []
+    for g in grupos.values():
+        proveedor = None
+        if g["prov"]:
+            proveedor = Proveedor.query.filter(Proveedor.nombre.ilike(g["prov"])).first()
+            if proveedor is None:
+                proveedor = Proveedor(nombre=g["prov"], notas="Creado en una venta de arrastre")
+                db.session.add(proveedor)
+                db.session.flush()
+        pago = ({"modo": "credito"} if g["pago"] == "credito"
+                else {"modo": "contado", "medio": efectivo(), "desde_caja": True})
+        c = registrar_compra(usuario, proveedor,
+                             [{"producto_id": it.producto_id, "cantidad": it.cantidad, "costo": costo} for it, costo in g["lineas"]],
+                             nota=f"Venta de arrastre {venta.folio}" + (f" · {venta.cliente_nombre}" if venta.cliente_nombre else ""),
+                             pago=pago, plazo_dias=30)
+        for it, _ in g["lineas"]:
+            p = db.session.get(Producto, it.producto_id)
+            if g["prov"]:
+                p.donde_comprar = g["prov"]
+            it.costo_unitario = salida(p, it.cantidad, "venta", venta.folio, "venta", venta.id, usuario.id,
+                                       nota="Venta de arrastre: entregado al cliente")
+        compras.append(c)
+    venta.costo = round(sum(i.costo_unitario * i.cantidad for i in venta.items), 2)
+    venta.nota = ((venta.nota + " · ") if venta.nota else "") + "Compra " + ", ".join(f"C-{c.numero:05d}" for c in compras)
+    venta.nota = venta.nota[:300]
+    return compras
+
+
 def saldo_cliente(cliente):
     return sum(v.saldo for v in Venta.query.filter(Venta.cliente_id == cliente.id, Venta.estado == "credito").all())
 
@@ -570,8 +633,6 @@ def anular_venta(venta, usuario, motivo):
     for it in venta.items:
         q = it.cantidad - (it.devuelto or 0) - (it.por_surtir or 0)   # lo por surtir nunca salió de bodega
         it.por_surtir = 0
-        if it.arrastre:   # venta de arrastre: nunca estuvo en el inventario
-            q = 0
         if q > TOL:
             entrada(prods[it.producto_id], q, it.costo_unitario, "anula_venta", venta.folio, "venta", venta.id,
                     usuario.id, nota=motivo)

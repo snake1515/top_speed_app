@@ -553,6 +553,7 @@ def producto_json(p, reservado=None, ver_costo=False):
          "marca": p.marca or "", "compat": p.compatibilidad or "", "ubicacion": p.ubicacion or "",
          "equiv": ", ".join(p.lista_equivalencias),
          "unidad": p.unidad, "stock": p.stock, "reservado": (reservado or {}).get(p.id, 0), "virtual": bool(p.virtual),
+         "arrastre": p.origen == "arrastre", "donde": p.donde_comprar or "",
          "detal": p.precio_detal, "mayor": p.precio_mayor or p.precio_detal, "taller": p.precio_taller or p.precio_detal,
          "iva": p.iva_pct, "img": url_for("img_producto", pid=p.id, v=p.imagen_v) if p.imagen_v else ""}
     if ver_costo:
@@ -610,6 +611,7 @@ def pos():
                                    "cantidad": it.cantidad, "precio": it.precio} for it in ped.items]}
     return render_template("pos.html", medios=medios, turno=turno_abierto(), precarga=precarga,
                            categorias=Categoria.query.order_by(Categoria.nombre).all(),
+                           proveedores=Proveedor.query.filter_by(activo=True).order_by(Proveedor.nombre).all(),
                            destacados=[producto_json(p, ver_costo=current_user.ve_costos) for p in
                                        Producto.query.filter_by(activo=True, destacado=True).limit(12).all()])
 
@@ -670,10 +672,22 @@ def pos_venta():
                             cliente_tel=d.get("cliente_tel", ""), lista=d.get("lista", "detal"),
                             descuento=n(d.get("descuento")), credito=bool(d.get("credito")), nota=d.get("nota", ""),
                             pedido=pedido, cotizacion=cot if cot and cot.estado == "abierta" else None)
+        compras = services.compras_de_arrastre(v, current_user, d.get("items"))
         db.session.commit()
     except ErrorNegocio as e:
         db.session.rollback()
         return jsonify(ok=False, errores=e.errores), 400
+    if compras:
+        try:   # aviso al admin: compras hechas afuera para ventas de arrastre
+            for c in compras:
+                avisar_cambio("Compras", f"Compra de arrastre C-{c.numero:05d} por {pesos(c.total)} para la venta {v.folio}",
+                              ("Pagada con efectivo de la caja" if (c.pagado or 0) >= (c.total or 0) - 0.5
+                               else f"A crédito con {c.proveedor.nombre if c.proveedor else 'el proveedor'}")
+                              + "\n" + "\n".join(f"{cant(i.cantidad)} × {i.producto.nombre[:50]}" for i in c.items),
+                              url_for("venta_detalle", vid=v.id))
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
     if v.credito and (v.saldo or 0) > 0.5:
         try:   # aviso para los demás: venta que queda en cartera
             pagado = (v.total or 0) - (v.saldo or 0)
