@@ -30,14 +30,23 @@
       <div class="sum-row big"><span>Saldo</span><span class="{{ 'neg' if c.saldo }}">{{ c.saldo|pesos }}</span></div>
       {% if c.a_favor %}<p class="flash info" style="margin:8px 0 0">El proveedor te debe <b>{{ c.a_favor|pesos }}</b> por devoluciones ya pagadas (cruzar en la próxima compra o pedir el reembolso).</p>{% endif %}
       {% if c.vence and c.saldo %}<p class="muted">Vence {{ c.vence|f }}</p>{% endif %}
-      {% for pg in c.pagos %}<div class="sum-row"><small>{{ pg.fecha|f }} · {{ pg.medio.nombre if pg.medio else '' }}{{ ' · caja' if pg.desde_caja }}</small><small>{{ pg.valor|pesos }}</small></div>{% endfor %}
+      {% for pg in c.pagos %}<div class="sum-row"><small>{{ pg.fecha|f }} · {{ pg.medio.nombre if pg.medio else '' }}{{ ' · caja' if pg.desde_caja }}
+          {% if pg.soporte_mime %} · <a href="{{ url_for('compra_pago_soporte', pid=pg.id) }}" target="_blank">📎 Ver soporte</a>{% endif %}</small><small>{{ pg.valor|pesos }}</small></div>
+        <form method="post" action="{{ url_for('compra_pago_soporte_subir', pid=pg.id) }}" enctype="multipart/form-data" class="soporte-pago" style="margin:0 0 6px">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label class="muted" style="font-size:.8rem;cursor:pointer">{{ '↻ Cambiar soporte' if pg.soporte_mime else '📎 Subir soporte' }}
+            <input type="file" name="soporte" accept="image/*,application/pdf" style="display:none" onchange="this.form.submit()"></label>
+        </form>{% endfor %}
       {% if c.saldo and not c.anulada %}
-      <form method="post" action="{{ url_for('compra_pago', cid=c.id) }}" style="margin-top:12px">
+      <form method="post" action="{{ url_for('compra_pago', cid=c.id) }}" enctype="multipart/form-data" style="margin-top:12px">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-row" style="grid-template-columns:1fr 1fr">
           <input class="input" name="valor" value="{{ c.saldo|round|int }}" inputmode="numeric">
           <select class="input" name="medio_id">{% for m in medios %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}</select>
         </div>
+        <div class="field" style="margin-top:8px"><label>Soporte del pago (opcional)</label>
+          <input class="input" type="file" name="soporte" accept="image/*,application/pdf">
+          <div class="hint">Foto del comprobante de transferencia, recibo firmado o PDF (máx. 5 MB).</div></div>
         <label class="check" style="margin:8px 0"><input type="checkbox" name="desde_caja" value="1" {{ 'disabled' if not turno }}> Sale de la caja abierta</label>
         <button class="btn ok">Registrar pago</button>
       </form>

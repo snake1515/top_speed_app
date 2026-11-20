@@ -25,7 +25,7 @@ import exportar
 import importador
 import nomina as nom
 import reportes as rpt
-from models import (CATEGORIAS_CAJA_MENOR, separar_equivalencias, asignar_codigo_interno, leido_por, marcar_leido, mensajes_de, mensajes_sin_leer, normalizar, DIAS, RESULTADOS_VISITA, Ruta, Visita, CargaMasiva, migrar, CATEGORIAS_GASTO, LISTAS_PRECIO, MOTIVOS_AJUSTE, ROLES, TIPOS_MEDIO, TIPOS_MOV,
+from models import (CATEGORIAS_CAJA_MENOR, PagoCompra, separar_equivalencias, asignar_codigo_interno, leido_por, marcar_leido, mensajes_de, mensajes_sin_leer, normalizar, DIAS, RESULTADOS_VISITA, Ruta, Visita, CargaMasiva, migrar, CATEGORIAS_GASTO, LISTAS_PRECIO, MOTIVOS_AJUSTE, ROLES, TIPOS_MEDIO, TIPOS_MOV,
                     TIPOS_PAGO_EMP, UNIDADES, Ajuste, Categoria, Cliente, Compra, Cotizacion,
                     AporteSocio, CATEGORIAS_INVERSION, GastoFijo, Inversion, InversionPago, InversionSoporte, Socio, TIPOS_INVERSION,
                     Empleado, Gasto, MedioPago, Mensaje, MovCaja, Movimiento, PagoNomina, Pedido, Producto,
@@ -188,6 +188,28 @@ def procesar_imagen(archivo, lado=1000):
         return buf.getvalue()
     except Exception:
         raise ErrorNegocio("No pude leer la imagen. Usa una foto JPG o PNG.")
+
+def leer_soporte(arch):
+    """Archivo de soporte subido (foto o PDF) -> (datos, mime, nombre) o None si no se subió nada.
+    Las fotos se reducen a JPG de 1600 px; los PDF hasta 5 MB."""
+    if not arch or not arch.filename:
+        return None
+    datos = arch.read()
+    nombre = os.path.basename(arch.filename)[:160]
+    if arch.filename.lower().endswith(".pdf") or arch.mimetype == "application/pdf":
+        if len(datos) > 5 * 1024 * 1024:
+            raise ErrorNegocio(f"El PDF «{nombre}» pasa de 5 MB. Súbelo más liviano o como foto.")
+        return datos, "application/pdf", nombre
+    try:
+        return procesar_imagen(BytesIO(datos), 1600), "image/jpeg", nombre
+    except ErrorNegocio:
+        raise ErrorNegocio(f"No pude leer «{nombre}». Usa una foto (JPG, PNG) o un PDF.")
+
+
+def poner_soporte(pago, sop):
+    if pago is not None and sop:
+        pago.soporte, pago.soporte_mime, pago.soporte_nombre = sop
+
 
 
 # límites sencillos contra abuso (login y pedidos de la tienda)
@@ -1007,8 +1029,11 @@ def caja_movimiento():
             compra = db.session.get(Compra, int(f.get("compra_id") or 0)) if (f.get("compra_id") or "").isdigit() else None
             if compra and prov and compra.proveedor_id != prov.id:
                 raise ErrorNegocio("Esa compra es de otro proveedor.")
+            sop = leer_soporte(request.files.get("soporte")) if compra and f.get("clase") == "proveedor" else None
             m = services.egreso_caja(current_user, f.get("clase"), valor, medio, concepto, proveedor=prov, compra=compra,
                                      categoria=f.get("categoria"), beneficiario=f.get("beneficiario"))
+            if sop:
+                poner_soporte(compra.pagos[-1], sop)
             if m and m.vale:
                 vale = m.id
         db.session.commit()
@@ -1926,13 +1951,45 @@ def compra_pago(cid):
     try:
         if medio is None:
             raise ErrorNegocio("Elige el medio de pago.")
+        sop = leer_soporte(request.files.get("soporte"))
         pagar_compra(c, current_user, n(request.form.get("valor")), medio, bool(request.form.get("desde_caja")))
+        poner_soporte(c.pagos[-1], sop)
         db.session.commit()
-        flash("Pago al proveedor registrado.", "ok")
+        flash("Pago al proveedor registrado" + (" con su soporte." if sop else "."), "ok")
     except ErrorNegocio as e:
         db.session.rollback()
         errores_flash(e)
     return redirect(url_for("compra_detalle", cid=cid))
+
+
+@app.route("/compras/pago/<int:pid>/soporte")
+@requiere("bodega")
+def compra_pago_soporte(pid):
+    pg = get_or_404(PagoCompra, pid)
+    if not pg.soporte_mime:
+        abort(404)
+    ext = "pdf" if pg.soporte_mime == "application/pdf" else "jpg"
+    nombre = pg.soporte_nombre if pg.soporte_nombre and pg.soporte_nombre.lower().endswith("." + ext) \
+        else f"soporte_pago_C{pg.compra_id}_{pg.id}.{ext}"
+    return send_file(BytesIO(pg.soporte), mimetype=pg.soporte_mime, download_name=nombre)
+
+
+@app.route("/compras/pago/<int:pid>/soporte", methods=["POST"])
+@requiere("bodega")
+def compra_pago_soporte_subir(pid):
+    """Sube (o cambia) el soporte de un pago ya registrado."""
+    pg = get_or_404(PagoCompra, pid)
+    try:
+        sop = leer_soporte(request.files.get("soporte"))
+        if not sop:
+            raise ErrorNegocio("Elige la foto o el PDF del soporte.")
+        poner_soporte(pg, sop)
+        db.session.commit()
+        flash("Soporte del pago guardado.", "ok")
+    except ErrorNegocio as e:
+        db.session.rollback()
+        errores_flash(e)
+    return redirect(url_for("compra_detalle", cid=pg.compra_id))
 
 
 @app.route("/compras/<int:cid>/devolver", methods=["POST"])

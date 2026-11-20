@@ -682,6 +682,10 @@ class PagoCompra(db.Model):
     desde_caja = db.Column(db.Boolean, nullable=False, default=False)
     mov_caja_id = db.Column(db.Integer)
     usuario_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
+    # soporte del pago (foto del comprobante de transferencia, recibo firmado o PDF)
+    soporte = db.deferred(db.Column(db.LargeBinary))
+    soporte_mime = db.Column(db.String(60))
+    soporte_nombre = db.Column(db.String(160))
 
 
 class CargaMasiva(db.Model):

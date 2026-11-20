@@ -67,7 +67,7 @@
     </div>
   </div>
   <div>
-    <form class="card" method="post" action="{{ url_for('caja_movimiento') }}" id="f-mov">
+    <form class="card" method="post" action="{{ url_for('caja_movimiento') }}" id="f-mov" enctype="multipart/form-data">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <h2 style="margin-bottom:10px">Entrada o salida de dinero</h2>
       <div class="form-row" style="grid-template-columns:1fr 1fr">
@@ -88,6 +88,9 @@
           <div class="field"><label>Abona a la compra (opcional)</label><select class="input" name="compra_id" id="compra"><option value="">Pago sin compra (anticipo u otro)</option>
             {% for c in compras_pend %}<option value="{{ c.id }}" data-prov="{{ c.proveedor_id or '' }}" data-saldo="{{ c.saldo|round|int }}">C-{{ '%05d'|format(c.numero) }}{% if c.factura %} · Fact. {{ c.factura }}{% endif %} · debe {{ c.saldo|pesos }}</option>{% endfor %}</select>
             <div class="hint">Si eliges una compra, el pago se descuenta de lo que le debes.</div></div>
+          <div class="field" id="b-soporte" style="display:none"><label>Soporte del pago (opcional)</label>
+            <input class="input" type="file" name="soporte" accept="image/*,application/pdf">
+            <div class="hint">Foto del comprobante o recibo firmado; queda guardado en la compra.</div></div>
         </div>
         <div id="b-menor" style="display:none">
           <div class="field"><label>En qué se gastó *</label><select class="input" name="categoria">{% for c in cats_menor %}<option>{{ c }}</option>{% endfor %}</select></div>
@@ -162,6 +165,7 @@
       document.getElementById('concepto').placeholder = !salida ? 'Concepto: base extra, préstamo del dueño…' : clase.value === 'caja_menor' ? 'Detalle: domicilio a cliente, tinto, cinta…' : clase.value === 'proveedor' ? 'Nota del pago (opcional si abonas a una compra)' : 'Concepto';
       [...compra.options].forEach(o => { if (o.value) o.hidden = prov.value && o.dataset.prov !== prov.value; });
       if (compra.selectedOptions[0]?.hidden) compra.value = '';
+      document.getElementById('b-soporte').style.display = compra.value ? '' : 'none';
     }
     f.querySelectorAll('[name=tipo]').forEach(x => x.addEventListener('change', ver));
     clase.addEventListener('change', ver); prov.addEventListener('change', ver);
