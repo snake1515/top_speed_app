@@ -353,6 +353,9 @@ def registrar_venta(usuario, items, pagos, cliente=None, cliente_nombre="", clie
     for pid, q, pr in limpios:
         if pid not in prods or not prods[pid].activo:
             raise ErrorNegocio("Uno de los productos ya no existe o está inactivo.")
+        if pr <= 0:
+            raise ErrorNegocio(f"«{prods[pid].nombre}» no tiene precio: escríbelo en la línea antes de cobrar "
+                               "(o ponle precio en Repuestos).")
         agrupado[(pid, pr)] = agrupado.get((pid, pr), 0) + q
     bruto = sum(q * pr for (pid, pr), q in agrupado.items())
     descuento = round(max(descuento or 0, 0))
@@ -581,10 +584,14 @@ def compras_de_arrastre(venta, usuario, items):
                              [{"producto_id": it.producto_id, "cantidad": it.cantidad, "costo": costo} for it, costo in g["lineas"]],
                              nota=f"Venta de arrastre {venta.folio}" + (f" · {venta.cliente_nombre}" if venta.cliente_nombre else ""),
                              pago=pago, plazo_dias=30)
-        for it, _ in g["lineas"]:
+        for it, costo in g["lineas"]:
             p = db.session.get(Producto, it.producto_id)
             if g["prov"]:
                 p.donde_comprar = g["prov"]
+            if not (p.precio_detal or 0) > 0:
+                # repuesto que se grabó sin precio: queda con el precio y el costo de esta venta
+                p.precio_detal = round(it.precio)
+                p.costo_virtual = costo
             it.costo_unitario = salida(p, it.cantidad, "venta", venta.folio, "venta", venta.id, usuario.id,
                                        nota="Venta de arrastre: entregado al cliente")
         compras.append(c)

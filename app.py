@@ -1428,6 +1428,8 @@ def productos():
         lista = [p for p in lista if p.virtual]
     elif filtro == "sinfoto":
         lista = [p for p in lista if not p.imagen_v]
+    elif filtro == "sinprecio":
+        lista = [p for p in lista if not (p.precio_detal or 0) > 0]
     total_valor = sum(p.valor_inventario for p in lista)
     return render_template("productos.html", productos=lista[:600], total=len(lista), q=q, cat=cat, filtro=filtro,
                            categorias=Categoria.query.order_by(Categoria.nombre).all(), total_valor=total_valor,
@@ -1553,12 +1555,17 @@ def producto_form(pid=None):
         if "virtual_form" in f:
             p.volver_virtual = bool(f.get("volver_virtual"))
         quiere_virtual = bool(f.get("virtual"))
+        sin_precio = p.precio_detal <= 0
+        stock_ini_form = n(f.get("stock_inicial")) if nuevo else 0
+        if sin_precio and not quiere_virtual and (p.virtual or ((p.stock or 0) <= TOL_STOCK and stock_ini_form <= 0)):
+            quiere_virtual = True     # sin precio y sin unidades: entra a la bodega virtual hasta que tenga precio
+            p.volver_virtual = True   # y vuelve a virtual cuando se venda (se sigue ofreciendo)
         if quiere_virtual and not p.virtual and (p.stock or 0) > TOL_STOCK:
             errores.append("Solo un repuesto sin unidades (stock 0) puede pasar a la bodega virtual.")
         elif quiere_virtual:
             p.virtual = True
             p.costo_virtual = max(round(n(f.get("costo_virtual"))), 0)
-            if p.costo_virtual <= 0:
+            if p.costo_virtual <= 0 and not sin_precio:
                 errores.append("Escribe el costo virtual (lo que te costaría al comprarlo).")
         else:
             p.virtual = False
@@ -1572,8 +1579,9 @@ def producto_form(pid=None):
             errores.append("Ese código interno ya lo tiene otro repuesto.")
         if len(p.nombre) < 2:
             errores.append("Escribe el nombre del repuesto.")
-        if p.precio_detal <= 0:
-            errores.append("Escribe el precio detal.")
+        if sin_precio and not quiere_virtual:
+            errores.append("Sin precio detal el repuesto solo puede quedar en la bodega virtual (sin unidades). "
+                           "Escribe el precio o quita el stock.")
         if dup_codigo:
             errores.append("Ese código ya lo tiene otro repuesto.")
         if dup_barras:
@@ -1617,8 +1625,11 @@ def producto_form(pid=None):
                 errores_flash(e)
                 return redirect(url_for("producto_form"))
         db.session.commit()
+        if sin_precio:
+            flash("Quedó en la bodega virtual SIN PRECIO: no sale en la tienda y no se puede cobrar hasta que le pongas "
+                  "precio. Los encuentras en Repuestos → Sin precio.", "info")
         if nuevo:
-            g.aviso_texto = (f"Repuesto nuevo {p.codigo_interno or ''} · {p.nombre}\nPrecio detal {pesos(p.precio_detal)}"
+            g.aviso_texto = (f"Repuesto nuevo {p.codigo_interno or ''} · {p.nombre}\nPrecio detal {pesos(p.precio_detal) if p.precio_detal else 'sin precio'}"
                              + (" · bodega virtual" if p.virtual else "") + (f" · stock inicial {cant(stock_ini)}" if stock_ini > 0 else ""))
         else:
             cambios = _diferencias_producto(antes, _foto_producto(p))

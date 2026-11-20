@@ -205,7 +205,7 @@ function aviso(txt) {
 $('pb-ver').addEventListener('click', () => document.querySelector('.cart').scrollIntoView({ behavior: 'smooth', block: 'start' }));
 $('pb-cobrar').addEventListener('click', () => $('btn-cobrar').click());
 function agregar(p, cantidad = 1, precio = null, callado = false) {
-  if (p.arrastre && p.virtual && !callado) { abrirArrastre(p); return; }
+  if (p.virtual && !callado && (p.arrastre || !(p.detal > 0))) { abrirArrastre(p); return; }
   const ex = carrito.find(it => it.p.id === p.id);
   if (ex) ex.cantidad += cantidad;
   else carrito.unshift({ p, cantidad, precio: precio ?? precioLista(p), manual: precio !== null });
@@ -244,7 +244,7 @@ function pintarResultados(lista, titulo = '') {
       <img class="thumb" src="${p.img || '{{ url_for('static', filename='sin-foto.svg') }}'}" alt="" loading="lazy">
       <div style="min-width:0"><div class="nm">${esc(p.nombre)}</div>
         <div class="meta">${p.interno ? '<b class="mono">' + esc(p.interno) + '</b> · ' : ''}<span class="mono">${esc(p.codigo)}</span>${p.marca ? ' · ' + esc(p.marca) : ''}${p.ubicacion ? ' · 📍' + esc(p.ubicacion) : ''}${p.compat ? ' · 🏍 ' + esc(p.compat) : ''}${p.equiv ? ' · 🔁 ' + esc(p.equiv) : ''}</div></div>
-      <div><div class="pr">${COP(precioLista(p))}</div><div class="st">${st}${VE_COSTO ? ' · costo ' + COP(p.costo) : ''}</div></div></div>`;
+      <div><div class="pr">${precioLista(p) > 0 ? COP(precioLista(p)) : '<span class="badge warn">Sin precio</span>'}</div><div class="st">${st}${VE_COSTO ? ' · costo ' + COP(p.costo) : ''}</div></div></div>`;
   }).join('') : ($('buscar').value.trim() ? '<p class="empty">Sin resultados. Revisa el código o busca por otra palabra.<br><button type="button" class="btn sm" style="margin-top:8px" onclick="document.getElementById(\'btn-arrastre\').click()">＋ No lo tenemos: hacer venta de arrastre</button></p>'
     : '<p class="empty">Escribe el código, el nombre del repuesto o la moto, o pasa el lector de código de barras.<br><small>Marca repuestos como «Destacado» para verlos aquí siempre.</small></p>'));
 }
@@ -300,14 +300,14 @@ function abrirArrastre(p) {
   ['ar-nombre', 'ar-moto', 'ar-marca', 'ar-ref', 'ar-donde', 'ar-costo', 'ar-precio'].forEach(id => $(id).value = '');
   $('ar-cant').value = '1'; $('ar-cat').value = ''; $('ar-tienda').checked = false; $('ar-err').innerHTML = '';
   arPago = null; arPrecioManual = false; pintarArPago();
-  $('ar-titulo').textContent = p ? 'Venta de arrastre · repuesto de la bodega virtual' : 'Venta de arrastre';
+  $('ar-titulo').textContent = p ? (p.detal > 0 ? 'Venta de arrastre · repuesto de la bodega virtual' : 'Repuesto sin precio · escribe a cuánto se compró y a cuánto se vende') : 'Venta de arrastre';
   $('ar-nombre').readOnly = !!p;
   ['ar-extra', 'ar-extra2'].forEach(id => $(id).style.display = p ? 'none' : '');
   $('ar-tienda').closest('label').style.display = p ? 'none' : '';
   if (p) {
     $('ar-nombre').value = p.nombre; $('ar-donde').value = p.donde || '';
     if (p.costo) $('ar-costo').value = Math.round(p.costo).toLocaleString('es-CO');
-    $('ar-precio').value = Math.round(precioLista(p)).toLocaleString('es-CO'); arPrecioManual = true;
+    if (precioLista(p) > 0) { $('ar-precio').value = Math.round(precioLista(p)).toLocaleString('es-CO'); arPrecioManual = true; }
   } else {
     const q = $('buscar').value.trim(); if (q && !/^\d+$/.test(q)) $('ar-nombre').value = q;
   }

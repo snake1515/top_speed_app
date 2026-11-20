@@ -49,7 +49,7 @@
         <h2 style="margin-bottom:4px">Precios</h2>
         <p class="muted" style="margin-top:0">{% if cfg.cobra_iva %}Con IVA incluido.{% else %}Precio final al cliente.{% endif %} {% if current_user.ve_costos and p.costo_promedio %}Costo promedio actual: <b>{{ p.costo_promedio|pesos }}</b>.{% endif %}</p>
         <div class="form-row c4">
-          <div class="field"><label>Detal *</label><input class="input precio" name="precio_detal" id="pd" value="{{ money('precio_detal') }}" inputmode="numeric" required></div>
+          <div class="field"><label>Detal</label><input class="input precio" name="precio_detal" id="pd" value="{{ money('precio_detal') }}" inputmode="numeric" placeholder="Sin precio"><div class="hint">¿No lo sabes? Déjalo vacío: entra a la bodega virtual sin precio.</div></div>
           <div class="field"><label>Por mayor</label><input class="input precio" name="precio_mayor" id="pm" value="{{ money('precio_mayor') }}" inputmode="numeric"></div>
           <div class="field"><label>Mecánico / taller</label><input class="input precio" name="precio_taller" id="pt" value="{{ money('precio_taller') }}" inputmode="numeric"></div>
           {% if cfg.cobra_iva %}<div class="field"><label>IVA %</label><input class="input" name="iva_pct" value="{{ v('iva_pct', cfg.iva_defecto)|replace('.0','') }}"></div>{% endif %}
