@@ -12,6 +12,7 @@
   </div>
   <div class="bf-res" id="bf-res" hidden></div>
 </div>
+{% if p.id and not (p.precio_detal or 0) > 0 %}<div class="flash warn" style="margin-bottom:14px">⚠ <b>Repuesto con costo y precio en cero.</b> Antes de venderlo debes ponerle el precio de compra y el de venta{% if current_user.puede('bodega') %} (<a href="{{ url_for('producto_form', pid=p.id) }}">editar</a>){% endif %}. Si lo vendes desde el POS, la app te pide el costo de compra y el precio de venta.</div>{% endif %}
 <div class="page-head"><div><h1>{{ p.nombre if p.id else 'Nuevo repuesto' }}</h1>{% if p.id %}<p>Stock {{ p.stock|cant }} · costo promedio {{ p.costo_promedio|pesos }} (cambian solo con compras, ventas y ajustes)</p>{% endif %}</div></div>
 <form method="post" enctype="multipart/form-data">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

@@ -1626,10 +1626,13 @@ def producto_form(pid=None):
                 return redirect(url_for("producto_form"))
         db.session.commit()
         if sin_precio:
-            flash("Quedó en la bodega virtual SIN PRECIO: no sale en la tienda y no se puede cobrar hasta que le pongas "
-                  "precio. Los encuentras en Repuestos → Sin precio.", "info")
+            flash(f"⚠ «{p.nombre}» quedó creado con costo y precio en CERO (bodega virtual). Antes de venderlo debes "
+                  "ponerle el precio de compra y el de venta: edítalo aquí o, al venderlo en el POS, la app te los pide. "
+                  "Mientras tanto no sale en la tienda. Los encuentras en Repuestos → Sin precio.", "warn")
         if nuevo:
-            g.aviso_texto = (f"Repuesto nuevo {p.codigo_interno or ''} · {p.nombre}\nPrecio detal {pesos(p.precio_detal) if p.precio_detal else 'sin precio'}"
+            g.aviso_texto = (f"Repuesto nuevo {p.codigo_interno or ''} · {p.nombre}\n"
+                             + (f"Precio detal {pesos(p.precio_detal)}" if p.precio_detal
+                                else "⚠ Creado con costo y precio en cero: antes de venderlo hay que ponerle precio de compra y de venta")
                              + (" · bodega virtual" if p.virtual else "") + (f" · stock inicial {cant(stock_ini)}" if stock_ini > 0 else ""))
         else:
             cambios = _diferencias_producto(antes, _foto_producto(p))
