@@ -59,7 +59,7 @@
       <div class="table-wrap"><table>
         <thead><tr><th>Hora</th><th>Concepto</th><th>Medio</th><th class="num">Valor</th><th></th></tr></thead>
         <tbody>{% for m in r.movs|sort(attribute='fecha', reverse=true) %}
-          <tr><td>{{ m.fecha.strftime('%I:%M %p') }}</td><td>{% if m.tipo == 'egreso' %}<span class="badge {{ 'warn' if m.origen == 'caja_menor' else ('blue' if m.origen in ('compra', 'proveedor') else '') }}">{{ m.clase }}</span> {% endif %}{{ m.concepto }}{% if m.vale %} · <a href="{{ url_for('caja_vale', mid=m.id) }}">{{ m.folio_vale }}</a>{% endif %}<br><small class="muted">{{ m.usuario.nombre if m.usuario else '' }}{% if m.beneficiario %} · recibió {{ m.beneficiario }}{% endif %}</small></td><td>{{ m.medio.nombre }}</td>
+          <tr data-mov="{{ url_for('caja_mov_detalle', mid=m.id) }}" title="Ver detalle"><td>{{ m.fecha.strftime('%I:%M %p') }}</td><td>{% if m.tipo == 'egreso' %}<span class="badge {{ 'warn' if m.origen == 'caja_menor' else ('blue' if m.origen in ('compra', 'proveedor') else '') }}">{{ m.clase }}</span> {% endif %}{{ m.concepto }}{% if m.vale %} · <a href="{{ url_for('caja_vale', mid=m.id) }}">{{ m.folio_vale }}</a>{% endif %}<br><small class="muted">{{ m.usuario.nombre if m.usuario else '' }}{% if m.beneficiario %} · recibió {{ m.beneficiario }}{% endif %}</small></td><td>{{ m.medio.nombre }}</td>
             <td class="num {{ 'pos' if m.tipo == 'ingreso' else 'neg' }}">{{ '+' if m.tipo == 'ingreso' else '−' }}{{ m.valor|pesos }}</td>
             <td>{% if m.reversible %}<form method="post" action="{{ url_for('caja_mov_anular', mid=m.id) }}" data-motivo="¿Por qué reviertes este movimiento de {{ m.valor|pesos }}?{% if not current_user.puede('admin') %} (Se le avisará al administrador){% endif %}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="motivo"><button class="btn ghost sm" title="Revertir movimiento">↺ Revertir</button></form>{% endif %}</td></tr>
         {% else %}<tr><td colspan="5" class="empty">Sin movimientos todavía.</td></tr>{% endfor %}</tbody>
@@ -174,4 +174,5 @@
   })();
 </script>
 {% endif %}
+{% include '_mov_modal.html' %}
 {% endblock %}

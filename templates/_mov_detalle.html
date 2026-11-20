@@ -1,0 +1,61 @@
+{# Detalle de un movimiento de caja: se carga dentro de la ventana emergente de caja / turno #}
+<div class="page-head" style="margin-bottom:10px"><div>
+  <h2 style="margin:0">{{ 'Entrada' if m.tipo == 'ingreso' else m.clase }}</h2>
+  <p class="muted" style="margin:2px 0 0">{{ m.fecha|fh }}{% if m.turno %} · Turno {{ m.turno.numero }}{% endif %}</p></div>
+  <b class="{{ 'pos' if m.tipo == 'ingreso' else 'neg' }}" style="font-size:1.4rem">{{ '+' if m.tipo == 'ingreso' else '−' }}{{ m.valor|pesos }}</b>
+</div>
+<div class="sum-row"><span>Concepto</span><b style="text-align:right">{{ m.concepto }}</b></div>
+<div class="sum-row"><span>Medio</span><b>{{ m.medio.nombre }}</b></div>
+<div class="sum-row"><span>Registró</span><b>{{ m.usuario.nombre if m.usuario else '—' }}</b></div>
+{% if m.proveedor %}<div class="sum-row"><span>Proveedor</span><b>{{ m.proveedor.nombre }}</b></div>{% endif %}
+{% if m.categoria %}<div class="sum-row"><span>Categoría</span><b>{{ m.categoria }}</b></div>{% endif %}
+{% if m.beneficiario %}<div class="sum-row"><span>Recibió</span><b>{{ m.beneficiario }}</b></div>{% endif %}
+{% if m.vale %}<div class="sum-row"><span>Vale</span><b><a href="{{ url_for('caja_vale', mid=m.id) }}">{{ m.folio_vale }}</a></b></div>{% endif %}
+{% if pago_venta and pago_venta.referencia %}<div class="sum-row"><span>Referencia</span><b>{{ pago_venta.referencia }}</b></div>{% endif %}
+{% if m.revertido %}<p class="flash warn" style="margin:10px 0 0">Revertido{% if m.revertido_por %} por {{ m.revertido_por.nombre }}{% endif %}{% if m.revertido_fecha %} · {{ m.revertido_fecha|fh }}{% endif %}{% if m.revertido_motivo %} · {{ m.revertido_motivo }}{% endif %}</p>{% endif %}
+
+{% if venta %}
+  <h3 style="margin:16px 0 6px">Venta {{ venta.folio }}{% if venta.cliente_nombre %} · {{ venta.cliente_nombre }}{% endif %}</h3>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Repuesto</th><th class="num">Cant.</th><th class="num">Total</th></tr></thead>
+    <tbody>{% for it in venta.items %}<tr><td>{{ it.nombre }}{% if it.codigo %}<br><small class="muted">{{ it.codigo }}</small>{% endif %}</td><td class="num">{{ it.cantidad|cant }}</td><td class="num">{{ it.neto|pesos }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  {% if venta.descuento %}<div class="sum-row"><span>Descuento</span><b>−{{ venta.descuento|pesos }}</b></div>{% endif %}
+  <div class="sum-row"><span>Total venta</span><b>{{ venta.total|pesos }}</b></div>
+  {% if venta.saldo %}<div class="sum-row"><span>Saldo pendiente</span><b class="neg">{{ venta.saldo|pesos }}</b></div>{% endif %}
+  {% if venta.estado == 'anulada' %}<p class="flash warn" style="margin:8px 0 0">Esta venta está anulada.</p>{% endif %}
+  <a class="btn sec" style="margin-top:12px" href="{{ url_for('venta_detalle', vid=venta.id) }}">Abrir venta completa →</a>
+{% endif %}
+
+{% if compra %}
+  <h3 style="margin:16px 0 6px">Compra C-{{ '%05d'|format(compra.numero) }}{% if compra.proveedor %} · {{ compra.proveedor.nombre }}{% endif %}</h3>
+  {% if compra.factura %}<div class="sum-row"><span>Factura</span><b>{{ compra.factura }}</b></div>{% endif %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Repuesto</th><th class="num">Cant.</th><th class="num">Costo</th></tr></thead>
+    <tbody>{% for it in compra.items %}<tr><td>{{ it.producto.nombre if it.producto else '' }}</td><td class="num">{{ it.cantidad|cant }}</td><td class="num">{{ (it.cantidad * it.costo_unitario)|pesos }}</td></tr>{% endfor %}</tbody>
+  </table></div>
+  <div class="sum-row"><span>Total compra</span><b>{{ compra.total|pesos }}</b></div>
+  <div class="sum-row"><span>Saldo con el proveedor</span><b class="{{ 'neg' if compra.saldo }}">{{ compra.saldo|pesos }}</b></div>
+  {% if pago and pago.soporte_mime %}<a class="btn sec" style="margin-top:12px" href="{{ url_for('compra_pago_soporte', pid=pago.id) }}" target="_blank">📎 Ver soporte del pago</a>{% endif %}
+  {% if current_user.puede('bodega') %}<a class="btn sec" style="margin-top:12px" href="{{ url_for('compra_detalle', cid=compra.id) }}">Abrir compra completa →</a>{% endif %}
+{% endif %}
+
+{% if gasto %}
+  <h3 style="margin:16px 0 6px">Gasto</h3>
+  <div class="sum-row"><span>Categoría</span><b>{{ gasto.categoria }}</b></div>
+  <div class="sum-row"><span>Detalle</span><b style="text-align:right">{{ gasto.descripcion }}</b></div>
+  {% if gasto.anulado %}<p class="flash warn" style="margin:8px 0 0">Este gasto está anulado.</p>{% endif %}
+{% endif %}
+
+{% if dev %}
+  <h3 style="margin:16px 0 6px">Devolución {{ dev.folio }} · compra C-{{ '%05d'|format(dev.compra.numero) }}</h3>
+  <div class="sum-row"><span>Motivo</span><b>{{ dev.motivo }}</b></div>
+  <div class="sum-row"><span>Valor devuelto</span><b>{{ dev.total|pesos }}</b></div>
+  {% if current_user.puede('bodega') %}<a class="btn sec" style="margin-top:12px" href="{{ url_for('compra_detalle', cid=dev.compra_id) }}">Abrir compra →</a>{% endif %}
+{% endif %}
+
+{% if original %}
+  <h3 style="margin:16px 0 6px">Reversa este movimiento</h3>
+  <div class="sum-row"><span>{{ original.fecha|fh }} · {{ original.concepto }}</span><b>{{ original.valor|pesos }}</b></div>
+  <a class="btn sec" style="margin-top:12px" href="#" data-mov="{{ url_for('caja_mov_detalle', mid=original.id) }}">Ver movimiento original →</a>
+{% endif %}

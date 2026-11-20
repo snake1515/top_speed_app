@@ -1,0 +1,27 @@
+{# Ventana emergente para el detalle de los movimientos de caja. Las filas llevan data-mov="url". #}
+<div class="modal-bg" id="mov-modal"><div class="modal" style="max-width:600px">
+  <div id="mov-cuerpo"><p class="muted">Cargando…</p></div>
+  <button class="btn ghost" type="button" style="margin-top:14px;width:100%" data-cerrar-mov>Cerrar</button>
+</div></div>
+<style>tr[data-mov] { cursor: pointer; } tr[data-mov]:hover td { background: rgba(0, 0, 0, .035); }</style>
+<script>
+(function () {
+  const bg = document.getElementById('mov-modal'), cuerpo = document.getElementById('mov-cuerpo');
+  async function abrir(url) {
+    cuerpo.innerHTML = '<p class="muted">Cargando…</p>'; bg.classList.add('on');
+    try {
+      const r = await fetch(url, { credentials: 'same-origin' });
+      cuerpo.innerHTML = r.ok ? await r.text() : '<p class="neg">No se pudo cargar el detalle.</p>';
+    } catch (e) { cuerpo.innerHTML = '<p class="neg">Sin conexión. Intenta de nuevo.</p>'; }
+  }
+  document.addEventListener('click', e => {
+    const el = e.target.closest('[data-mov]');
+    if (!el) return;
+    // los botones, enlaces y formularios dentro de la fila (Revertir, vale) funcionan como siempre
+    if (el.tagName === 'TR' && e.target.closest('a, button, form, input, select')) return;
+    e.preventDefault(); abrir(el.dataset.mov);
+  });
+  bg.addEventListener('click', e => { if (e.target === bg || e.target.closest('[data-cerrar-mov]')) bg.classList.remove('on'); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') bg.classList.remove('on'); });
+})();
+</script>

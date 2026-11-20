@@ -1046,6 +1046,36 @@ def caja_movimiento():
     return redirect(url_for("caja"))
 
 
+@app.route("/caja/mov/<int:mid>")
+@requiere("cajero")
+def caja_mov_detalle(mid):
+    """Detalle de un movimiento de caja (se abre en ventana al tocar la fila)."""
+    from models import DevolucionCompra
+    m = get_or_404(MovCaja, mid)
+    t = m.turno
+    if not current_user.puede("admin") and t and not t.abierto \
+            and current_user.id not in (t.usuario_id, t.cerrado_por_id):
+        abort(404)
+    venta = compra = pago = gasto = dev = original = None
+    if m.origen in ("venta", "abono", "devolucion") and m.ref_id:
+        venta = db.session.get(Venta, m.ref_id)
+    elif m.origen == "compra" and m.ref_id:
+        compra = db.session.get(Compra, m.ref_id)
+        if compra:
+            pago = next((p for p in compra.pagos if p.mov_caja_id == m.id), None)
+    elif m.origen in ("gasto", "caja_menor") and m.ref_id:
+        gasto = db.session.get(Gasto, m.ref_id)
+    elif m.origen == "dev_compra" and m.ref_id:
+        dev = db.session.get(DevolucionCompra, m.ref_id)
+    elif m.origen == "reverso" and m.ref_id:
+        original = db.session.get(MovCaja, m.ref_id)
+    pago_venta = None
+    if venta:
+        pago_venta = next((p for p in venta.pagos if p.mov_caja_id == m.id), None)
+    return render_template("_mov_detalle.html", m=m, venta=venta, compra=compra, pago=pago, gasto=gasto,
+                           dev=dev, original=original, pago_venta=pago_venta)
+
+
 @app.route("/caja/ajuste", methods=["POST"])
 @requiere("admin")
 def caja_ajuste():
