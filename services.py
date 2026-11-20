@@ -432,7 +432,12 @@ def registrar_venta(usuario, items, pagos, cliente=None, cliente_nombre="", clie
         neto = linea_total - desc_linea
         iva_pct = p.iva_pct if cfg.cobra_iva else 0
         iva_total += neto - neto / (1 + (iva_pct or 0) / 100)
-        if p.virtual:
+        if p.virtual and pid in pids_arrastre:
+            # venta de arrastre: se compra afuera para entregarla de una vez; no pasa por "por surtir"
+            # ni por el inventario, y la ganancia sale del costo que se pagó afuera
+            costo = p.costo_virtual or 0
+            pend = 0
+        elif p.virtual:
             # bodega virtual: no hay unidades físicas; queda "por surtir" con el costo virtual
             costo = p.costo_virtual or 0
             pend = q
@@ -443,7 +448,7 @@ def registrar_venta(usuario, items, pagos, cliente=None, cliente_nombre="", clie
         db.session.add(VentaItem(venta_id=v.id, producto=p, codigo=p.codigo, nombre=p.nombre, cantidad=q,
                                  precio=pr, total=linea_total, neto=neto, iva_pct=iva_pct or 0,
                                  costo_unitario=costo, por_surtir=pend, costo_estimado=costo if pend else 0,
-                                 arrastre=bool(pend and pid in pids_arrastre)))
+                                 arrastre=bool(p.virtual and pid in pids_arrastre)))
     v.costo = round(costo_total, 2)
     v.iva = round(iva_total)
     # registra el dinero: el efectivo entra neto del cambio
@@ -565,6 +570,8 @@ def anular_venta(venta, usuario, motivo):
     for it in venta.items:
         q = it.cantidad - (it.devuelto or 0) - (it.por_surtir or 0)   # lo por surtir nunca salió de bodega
         it.por_surtir = 0
+        if it.arrastre:   # venta de arrastre: nunca estuvo en el inventario
+            q = 0
         if q > TOL:
             entrada(prods[it.producto_id], q, it.costo_unitario, "anula_venta", venta.folio, "venta", venta.id,
                     usuario.id, nota=motivo)

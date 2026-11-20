@@ -10,7 +10,7 @@
   <div class="table-wrap"><table>
     <thead><tr><th>Código</th><th>Repuesto</th><th class="num">Unidades</th><th class="num">Ventas</th>{% if current_user.ve_costos %}<th class="num">Costo estimado</th>{% endif %}<th></th></tr></thead>
     <tbody>{% for r in resumen %}<tr>
-      <td class="mono"><b>{{ r.p.codigo_interno or '' }}</b> {{ r.p.codigo }}</td><td><a href="{{ url_for('producto_detalle', pid=r.p.id) }}">{{ r.p.nombre }}</a>{% if r.p.origen == 'arrastre' %} <span class="badge virtual">arrastre</span>{% endif %}{% if r.p.donde_comprar %}<br><small class="muted">Comprar en: {{ r.p.donde_comprar }}</small>{% endif %}</td>
+      <td class="mono"><b>{{ r.p.codigo_interno or '' }}</b> {{ r.p.codigo }}</td><td><a href="{{ url_for('producto_detalle', pid=r.p.id) }}">{{ r.p.nombre }}</a>{% if r.p.donde_comprar %}<br><small class="muted">Comprar en: {{ r.p.donde_comprar }}</small>{% endif %}</td>
       <td class="num"><b>{{ r.cantidad|cant }}</b></td><td class="num">{{ r.ventas }}</td>
       {% if current_user.ve_costos %}<td class="num">{{ r.costo|pesos }}</td>{% endif %}
       <td>{% if current_user.puede('bodega') %}<a class="btn sm sec" href="{{ url_for('compra_nueva', p=r.p.id) }}">Comprar</a>{% endif %}</td></tr>{% endfor %}</tbody>
@@ -22,7 +22,7 @@
     <thead><tr><th>Venta</th><th>Fecha</th><th>Cliente</th><th>Repuesto</th><th class="num">Por surtir</th></tr></thead>
     <tbody>{% for it in items %}<tr><td><a href="{{ url_for('venta_detalle', vid=it.venta_id) }}">{{ it.venta.folio }}</a></td><td>{{ it.venta.fecha|fh }}</td>
       <td>{{ it.venta.cliente_nombre or '' }}{% if it.venta.cliente_tel %}<br><small class="muted">{{ it.venta.cliente_tel }}</small>{% endif %}</td>
-      <td><span class="mono">{{ it.codigo }}</span> {{ it.nombre }}{% if it.arrastre %} <span class="badge virtual">arrastre</span>{% endif %}</td><td class="num"><b>{{ it.por_surtir|cant }}</b></td></tr>{% endfor %}</tbody>
+      <td><span class="mono">{{ it.codigo }}</span> {{ it.nombre }}</td><td class="num"><b>{{ it.por_surtir|cant }}</b></td></tr>{% endfor %}</tbody>
   </table></div>
 </div>
 {% else %}
