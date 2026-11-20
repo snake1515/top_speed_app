@@ -3201,8 +3201,9 @@ def tienda():
         # código interno exacto (con o sin ceros a la izquierda): directo a la ficha del repuesto
         if q.isdigit() and len(q) <= 8:
             exacto = query.filter(Producto.codigo_interno.in_({q, q.zfill(4)})).all()
-            if len(exacto) == 1:
+            if len(exacto) == 1 and not exacto[0].lista_equivalencias:
                 return redirect(url_for("tienda_producto", pid=exacto[0].id))
+            # con variantes: se listan todas (0253-1, 0253-2…) para que el cliente elija su moto
         mv = re.fullmatch(r"(\d{1,8})\s*-\s*(\d{1,3})", q)   # código de variante: 0001-2
         if mv:
             exacto = query.filter(Producto.codigo_interno.in_({mv.group(1), mv.group(1).zfill(4)})).all()
@@ -3239,9 +3240,12 @@ def tienda():
     por_pagina = 24
     prods = items[(pagina - 1) * por_pagina: pagina * por_pagina]
     reservado = reservado_por_producto()
-    cats = (db.session.query(Categoria, db.func.count(Producto.id)).join(Producto, Producto.categoria_id == Categoria.id)
-            .filter(Producto.activo.is_(True), Producto.en_tienda.is_(True)).group_by(Categoria.id)
-            .order_by(Categoria.nombre).all())
+    # conteo por categoría contando cada variante (equivalencia) como un producto, igual que en la grilla
+    cuenta = {}
+    for cid, eq in (db.session.query(Producto.categoria_id, Producto.equivalencias)
+                    .filter(Producto.activo.is_(True), Producto.en_tienda.is_(True), Producto.categoria_id.isnot(None))):
+        cuenta[cid] = cuenta.get(cid, 0) + max(len(separar_equivalencias(eq)), 1)
+    cats = [(c, cuenta[c.id]) for c in Categoria.query.filter(Categoria.id.in_(cuenta)).order_by(Categoria.nombre)]
     return render_template("tienda.html", prods=prods, reservado=reservado, q=q, cat=cat, cats=cats, total=total,
                            pagina=pagina, paginas=max((total + por_pagina - 1) // por_pagina, 1), orden=orden,
                            medios=MedioPago.query.filter_by(activo=True).order_by(MedioPago.orden).all())
@@ -3254,14 +3258,22 @@ def tienda_producto(pid, v=0):
     p = db.session.get(Producto, pid)
     if not cfg.tienda_activa or p is None or not p.activo or not p.en_tienda:
         abort(404)
+    # En la tienda cada equivalencia es un producto propio (0253-1, 0253-2…): la ficha general del
+    # repuesto no se muestra y las equivalencias no se listan.
+    if p.lista_equivalencias and not p.modelo_variante(v):
+        return redirect(url_for("tienda_producto", pid=pid, v=1))
     if v and not p.modelo_variante(v):
         return redirect(url_for("tienda_producto", pid=pid))
     reservado = reservado_por_producto()
     disp = p.disponible(reservado)
-    relacionados = (Producto.query.filter(Producto.activo.is_(True), Producto.en_tienda.is_(True), Producto.id != p.id,
-                                          Producto.categoria_id == p.categoria_id,
-                                          db.or_(Producto.stock > 0, Producto.virtual.is_(True)))
-                    .order_by(Producto.imagen_v.desc()).limit(8).all()) if p.categoria_id else []
+    relacionados = []
+    if p.categoria_id:
+        for r in (Producto.query.filter(Producto.activo.is_(True), Producto.en_tienda.is_(True), Producto.id != p.id,
+                                        Producto.categoria_id == p.categoria_id,
+                                        db.or_(Producto.stock > 0, Producto.virtual.is_(True)))
+                  .order_by(Producto.imagen_v.desc()).limit(8).all()):
+            relacionados += [(r, nv, mo, cod) for nv, mo, cod in r.variantes()] or [(r, 0, None, None)]
+        relacionados = relacionados[:8]
     return render_template("tienda_producto.html", p=p, disp=disp, relacionados=relacionados, reservado=reservado,
                            var_n=v, var_modelo=p.modelo_variante(v), var_cod=dict((n, c) for n, _, c in p.variantes()).get(v),
                            medios=MedioPago.query.filter_by(activo=True).order_by(MedioPago.orden).all())

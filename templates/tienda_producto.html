@@ -34,10 +34,7 @@
     <h1>{{ p.nombre }}</h1>
     {% if var_modelo %}<div class="s-modelo grande">🏍 Para {{ var_modelo }}</div>{% endif %}
     {% if p.marca %}<p style="margin:4px 0"><b>Marca:</b> {{ p.marca }}</p>{% endif %}
-    {% if p.compatibilidad %}<p style="margin:4px 0"><b>{{ 'Medida / notas:' if p.lista_equivalencias else '🏍 Sirve para:' }}</b> {{ p.compatibilidad }}</p>{% endif %}
-    {% set otras = p.variantes() %}
-    {% if otras %}<div class="s-equiv"><b>{{ 'También sirve para:' if var_modelo else 'Sirve para:' }}</b>
-      {% for nv, mo, cv in otras %}{% if nv != var_n %}<a href="{{ url_for('tienda_producto', pid=p.id, v=nv) }}">{{ mo }}</a>{% endif %}{% endfor %}</div>{% endif %}
+    {% if p.compatibilidad %}<p style="margin:4px 0"><b>{{ 'Medida / notas:' if var_modelo else '🏍 Sirve para:' }}</b> {{ p.compatibilidad }}</p>{% endif %}
     <div class="precio">{{ p.precio_detal|pesos }}</div>
     {% if disp > 0 %}
       <span class="badge ok">{{ 'Disponible' if disp > 3 else 'Últimas ' ~ (disp|cant) ~ ' unidades' }}</span>
@@ -62,7 +59,7 @@
 </div>
 {% if relacionados %}
 <h2 style="margin:26px 0 12px">También en {{ p.categoria.nombre }}</h2>
-<div class="s-grid">{% for p in relacionados %}{% include "_tarjeta.html" %}{% endfor %}</div>
+<div class="s-grid">{% for p, vn, vm, vc in relacionados %}{% include "_tarjeta.html" %}{% endfor %}</div>
 {% endif %}
 <script>
 document.querySelectorAll('[data-copiar]').forEach(b => b.addEventListener('click', async () => {

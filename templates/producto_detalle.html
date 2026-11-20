@@ -45,7 +45,7 @@
       <dt>Ubicación</dt><dd>{{ p.ubicacion or '—' }}</dd>
       <dt>Referencia</dt><dd>{{ p.referencia or '—' }}</dd>
       <dt>Compatible con</dt><dd>{{ p.compatibilidad or '—' }}</dd>
-      <dt>Equivalencias</dt><dd>{% for nv, mo, cv in p.variantes() %}<span class="mono">{{ cv }}</span> · {{ mo }}{% if not loop.last %}<br>{% endif %}{% else %}—{% endfor %}</dd>
+      <dt>Equivalencias</dt><dd>{% for nv, mo, cv in p.variantes() %}<span class="mono">{{ cv }}</span> · {{ mo }}{% if p.en_tienda and p.activo %} <a href="{{ url_for('tienda_producto', pid=p.id, v=nv) }}" target="_blank" title="Ver esta variante en la tienda">↗</a>{% endif %}{% if not loop.last %}<br>{% endif %}{% else %}—{% endfor %}</dd>
       <dt>Unidad</dt><dd>{{ p.unidad }}</dd>
       {% if cfg.cobra_iva %}<dt>IVA</dt><dd>{{ p.iva_pct|cant }} %</dd>{% endif %}
     </dl>
