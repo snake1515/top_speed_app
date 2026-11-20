@@ -2420,6 +2420,10 @@ def aportes_reporte():
 @requiere("admin")
 def aportes_reporte_archivo(fmt):
     desde, hasta, socio_id = _filtros_aportes()
+    return _archivo_aportes(fmt, desde, hasta, socio_id)
+
+
+def _archivo_aportes(fmt, desde=None, hasta=None, socio_id=None):
     cfg = config()
     r = invmod.reporte_aportes(cfg, desde, hasta, socio_id)
     nombre = f"Aportes_socios_{ahora().date():%Y%m%d}"
@@ -2502,6 +2506,10 @@ def inversion_apertura():
 @app.route("/inversion/excel")
 @requiere("admin")
 def inversion_excel():
+    return _archivo_inversion_excel()
+
+
+def _archivo_inversion_excel():
     cfg = config()
     neta = rpt.resumen(cfg.fecha_apertura, ahora().date())["neta"] if cfg.fecha_apertura else None
     buf = exportar.inversion_excel(invmod.resumen_fundacion(cfg, neta), cfg, url_for("inversion_soporte", iid=0, _external=True))
@@ -2636,6 +2644,31 @@ def socios_reporte(token):
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"
     resp.headers["Cache-Control"] = "no-store"
     resp.headers["Referrer-Policy"] = "no-referrer"
+    return resp
+
+
+def _token_socios_ok(token):
+    cfg = config()
+    if not (cfg.socios_activo and cfg.socios_token and secrets.compare_digest(token, cfg.socios_token)):
+        abort(404)
+
+
+@app.route("/socios/<token>/aportes.<fmt>")
+def socios_aportes_archivo(token, fmt):
+    """Los mismos PDF y Excel del reporte de aportes, para el enlace de socios (sin usuario)."""
+    _token_socios_ok(token)
+    resp = _archivo_aportes(fmt)
+    resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+    resp.headers["Cache-Control"] = "no-store"
+    return resp
+
+
+@app.route("/socios/<token>/inversion.xlsx")
+def socios_inversion_excel(token):
+    _token_socios_ok(token)
+    resp = _archivo_inversion_excel()
+    resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+    resp.headers["Cache-Control"] = "no-store"
     return resp
 
 

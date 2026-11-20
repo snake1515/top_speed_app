@@ -96,6 +96,11 @@
   .kpi.k-gas { border-top: 4px solid var(--rojo); } .kpi.k-com { border-top: 4px solid #555; }
   .kpi.k-inv { grid-column: 1 / -1; border-top: 4px solid #1f6feb; }
   header { background: linear-gradient(180deg, #000 0%, #151515 100%); }
+  .descargas { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 6px 0 4px; }
+  .descargas a { display: flex; align-items: center; justify-content: center; text-align: center; min-height: 48px; padding: 8px;
+                 border-radius: 12px; background: var(--ink); color: var(--amar); font-weight: 700; font-size: .88rem; text-decoration: none; }
+  .descargas a:active { transform: scale(.98); }
+  .descargas a.ancho { grid-column: 1 / -1; background: #f4f4f2; color: var(--ink); border: 1px solid var(--line); }
   @media (min-width: 640px) {
     .hero { padding-right: 200px; min-height: 210px; }
     .hero img { height: 230px; right: 6px; }
@@ -285,6 +290,15 @@
     <div class="fila"><div class="izq"><b>Total invertido en el negocio</b></div><div class="der">{{ A.total_invertido|pesos }}</div></div>
     <div class="fila"><div class="izq"><b>Dinero aportado al fondo común</b></div><div class="der">{{ A.total_aportes|pesos }}</div></div>
     <div class="fila"><div class="izq"><b>{{ 'Queda en el fondo común' if A.fondo >= 0 else 'Faltante del fondo común' }}</b></div><div class="der">{{ A.fondo|pesos }}</div></div>
+
+    <div class="sub">Descargar reportes</div>
+    <div class="descargas">
+      <a href="{{ url_for('socios_aportes_archivo', token=token, fmt='pdf', modo='sencillo') }}" target="_blank">📄 PDF sencillo</a>
+      <a href="{{ url_for('socios_aportes_archivo', token=token, fmt='pdf') }}" target="_blank">📄 PDF completo</a>
+      <a href="{{ url_for('socios_aportes_archivo', token=token, fmt='xlsx', modo='sencillo') }}">📊 Excel sencillo</a>
+      <a href="{{ url_for('socios_aportes_archivo', token=token, fmt='xlsx') }}">📊 Excel completo</a>
+      <a class="ancho" href="{{ url_for('socios_inversion_excel', token=token) }}">📊 Excel de la inversión inicial</a>
+    </div>
 
     <div class="sub">Cada aporte</div>
     {% for x in A.sencillo|reverse %}
