@@ -1,19 +1,25 @@
 {% extends "base.html" %}
-{% block title %}Nueva compra{% endblock %}
+{% block title %}{{ 'Editar compra C-%05d'|format(c.numero) if c else 'Nueva compra' }}{% endblock %}
 {% block content %}
-<div class="page-head"><div><h1>Registrar compra a proveedor</h1><p>Suma al inventario y recalcula el costo promedio ponderado de cada repuesto.</p></div><a class="btn sec" href="{{ url_for('compras') }}">← Compras</a></div>
+{% if c %}<div class="page-head"><div><h1>Editar compra C-{{ '%05d'|format(c.numero) }}</h1><p>Solo administrador. Se ajusta el stock y el costo promedio por la diferencia; los pagos hechos se conservan.</p></div><a class="btn sec" href="{{ url_for('compra_detalle', cid=c.id) }}">← Volver a la compra</a></div>
+{% else %}<div class="page-head"><div><h1>Registrar compra a proveedor</h1><p>Suma al inventario y recalcula el costo promedio ponderado de cada repuesto.</p></div><a class="btn sec" href="{{ url_for('compras') }}">← Compras</a></div>{% endif %}
 <form method="post" id="f-compra">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
   <div class="grid g-main">
     <div class="card">{% include "_picker.html" %}</div>
     <div>
       <div class="card">
-        <div class="field"><label>Proveedor</label><select class="input" name="proveedor_id"><option value="">— Sin proveedor —</option>{% for p in proveedores %}<option value="{{ p.id }}">{{ p.nombre }}</option>{% endfor %}</select>
+        <div class="field"><label>Proveedor</label><select class="input" name="proveedor_id"><option value="">— Sin proveedor —</option>{% for p in proveedores %}<option value="{{ p.id }}" {{ 'selected' if c and c.proveedor_id == p.id }}>{{ p.nombre }}</option>{% endfor %}</select>
           <div class="hint"><a href="{{ url_for('proveedor_form', volver=url_for('compra_nueva')) }}">＋ Crear proveedor</a></div></div>
         <div class="form-row" style="grid-template-columns:1fr 1fr">
-          <div class="field"><label>Nº factura</label><input class="input" name="factura"></div>
-          <div class="field"><label>Fecha</label><input class="input" type="date" name="fecha" value="{{ hoy }}"></div>
+          <div class="field"><label>Nº factura</label><input class="input" name="factura" value="{{ c.factura or '' if c else '' }}"></div>
+          <div class="field"><label>Fecha</label><input class="input" type="date" name="fecha" value="{{ c.fecha.date() if c else hoy }}"></div>
         </div>
+        {% if c %}
+        <div class="sum-row"><span>Pagado hasta hoy</span><b>{{ c.pagado|pesos }}</b></div>
+        <div class="field"><label>Vence (si queda saldo)</label><input class="input" type="date" name="vence" value="{{ c.vence or '' }}"></div>
+        <div class="hint" style="margin-bottom:8px">Si el nuevo total es mayor a lo pagado, la diferencia queda por pagar al proveedor; si es menor, queda a favor.</div>
+        {% else %}
         <fieldset><legend>Pago</legend>
           <label class="check"><input type="radio" name="modo" value="contado" checked onchange="modo()"> De contado</label>
           <label class="check" style="margin-top:6px"><input type="radio" name="modo" value="credito" onchange="modo()"> A crédito con el proveedor</label>
@@ -24,9 +30,10 @@
           </div>
           <div id="m-credito" style="display:none;margin-top:10px"><div class="field"><label>Plazo (días)</label><input class="input" name="plazo" value="30" inputmode="numeric"></div></div>
         </fieldset>
-        <div class="field"><input class="input" name="nota" placeholder="Nota (opcional)"></div>
-        {% if current_user.ve_costos %}<label class="check" style="display:flex;gap:6px;align-items:flex-start;margin:6px 0 10px"><input type="checkbox" name="actualizar_precios" value="1"> <span>Subir el precio detal con la regla de ganancia de cada repuesto (% general, % propio o valor fijo). Nunca baja un precio.</span></label>{% endif %}
-        <button class="btn lg" style="width:100%">Registrar compra</button>
+        {% endif %}
+        <div class="field"><input class="input" name="nota" placeholder="Nota (opcional)" value="{{ c.nota or '' if c else '' }}"></div>
+        {% if current_user.ve_costos and not c %}<label class="check" style="display:flex;gap:6px;align-items:flex-start;margin:6px 0 10px"><input type="checkbox" name="actualizar_precios" value="1"> <span>Subir el precio detal con la regla de ganancia de cada repuesto (% general, % propio o valor fijo). Nunca baja un precio.</span></label>{% endif %}
+        <button class="btn lg" style="width:100%">{{ 'Guardar cambios' if c else 'Registrar compra' }}</button>
       </div>
     </div>
   </div>
@@ -34,7 +41,7 @@
 {% endblock %}
 {% block scripts %}
 <script>
-  function modo() { const c = document.querySelector('[name=modo]:checked').value === 'credito';
+  function modo() { if (!document.querySelector('[name=modo]')) return; const c = document.querySelector('[name=modo]:checked').value === 'credito';
     document.getElementById('m-contado').style.display = c ? 'none' : ''; document.getElementById('m-credito').style.display = c ? '' : 'none'; }
   document.getElementById('f-compra').addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.tagName === 'INPUT') e.preventDefault(); });
 </script>

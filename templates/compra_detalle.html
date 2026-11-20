@@ -2,7 +2,8 @@
 {% block title %}Compra C-{{ '%05d'|format(c.numero) }}{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Compra C-{{ '%05d'|format(c.numero) }}</h1><p>{{ c.fecha|fh }} · {{ c.proveedor.nombre if c.proveedor else 'Sin proveedor' }}{% if c.factura %} · factura {{ c.factura }}{% endif %} · {{ c.usuario.nombre if c.usuario else '' }}</p></div>
-  <a class="btn sec" href="{{ url_for('compras') }}">← Compras</a></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">{% if current_user.puede('admin') and not c.anulada and not c.devoluciones %}<a class="btn" href="{{ url_for('compra_editar', cid=c.id) }}">✎ Editar compra</a>{% endif %}
+  <a class="btn sec" href="{{ url_for('compras') }}">← Compras</a></div></div>
 {% if c.anulada %}<div class="flash err">Compra anulada.</div>{% endif %}
 <div class="grid g-main">
   <div class="card"><div class="table-wrap"><table>

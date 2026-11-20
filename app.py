@@ -254,7 +254,7 @@ def proteger_post():
 AVISOS_CAMBIOS = {
     "producto_form": "Repuestos", "producto_foto_borrar": "Repuestos", "productos_imagenes_zip": "Repuestos",
     "categorias": "Categorías",
-    "compra_nueva": "Compras", "compra_pago": "Compras", "compra_devolver": "Compras", "compra_anular": "Compras",
+    "compra_nueva": "Compras", "compra_pago": "Compras", "compra_devolver": "Compras", "compra_anular": "Compras", "compra_editar": "Compras",
     "proveedor_form": "Proveedores",
     "ajuste_nuevo": "Ajustes de inventario", "ajuste_anular": "Ajustes de inventario",
     "inversion_registro": "Inversión inicial", "inversion_anular": "Inversión inicial",
@@ -2054,6 +2054,44 @@ def dev_compra_ticket(did):
     from models import DevolucionCompra
     d = get_or_404(DevolucionCompra, did)
     return render_template("ticket_dev_compra.html", d=d, c=d.compra, auto=request.args.get("imprimir") == "1")
+
+
+@app.route("/compras/<int:cid>/editar", methods=["GET", "POST"])
+@requiere("admin")
+def compra_editar(cid):
+    c = get_or_404(Compra, cid)
+    if c.anulada or c.devoluciones:
+        flash("Esta compra no se puede editar (está anulada o tiene devoluciones al proveedor).", "err")
+        return redirect(url_for("compra_detalle", cid=cid))
+    proveedores = Proveedor.query.filter_by(activo=True).order_by(Proveedor.nombre).all()
+    if c.proveedor and c.proveedor not in proveedores:
+        proveedores.append(c.proveedor)
+    if request.method == "POST":
+        f = request.form
+        prov = db.session.get(Proveedor, int(f.get("proveedor_id") or 0)) if (f.get("proveedor_id") or "").isdigit() else None
+        try:
+            vence = datetime.strptime(f.get("vence"), "%Y-%m-%d").date() if f.get("vence") else None
+        except ValueError:
+            vence = c.vence
+        try:
+            cambios = services.editar_compra(c, current_user, prov, items_desde_form(), f.get("factura"), f.get("nota"),
+                                             fecha_form(f.get("fecha")), vence)
+            db.session.commit()
+            g.aviso_texto = (f"Compra C-{c.numero:05d} editada por {current_user.nombre}\n"
+                             + ("\n".join(cambios[:15]) if cambios else "Sin cambios en repuestos ni valores."))
+            flash(f"Compra C-{c.numero:05d} actualizada." + (" Stock y costo promedio recalculados." if cambios else ""), "ok")
+            if c.saldo > 0.5:
+                flash(f"Queda por pagar al proveedor {pesos(c.saldo)}.", "info")
+            elif c.a_favor > 0.5:
+                flash(f"Se le pagó de más al proveedor: quedan {pesos(c.a_favor)} a favor.", "info")
+            return redirect(url_for("compra_detalle", cid=c.id))
+        except ErrorNegocio as e:
+            db.session.rollback()
+            errores_flash(e)
+    lineas = [{"p": producto_json(it.producto, ver_costo=True), "q": it.cantidad, "c": it.costo_unitario}
+              for it in c.items if it.producto]
+    return render_template("compra_form.html", c=c, proveedores=proveedores, medios=[], turno=None,
+                           hoy=ahora().date(), pre=None, pre_lineas=lineas)
 
 
 @app.route("/compras/<int:cid>/anular", methods=["POST"])

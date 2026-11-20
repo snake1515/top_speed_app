@@ -10,18 +10,18 @@
 (() => {
   const q = document.getElementById('pk-q'), res = document.getElementById('pk-res'), body = document.getElementById('pk-lineas');
   let lista = [], t;
-  window.pkAgregar = function (p) {
-    if (body.querySelector(`[data-pid="${p.id}"]`)) { const i = body.querySelector(`[data-pid="${p.id}"] .pk-cant`); i.value = num(i.value) + 1; total(); return; }
+  window.pkAgregar = function (p, cantidad, costo) {
+    if (cantidad == null && body.querySelector(`[data-pid="${p.id}"]`)) { const i = body.querySelector(`[data-pid="${p.id}"] .pk-cant`); i.value = num(i.value) + 1; total(); return; }
     body.querySelector('.pk-vacio')?.remove();
     const tr = document.createElement('tr'); tr.dataset.pid = p.id;
     tr.innerHTML = `<td><input type="hidden" name="producto_id" value="${p.id}"><b>${esc(p.nombre)}</b><br><small class="mono">${esc(p.codigo)}</small> <small class="muted">prom. ${COP(p.costo)}</small></td>
       <td class="num">${NUM(p.stock)}</td>
-      <td><input class="input pk-cant" name="cantidad" value="1" inputmode="decimal" style="text-align:right"></td>
-      <td><input class="input pk-costo" name="costo" value="${(p.ultimo || p.costo || '') && Math.round(p.ultimo || p.costo).toLocaleString('es-CO')}" inputmode="numeric" style="text-align:right"></td>
+      <td><input class="input pk-cant" name="cantidad" value="${cantidad != null ? NUM(cantidad) : 1}" inputmode="decimal" style="text-align:right"></td>
+      <td><input class="input pk-costo" name="costo" value="${costo != null ? Math.round(costo).toLocaleString('es-CO') : ((p.ultimo || p.costo || '') && Math.round(p.ultimo || p.costo).toLocaleString('es-CO'))}" inputmode="numeric" style="text-align:right"></td>
       <td class="num pk-sub"></td><td><button type="button" class="btn ghost sm">✕</button></td>`;
     tr.querySelector('button').onclick = () => { tr.remove(); total(); };
     body.appendChild(tr); total();
-    tr.querySelector('.pk-cant').select();
+    if (cantidad == null) tr.querySelector('.pk-cant').select();
   };
   function total() {
     let tot = 0;
@@ -42,5 +42,6 @@
     if (ex) { pkAgregar(ex); q.value = ''; res.innerHTML = ''; } else pintar(); });
   res.addEventListener('click', e => { const el = e.target.closest('.res'); if (!el) return; pkAgregar(lista[el.dataset.i]); q.value = ''; res.innerHTML = ''; q.focus(); });
   {% if pre %}pkAgregar({{ pre|tojson }});{% endif %}
+  {% for l in pre_lineas or [] %}pkAgregar({{ l.p|tojson }}, {{ l.q|tojson }}, {{ l.c|tojson }});{% endfor %}
 })();
 </script>

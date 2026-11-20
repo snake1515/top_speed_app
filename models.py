@@ -61,6 +61,7 @@ TIPOS_MOV = {
     "inicial": "Inventario inicial",
     "compra": "Compra",
     "anula_compra": "Anulación de compra",
+    "edita_compra": "Edición de compra",
     "devolucion_compra": "Devolución a proveedor",
     "venta": "Venta",
     "anula_venta": "Anulación de venta",

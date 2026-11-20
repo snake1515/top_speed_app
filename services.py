@@ -776,6 +776,104 @@ def registrar_compra(usuario, proveedor, items, factura="", nota="", fecha=None,
     return c
 
 
+def editar_compra(c, usuario, proveedor, items, factura="", nota="", fecha=None, vence=None):
+    """Edita una compra ya registrada (solo administrador). Cambia encabezado y líneas: por cada repuesto
+    aplica solo la diferencia contra lo que se había comprado, recalcula stock y costo promedio y deja
+    una línea «Edición de compra» en el kardex. Los pagos hechos se conservan: si el total sube queda
+    saldo por pagar; si baja, queda a favor."""
+    if c.anulada:
+        raise ErrorNegocio("La compra está anulada: no se puede editar.")
+    if getattr(c, "devoluciones", None):
+        raise ErrorNegocio("Esta compra tiene devoluciones al proveedor: no se puede editar.")
+    errores, nuevos = [], {}
+    for it in items or []:
+        try:
+            pid, q, cu = int(it["producto_id"]), float(it["cantidad"]), float(it["costo"])
+        except (KeyError, TypeError, ValueError):
+            errores.append("Hay una línea con datos inválidos.")
+            continue
+        if q <= 0:
+            errores.append("Las cantidades deben ser mayores a 0.")
+        if cu < 0:
+            errores.append("Los costos no pueden ser negativos.")
+        q0, v0 = nuevos.get(pid, (0.0, 0.0))
+        nuevos[pid] = (q0 + q, v0 + q * cu)
+    if not nuevos:
+        errores.append("La compra debe tener al menos un repuesto. Si no sirve, anúlala.")
+    if errores:
+        raise ErrorNegocio(sorted(set(errores)))
+    viejos = {}
+    for it in c.items:
+        q0, v0 = viejos.get(it.producto_id, (0.0, 0.0))
+        viejos[it.producto_id] = (q0 + it.cantidad, v0 + it.cantidad * it.costo_unitario)
+    prods = bloquear(list(set(viejos) | set(nuevos)))
+    for pid in nuevos:
+        if prods.get(pid) is None:
+            raise ErrorNegocio("Uno de los productos no existe.")
+    # que ningún repuesto quede con stock negativo (unidades de esta compra que ya se vendieron)
+    for pid, p in prods.items():
+        oq, nq = viejos.get(pid, (0, 0))[0], nuevos.get(pid, (0, 0))[0]
+        if nq < oq and (p.stock or 0) - oq + nq < -TOL:
+            raise ErrorNegocio(f"No se puede bajar «{p.nombre}» a {cant(nq)}: de esta compra ya salieron unidades "
+                               f"(hay {cant(p.stock)} en stock y la compra tenía {cant(oq)}).")
+    doc = f"Compra C-{c.numero:05d}"
+    cambios = []
+    for pid, p in prods.items():
+        (oq, ov), (nq, nv) = viejos.get(pid, (0.0, 0.0)), nuevos.get(pid, (0.0, 0.0))
+        if abs(oq - nq) <= TOL and abs(ov - nv) <= 0.5:
+            continue
+        stock, cp = (p.stock or 0), (p.costo_promedio or 0)
+        base_q, base_v = stock - oq, stock * cp - ov          # inventario sin esta compra
+        if base_q <= TOL or base_v < 0:
+            base_q, base_v = max(base_q, 0), max(base_q, 0) * cp
+        final = stock - oq + nq
+        if final > TOL and (base_q + nq) > TOL:
+            p.costo_promedio = round((base_v + nv) / (base_q + nq), 4)
+        elif nq > TOL:
+            p.costo_promedio = round(nv / nq, 4)
+        p.stock = final
+        if nq > TOL:
+            p.ultimo_costo = round(nv / nq, 4)
+            if p.virtual and final > TOL:
+                p.virtual = False
+        antes = f"{cant(oq)} a {pesos(ov / oq)}" if oq > TOL else "no estaba"
+        ahora_txt = f"{cant(nq)} a {pesos(nv / nq)}" if nq > TOL else "se quitó"
+        cu_mov = (nv / nq) if nq > TOL else (ov / oq if oq > TOL else 0)
+        _kardex(p, "edita_compra", nq - oq, cu_mov, doc, "compra", c.id, usuario.id,
+                nota=f"Edición de compra: antes {antes}, ahora {ahora_txt}")
+        cambios.append(f"{p.nombre[:50]}: {antes} → {ahora_txt}")
+        if nq > oq:
+            surtir_pendientes(p, usuario.id)
+    # líneas nuevas
+    for it in list(c.items):
+        c.items.remove(it)
+        db.session.delete(it)
+    for it in items:
+        c.items.append(CompraItem(producto=prods[int(it["producto_id"])], cantidad=float(it["cantidad"]),
+                                  costo_unitario=float(it["costo"])))
+    total_antes = c.total or 0
+    c.total = round(sum(v for _, v in nuevos.values()))
+    # encabezado
+    if (c.proveedor_id or None) != (proveedor.id if proveedor else None):
+        cambios.append(f"Proveedor: {c.proveedor.nombre if c.proveedor else '—'} → {proveedor.nombre if proveedor else '—'}")
+    c.proveedor = proveedor
+    factura = (factura or "").strip()[:60] or None
+    if factura != c.factura:
+        cambios.append(f"Factura: {c.factura or '—'} → {factura or '—'}")
+    c.factura = factura
+    c.nota = (nota or "").strip()[:300] or None
+    if fecha and fecha.date() != c.fecha.date():
+        cambios.append(f"Fecha: {c.fecha:%d/%m/%Y} → {fecha:%d/%m/%Y}")
+        c.fecha = fecha
+    if vence != c.vence:
+        c.vence = vence
+    if abs(total_antes - c.total) > 0.5:
+        cambios.append(f"Total: {pesos(total_antes)} → {pesos(c.total)}")
+    if c.saldo > 0.5 and not c.vence:
+        c.vence = c.fecha.date() + timedelta(days=30)
+    return cambios
+
+
 def pendientes_por_surtir(producto_id=None):
     q = (VentaItem.query.join(Venta).filter(VentaItem.por_surtir > TOL, Venta.estado != "anulada")
          .order_by(Venta.fecha, VentaItem.id))
