@@ -934,6 +934,35 @@ def pagar_compra(c, usuario, valor, medio, desde_caja):
     return mov
 
 
+def cambiar_pago_compra(pg, usuario, medio=None):
+    """Solo administrador: cambia el medio con que se pagó una compra (ej. Efectivo → Nequi), o con medio=None
+    quita el pago y la compra queda a crédito (cuenta por pagar). Si el pago salió de la caja, se reversa
+    ese movimiento y se registra la salida por el medio nuevo en la caja abierta."""
+    c = pg.compra
+    if c.anulada:
+        raise ErrorNegocio("La compra está anulada.")
+    antes = pg.medio.nombre if pg.medio else "sin medio"
+    if medio is not None and pg.medio_id == medio.id:
+        raise ErrorNegocio(f"Ese pago ya está registrado con {medio.nombre}.")
+    if pg.desde_caja and pg.mov_caja_id:
+        anular_mov_caja(pg.mov_caja_id, usuario.id, f"Cambio de medio de pago · compra C-{c.numero:05d}")
+    if medio is None:
+        c.pagado = max((c.pagado or 0) - (pg.valor or 0), 0)
+        if not c.vence:
+            c.vence = ahora().date() + timedelta(days=30)
+        c.pagos.remove(pg)
+        db.session.delete(pg)
+        return f"Pago de {pesos(pg.valor)} ({antes}) quitado: la compra C-{c.numero:05d} queda a crédito."
+    if pg.desde_caja:
+        prov = c.proveedor.nombre if c.proveedor else "proveedor"
+        mov = mov_caja("egreso", pg.valor, medio, f"Pago compra C-{c.numero:05d} · {prov} (cambio de medio)",
+                       "compra", c.id, usuario.id)
+        mov.proveedor_id = c.proveedor_id
+        pg.mov_caja_id = mov.id
+    pg.medio = medio
+    return f"Pago de {pesos(pg.valor)} de la compra C-{c.numero:05d}: {antes} → {medio.nombre}."
+
+
 def devolver_a_proveedor(c, usuario, cantidades, motivo, nota="", reembolso_medio=None):
     """Devuelve repuestos de una compra al proveedor. cantidades: {compra_item_id: cantidad}.
     El valor (al costo de esa compra) se descuenta de lo que se le debe; si ya estaba pagado y el proveedor

@@ -33,6 +33,18 @@
       {% if c.vence and c.saldo %}<p class="muted">Vence {{ c.vence|f }}</p>{% endif %}
       {% for pg in c.pagos %}<div class="sum-row"><small>{{ pg.fecha|f }} · {{ pg.medio.nombre if pg.medio else '' }}{{ ' · caja' if pg.desde_caja }}
           {% if pg.soporte_mime %} · <a href="{{ url_for('compra_pago_soporte', pid=pg.id) }}" target="_blank">📎 Ver soporte</a>{% endif %}</small><small>{{ pg.valor|pesos }}</small></div>
+        {% if current_user.rol == 'admin' and not c.anulada %}
+        <form method="post" action="{{ url_for('compra_pago_medio', pid=pg.id) }}" style="display:flex;gap:6px;margin:0 0 6px;align-items:center"
+              onsubmit="return confirm('¿Cambiar el medio de pago de este pago de {{ pg.valor|pesos }}?')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <select class="input" name="medio_id" style="padding:4px 8px;font-size:.82rem;height:auto">
+            <option value="">Cambiar medio…</option>
+            {% for m in medios %}{% if m.id != pg.medio_id %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endif %}{% endfor %}
+            <option value="credito">A crédito (quitar este pago)</option>
+          </select>
+          <button class="btn sec sm">Cambiar</button>
+        </form>
+        {% endif %}
         <form method="post" action="{{ url_for('compra_pago_soporte_subir', pid=pg.id) }}" enctype="multipart/form-data" class="soporte-pago" style="margin:0 0 6px">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <label class="muted" style="font-size:.8rem;cursor:pointer">{{ '↻ Cambiar soporte' if pg.soporte_mime else '📎 Subir soporte' }}

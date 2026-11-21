@@ -263,6 +263,7 @@ AVISOS_CAMBIOS = {
     "gastos": "Gastos", "gastos_fijos_guardar": "Gastos", "gasto_fijo_pagar": "Gastos", "gasto_anular": "Gastos",
     "empleado_form": "Nómina", "nomina_nueva": "Nómina", "nomina_anular": "Nómina",
     "venta_devolucion": "Ventas", "venta_abono": "Cartera", "pedido_cancelar": "Pedidos",
+    "compra_pago_medio": "Compras",
     "cliente_form": "Clientes", "cliente_archivar": "Clientes",
     "caja_movimiento": "Caja", "caja_ajuste": "Caja",
     "usuario_form": "Usuarios", "configuracion": "Configuración",
@@ -2001,6 +2002,29 @@ def compra_pago(cid):
         poner_soporte(c.pagos[-1], sop)
         db.session.commit()
         flash("Pago al proveedor registrado" + (" con su soporte." if sop else "."), "ok")
+    except ErrorNegocio as e:
+        db.session.rollback()
+        errores_flash(e)
+    return redirect(url_for("compra_detalle", cid=cid))
+
+
+@app.route("/compras/pago/<int:pid>/medio", methods=["POST"])
+@requiere("admin")
+def compra_pago_medio(pid):
+    """Solo administrador: cambiar el medio de pago de una compra o pasarla a crédito."""
+    pg = get_or_404(PagoCompra, pid)
+    cid = pg.compra_id
+    val = request.form.get("medio_id") or ""
+    try:
+        if val == "credito":
+            medio = None
+        else:
+            medio = db.session.get(MedioPago, int(val)) if val.isdigit() else None
+            if medio is None:
+                raise ErrorNegocio("Elige el nuevo medio de pago.")
+        msg = services.cambiar_pago_compra(pg, current_user, medio)
+        db.session.commit()
+        flash(msg, "ok")
     except ErrorNegocio as e:
         db.session.rollback()
         errores_flash(e)
