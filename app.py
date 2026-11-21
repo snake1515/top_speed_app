@@ -462,10 +462,21 @@ def logo_recibo():
 
 @app.route("/img/p/<int:pid>")
 def img_producto(pid):
+    tam = request.args.get("s")
+    v = request.args.get("v", type=int)
+    if tam == "t" and v is not None and (pid, v) in _MINIATURAS:
+        # Miniatura ya lista en memoria: se entrega sin consultar la base de datos
+        r = send_file(BytesIO(_MINIATURAS[(pid, v)]), mimetype="image/jpeg")
+        r.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return r
     p = db.session.get(Producto, pid)
     if p is None or not p.imagen:
         return redirect(url_for("static", filename="sin-foto.svg"))
-    if request.args.get("s") == "og":
+    if tam == "t":
+        r = send_file(BytesIO(miniatura(p.id, p.imagen_v or 0, p.imagen)), mimetype="image/jpeg")
+        r.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return r
+    if tam == "og":
         # Vista previa al compartir (WhatsApp/Facebook): JPEG cuadrado de 600 px, liviano (< 300 KB)
         return send_file(BytesIO(imagen_vista_previa(p.id, p.imagen_v or 0, p.imagen)), mimetype="image/jpeg",
                          max_age=2592000)
@@ -475,6 +486,49 @@ def img_producto(pid):
 
 
 _VISTA_PREVIA = {}
+_MINIATURAS = {}
+
+
+def miniatura(pid, version, datos):
+    """JPEG de 400 px (~20 KB) para listados de la tienda, el POS y el inventario; queda en memoria."""
+    clave = (pid, version)
+    if clave not in _MINIATURAS:
+        from PIL import Image, ImageOps
+        try:
+            img = ImageOps.exif_transpose(Image.open(BytesIO(datos))).convert("RGB")
+            img.thumbnail((400, 400), Image.LANCZOS)
+            buf = BytesIO()
+            img.save(buf, "JPEG", quality=82, optimize=True, progressive=True)
+            if len(_MINIATURAS) > 3000:
+                _MINIATURAS.clear()
+            _MINIATURAS[clave] = buf.getvalue()
+        except Exception:
+            return datos
+    return _MINIATURAS[clave]
+
+
+def precargar_miniaturas():
+    """Al arrancar, deja listas en memoria las miniaturas de todos los repuestos (en segundo plano)."""
+    from sqlalchemy.orm import undefer
+    try:
+        with app.app_context():
+            ids = [i for (i,) in db.session.query(Producto.id).filter(Producto.imagen_v > 0).all()]
+            for k in range(0, len(ids), 40):
+                lote = (Producto.query.options(undefer(Producto.imagen))
+                        .filter(Producto.id.in_(ids[k:k + 40])).all())
+                for p in lote:
+                    if p.imagen:
+                        miniatura(p.id, p.imagen_v or 0, p.imagen)
+                db.session.expunge_all()
+            db.session.remove()
+        print(f"Miniaturas listas: {len(_MINIATURAS)}", flush=True)
+    except Exception as e:
+        print(f"AVISO miniaturas: {e}", flush=True)
+
+
+if os.getenv("PRECARGAR_MINIATURAS", "1") == "1":
+    import threading
+    threading.Thread(target=precargar_miniaturas, daemon=True).start()
 
 
 def imagen_vista_previa(pid, version, datos):
@@ -584,7 +638,7 @@ def producto_json(p, reservado=None, ver_costo=False):
          "unidad": p.unidad, "stock": p.stock, "reservado": (reservado or {}).get(p.id, 0), "virtual": bool(p.virtual),
          "arrastre": p.origen == "arrastre", "donde": p.donde_comprar or "",
          "detal": p.precio_detal, "mayor": p.precio_mayor or p.precio_detal, "taller": p.precio_taller or p.precio_detal,
-         "iva": p.iva_pct, "img": url_for("img_producto", pid=p.id, v=p.imagen_v) if p.imagen_v else ""}
+         "iva": p.iva_pct, "img": url_for("img_producto", pid=p.id, v=p.imagen_v, s="t") if p.imagen_v else ""}
     if ver_costo:
         d["costo"] = round(p.costo_ref)
         d["ultimo"] = round(p.ultimo_costo or p.costo_promedio or 0)
@@ -3611,7 +3665,7 @@ def tienda_disponible():
         ok = p.activo and p.en_tienda and p.precio_detal > 0
         out[p.id] = {"nombre": p.nombre, "codigo": p.codigo, "precio": p.precio_detal if ok else 0,
                      "disp": p.disponible(reservado) if ok else 0,
-                     "img": url_for("img_producto", pid=p.id, v=p.imagen_v) if p.imagen_v else ""}
+                     "img": url_for("img_producto", pid=p.id, v=p.imagen_v, s="t") if p.imagen_v else ""}
     return jsonify(out)
 
 

@@ -4,7 +4,7 @@
 {% if p.id and not (p.precio_detal or 0) > 0 %}<div class="flash warn" style="margin-bottom:14px">⚠ <b>Repuesto con costo y precio en cero.</b> Antes de venderlo debes ponerle el precio de compra y el de venta{% if current_user.puede('bodega') %} (<a href="{{ url_for('producto_form', pid=p.id) }}">editar</a>){% endif %}. Si lo vendes desde el POS, la app te pide el costo de compra y el precio de venta.</div>{% endif %}
 <div class="page-head">
   <div style="display:flex;gap:14px;align-items:center">
-    <img class="thumb" style="width:72px;height:72px" src="{{ url_for('img_producto', pid=p.id, v=p.imagen_v) if p.imagen_v else url_for('static', filename='sin-foto.svg') }}" alt="">
+    <img class="thumb" style="width:72px;height:72px" src="{{ url_for('img_producto', pid=p.id, v=p.imagen_v, s='t') if p.imagen_v else url_for('static', filename='sin-foto.svg') }}" alt="">
     <div><h1>{{ p.nombre }}</h1><p>{% if p.codigo_interno %}<b class="mono">Cód. {{ p.codigo_interno }}</b> · {% endif %}<span class="mono">{{ p.codigo }}</span>{% if p.codigo_barras %} · <span class="mono">{{ p.codigo_barras }}</span>{% endif %} · {{ p.categoria.nombre if p.categoria else 'Sin categoría' }}{% if p.marca %} · {{ p.marca }}{% endif %}
       {% if not p.activo %}<span class="badge err">Inactivo</span>{% endif %}{% if p.en_tienda %} <span class="badge blue">En tienda</span>{% endif %}{% if p.virtual %} <span class="badge virtual">Bodega virtual</span>{% endif %}</p></div>
   </div>
