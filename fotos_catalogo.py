@@ -16,8 +16,8 @@ CARPETA = os.path.join(os.path.dirname(__file__), "static", "fotos_catalogo")
 
 
 def _patron(marca, modelo):
-    letras, num = re.match(r"([A-Za-z]+)\s*0*(\d+)", modelo).groups()
-    return re.compile(rf"\b{re.escape(marca)}\s+{letras}\s*0*{num}\b", re.I)
+    letras, num, suf = re.match(r"([A-Za-z]+)\s*0*(\d+)\s*([A-Za-z]?)", modelo).groups()
+    return re.compile(rf"\b{re.escape(marca)}\s+{letras}\s*0*{num}\s*{suf}\b", re.I)
 
 
 def aplicar():
