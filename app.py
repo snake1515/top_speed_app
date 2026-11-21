@@ -657,6 +657,7 @@ def producto_json(p, reservado=None, ver_costo=False):
          "equiv": ", ".join(p.lista_equivalencias),
          "unidad": p.unidad, "stock": p.stock, "reservado": (reservado or {}).get(p.id, 0), "virtual": bool(p.virtual),
          "arrastre": p.origen == "arrastre", "donde": p.donde_comprar or "",
+         "promo": bool(p.promo_compra) and not p.virtual and (p.stock or 0) > 0, "promo_nota": p.promo_nota or "",
          "detal": p.precio_detal, "mayor": p.precio_mayor or p.precio_detal, "taller": p.precio_taller or p.precio_detal,
          "iva": p.iva_pct, "img": url_for("img_producto", pid=p.id, v=p.imagen_v, s="t") if p.imagen_v else ""}
     if ver_costo:
@@ -1591,6 +1592,8 @@ def productos():
         lista = [p for p in lista if (p.stock or 0) <= 0 and not p.virtual]
     elif filtro == "virtual":
         lista = [p for p in lista if p.virtual]
+    elif filtro == "promo":
+        lista = [p for p in lista if p.promo_compra and not p.virtual and (p.stock or 0) > 0]
     elif filtro == "fisico":   # unidades reales en el local (no bodega virtual)
         lista = [p for p in lista if not p.virtual and (p.stock or 0) > 0]
     elif filtro == "sinfoto":
@@ -1643,7 +1646,8 @@ CAMPOS_AVISO = [("nombre", "Nombre"), ("codigo", "Código proveedor"), ("codigo_
                  ("precio_taller", "Precio taller"), ("regla", "Ganancia"), ("stock_minimo", "Stock mínimo"),
                  ("virtual", "Bodega virtual"), ("costo_virtual", "Costo virtual"), ("volver_virtual", "Volver a virtual"),
                  ("descripcion", "Descripción"), ("foto", "Foto"), ("en_tienda", "En la tienda"),
-                 ("destacado", "Destacado"), ("activo", "Activo")]
+                 ("destacado", "Destacado"), ("promo_compra", "Comprado en promoción"), ("promo_nota", "Nota de promoción"),
+                 ("activo", "Activo")]
 PESOS_AVISO = {"precio_detal", "precio_mayor", "precio_taller", "costo_virtual"}
 
 
@@ -1659,7 +1663,7 @@ def _foto_producto(p):
 
 def _diferencias_producto(a, b):
     def txt(k, v):
-        if isinstance(v, bool) or k in ("virtual", "volver_virtual", "en_tienda", "destacado", "activo"):
+        if isinstance(v, bool) or k in ("virtual", "volver_virtual", "en_tienda", "destacado", "promo_compra", "activo"):
             return "sí" if v else "no"
         if k in PESOS_AVISO:
             return pesos(v or 0)
@@ -1721,6 +1725,8 @@ def producto_form(pid=None):
         p.iva_pct = pct(f.get("iva_pct")) if cfg.cobra_iva else (p.iva_pct or 0)
         p.en_tienda = bool(f.get("en_tienda"))
         p.destacado = bool(f.get("destacado"))
+        p.promo_compra = bool(f.get("promo_compra"))
+        p.promo_nota = (f.get("promo_nota") or "").strip()[:160] or None
         p.activo = bool(f.get("activo")) if not nuevo else True
         errores = []
         if "virtual_form" in f:

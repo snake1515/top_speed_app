@@ -242,7 +242,7 @@ function pintarResultados(lista, titulo = '') {
     const st = p.virtual ? `<span class="badge virtual">${p.arrastre ? 'Arrastre' : 'Virtual'}</span>` : p.stock <= 0 ? '<span class="neg">Agotado</span>' : `<span class="${disp <= 0 ? 'neg' : 'muted'}">Stock ${NUM(p.stock)}${p.reservado ? ' · ' + NUM(p.reservado) + ' apart.' : ''}</span>`;
     return `<div class="res ${i === 0 ? 'sel' : ''}" data-i="${i}">
       <img class="thumb" src="${p.img || '{{ url_for('static', filename='sin-foto.svg') }}'}" alt="" loading="lazy">
-      <div style="min-width:0"><div class="nm">${esc(p.nombre)}</div>
+      <div style="min-width:0"><div class="nm">${esc(p.nombre)}${p.promo ? ' <span class="badge" style="background:#ff6d00;color:#fff">🔥 Comprada en promo · ¡véndela!</span>' : ''}</div>${p.promo && p.promo_nota ? '<div class="meta" style="color:#e65100;font-weight:600">🔥 ' + esc(p.promo_nota) + '</div>' : ''}
         <div class="meta">${p.interno ? '<b class="mono">' + esc(p.interno) + '</b> · ' : ''}<span class="mono">${esc(p.codigo)}</span>${p.marca ? ' · ' + esc(p.marca) : ''}${p.ubicacion ? ' · 📍' + esc(p.ubicacion) : ''}${p.compat ? ' · 🏍 ' + esc(p.compat) : ''}${p.equiv ? ' · 🔁 ' + esc(p.equiv) : ''}</div></div>
       <div><div class="pr">${precioLista(p) > 0 ? COP(precioLista(p)) : '<span class="badge warn">Sin precio</span>'}</div><div class="st">${st}${VE_COSTO ? ' · costo ' + COP(p.costo) : ''}</div></div></div>`;
   }).join('') : ($('buscar').value.trim() ? '<p class="empty">Sin resultados. Revisa el código o busca por otra palabra.<br><button type="button" class="btn sm" style="margin-top:8px" onclick="document.getElementById(\'btn-arrastre\').click()">＋ No lo tenemos: hacer venta de arrastre</button></p>'

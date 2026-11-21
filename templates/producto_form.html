@@ -108,6 +108,11 @@
         <h2 style="margin-bottom:10px">Publicación</h2>
         <label class="check"><input type="checkbox" name="en_tienda" value="1" {{ 'checked' if (f.get('en_tienda') if f else p.en_tienda) }}> Mostrar en la tienda online</label>
         <label class="check" style="margin-top:8px"><input type="checkbox" name="destacado" value="1" {{ 'checked' if (f.get('destacado') if f else p.destacado) }}> Destacado (primero en tienda y POS)</label>
+        <div style="margin-top:12px;padding:10px 12px;border-radius:10px;background:#fff3e0;border:1px solid #ffb74d">
+          <label class="check"><input type="checkbox" name="promo_compra" value="1" {{ 'checked' if (f.get('promo_compra') if f else p.promo_compra) }}> 🔥 Comprado en promoción — hay que moverlo</label>
+          <input class="input" name="promo_nota" maxlength="160" style="margin-top:6px" placeholder="Nota para el vendedor (opcional): ej. ofrécela a quien pida 275-18" value="{{ (f.get('promo_nota') if f else p.promo_nota) or '' }}">
+          <div class="hint">El cajero y el vendedor ven un aviso al buscarlo en el POS y en la preventa. Solo sale mientras haya unidades físicas. Los clientes de la tienda no lo ven.</div>
+        </div>
         {% if p.id %}<label class="check" style="margin-top:8px"><input type="checkbox" name="activo" value="1" {{ 'checked' if p.activo }}> Activo</label>{% endif %}
       </div>
       <div class="actions">

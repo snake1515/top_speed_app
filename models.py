@@ -270,6 +270,9 @@ class Producto(db.Model):
     costo_virtual = db.Column(db.Float, nullable=False, default=0)
     # al vender la última unidad real vuelve solo a la bodega virtual (con el último costo de compra)
     volver_virtual = db.Column(db.Boolean, nullable=False, default=False)
+    # Comprado en promoción: el cajero/vendedor ve un aviso para buscar venderlo
+    promo_compra = db.Column(db.Boolean, nullable=False, default=False)
+    promo_nota = db.Column(db.String(160))
     # "arrastre": lo creó el cajero en una venta de arrastre (repuesto que no se tenía y se compra afuera)
     origen = db.Column(db.String(12))
     imagen_lote = db.Column(db.String(80))   # foto de catálogo puesta automáticamente (fotos_catalogo.py)
