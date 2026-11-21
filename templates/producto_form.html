@@ -68,6 +68,7 @@
           <div class="field" id="campo-gv" style="{{ '' if gt else 'display:none' }}"><label id="lbl-gv">{{ 'Pesos que se le ganan' if gt == 'valor' else 'Porcentaje' }}</label>
             <input class="input" name="ganancia_valor" id="gvalor" inputmode="numeric" value="{% if p.ganancia_valor is not none %}{{ '{:,.0f}'.format(p.ganancia_valor).replace(',', '.') if gt == 'valor' else (p.ganancia_valor|string).replace('.0','') }}{% endif %}"></div>
         </div>
+        <div class="hint" id="gan-real" style="margin-top:4px;font-size:14px"></div>
         <div class="note" id="sug" style="display:none"></div>
         {% endif %}
       </div>
@@ -173,6 +174,41 @@
     g.value = ''; sugerir();
   });
   if (document.getElementById('gtipo')?.value === 'valor') document.getElementById('gvalor').setAttribute('data-pesos', '');
+
+  // Precio detal escrito a mano → la ganancia se ajusta sola a ese precio
+  function costoBase() {
+    const virt = document.getElementById('chk-virtual')?.checked;
+    return (virt ? num(document.getElementById('cv')?.value) : num(document.getElementById('ci')?.value)) || costoActual;
+  }
+  function ivaPct() { return parseFloat(String(document.querySelector('[name=iva_pct]')?.value || '0').replace(',', '.')) || 0; }
+  function ganDesdeDetal(forzar) {
+    const c = costoBase(), d = num(document.getElementById('pd')?.value), info = document.getElementById('gan-real');
+    if (!c || !d) { if (info) info.textContent = ''; return; }
+    const base = d / (1 + ivaPct() / 100), pesos = Math.round(base - c), pc = Math.round((base / c - 1) * 1000) / 10;
+    if (info) info.innerHTML = `Ganancia con este precio: <b>${COP(pesos)}</b> · <b>${String(pc).replace('.', ',')} %</b> sobre el costo${pesos < 0 ? ' <span class="neg">(¡pierdes!)</span>' : ''}`;
+    if (!forzar) return;
+    const t = document.getElementById('gtipo'), g = document.getElementById('gvalor');
+    if (!t || !g) return;
+    if (t.value === 'valor') { g.value = pesos > 0 ? pesos.toLocaleString('es-CO') : ''; }
+    else {
+      t.value = 'pct';
+      document.getElementById('campo-gv').style.display = '';
+      document.getElementById('lbl-gv').textContent = 'Porcentaje';
+      g.removeAttribute('data-pesos');
+      g.value = String(pc).replace('.', ',');
+    }
+    sugerir();
+  }
+  document.getElementById('pd')?.addEventListener('input', () => ganDesdeDetal(true));
+  // Al abrir: si el precio detal no sale de la regla guardada, mostrar la ganancia real de ese precio
+  (function () {
+    const c = costoBase(), d = num(document.getElementById('pd')?.value), gt = document.getElementById('gtipo')?.value || '';
+    const gv = num(document.getElementById('gvalor')?.value);
+    if (!c || !d) return;
+    const base = d / (1 + ivaPct() / 100);
+    let regla = gt === 'valor' && gv > 0 ? c + gv : c * (1 + ((gt === 'pct' && gv > 0) ? parseFloat(String(document.getElementById('gvalor').value).replace(',', '.')) : M.pd) / 100);
+    ganDesdeDetal(Math.abs(regla - base) > (base < 20000 ? 100 : 500));
+  })();
   sugerir();
 </script>
 {% endif %}
