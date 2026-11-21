@@ -5,6 +5,26 @@
   <div><h1>Caja #{{ t.numero }}</h1><p>Abrió {{ t.usuario.nombre }} · {{ t.apertura|fh }}{% if t.cierre %} · cerró {{ t.cerrado_por.nombre if t.cerrado_por else '' }} · {{ t.cierre|fh }}{% endif %}</p></div>
   <div class="actions no-print"><a class="btn dark" href="{{ url_for('turno_ticket', tid=t.id) }}" onclick="if (!event.ctrlKey) { event.preventDefault(); imprimirEnIframe(this.href); }">🖨 Imprimir cuadre</a><a class="btn sec" href="{{ url_for('turnos') }}">← Cierres</a></div>
 </div>
+{% set es_admin = current_user.puede('admin') %}
+{% if t.en_ajuste %}
+<div class="card" style="border:2px solid var(--accent)">
+  <div class="card-head"><h2>🔧 Caja reabierta para ajustes</h2>
+    {% if es_admin %}<form method="post" action="{{ url_for('turno_recerrar', tid=t.id) }}" class="no-print"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn ok">✔ Volver a cerrar la caja</button></form>{% endif %}</div>
+  <p class="muted" style="margin:0 0 10px">Reabierta por {{ t.reabierto_por.nombre if t.reabierto_por else '' }} · {{ t.reabierto_en|fh }} · {{ t.motivo_reapertura }}<br>
+    <b>El efectivo está bloqueado:</b> la base, el efectivo contado ({{ t.efectivo_contado|pesos }}) y el cuadre de efectivo no cambian. Solo se ajustan transferencias, Nequi, tarjeta y demás medios.</p>
+  {% if es_admin %}
+  <form method="post" action="{{ url_for('turno_ajuste', tid=t.id) }}" class="form-row no-print" style="grid-template-columns:1fr 1fr 1fr 2fr auto;align-items:end">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field"><label>Ajuste</label><select class="input" name="tipo"><option value="ingreso">Entra dinero</option><option value="egreso">Sale dinero</option></select></div>
+    <div class="field"><label>Medio</label><select class="input" name="medio_id">{% for m in medios_no_ef %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}</select></div>
+    <div class="field"><label>Valor</label><input class="input" name="valor" inputmode="numeric" required></div>
+    <div class="field"><label>Motivo</label><input class="input" name="motivo" placeholder="Ej. transferencia Nequi que no se registró" required></div>
+    <div class="field"><button class="btn">Registrar ajuste</button></div>
+  </form>
+  <p class="hint">Para corregir el medio de un pago (ej. lo registraron como Nequi y era Bancolombia) usa «Cambiar medio» en la tabla de movimientos.</p>
+  {% endif %}
+</div>
+{% endif %}
 <div class="grid g2">
   <div class="card">
     <h2 style="margin-bottom:10px">Cuadre de efectivo</h2>
@@ -20,6 +40,16 @@
     <div class="sum-row"><span>{{ 'Sobrante' if t.diferencia > 0 else ('Faltante' if t.diferencia < 0 else 'Diferencia') }}</span><b class="{{ 'neg' if t.diferencia < 0 else ('pos' if t.diferencia > 0 else '') }}">{{ t.diferencia|pesos }}</b></div>
     {% endif %}
     {% if t.nota_cierre %}<p class="note">{{ t.nota_cierre }}</p>{% endif %}
+    {% if t.ajustes_log %}<details style="margin-top:8px"><summary class="muted">Historial de reaperturas y ajustes</summary><div style="white-space:pre-line;font-size:.85rem;margin-top:6px">{{ t.ajustes_log }}</div></details>{% endif %}
+    {% if es_admin and t.estado == 'cerrado' %}
+    <details class="no-print" style="margin-top:12px"><summary><b>🔧 Reabrir caja para ajustes</b></summary>
+      <form method="post" action="{{ url_for('turno_reabrir', tid=t.id) }}" style="margin-top:8px">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <p class="hint">Solo administrador. Sirve para corregir medios distintos al efectivo (transferencias, Nequi, tarjeta). El efectivo contado no se puede cambiar.</p>
+        <div class="field"><input class="input" name="motivo" placeholder="Motivo (ej. pago registrado en Nequi y era Bancolombia)" required></div>
+        <button class="btn sec">Reabrir para ajustes</button>
+      </form></details>
+    {% endif %}
     {% if denoms %}
     <h3 style="margin:14px 0 6px">Conteo por denominación</h3>
     {% for titulo, lista in [('Billetes', denominaciones|select('ge', 2000)|list), ('Monedas', denominaciones|select('lt', 2000)|list)] %}
@@ -45,7 +75,11 @@
   <h2 style="margin-bottom:8px">Movimientos</h2>
   <div class="table-wrap"><table>
     <thead><tr><th>Hora</th><th>Concepto</th><th>Medio</th><th>Usuario</th><th class="num">Valor</th><th></th></tr></thead>
-    <tbody>{% for m in r.movs|sort(attribute='fecha') %}<tr data-mov="{{ url_for('caja_mov_detalle', mid=m.id) }}" title="Ver detalle"><td>{{ m.fecha|fh }}</td><td>{% if m.tipo == 'egreso' %}<small class="muted">{{ m.clase }} ·</small> {% endif %}{{ m.concepto }}{% if m.vale %} · <a href="{{ url_for('caja_vale', mid=m.id) }}">{{ m.folio_vale }}</a>{% endif %}{% if m.revertido %}<br><span class="badge warn">Revertido</span> <small class="muted">{{ m.revertido_por.nombre if m.revertido_por else '' }} · {{ m.revertido_fecha|fh if m.revertido_fecha else '' }} · {{ m.revertido_motivo or '' }}</small>{% endif %}</td><td>{{ m.medio.nombre }}</td><td>{{ m.usuario.nombre if m.usuario else '' }}</td>
+    <tbody>{% for m in r.movs|sort(attribute='fecha') %}<tr data-mov="{{ url_for('caja_mov_detalle', mid=m.id) }}" title="Ver detalle"><td>{{ m.fecha|fh }}</td><td>{% if m.tipo == 'egreso' %}<small class="muted">{{ m.clase }} ·</small> {% endif %}{{ m.concepto }}{% if m.vale %} · <a href="{{ url_for('caja_vale', mid=m.id) }}">{{ m.folio_vale }}</a>{% endif %}{% if m.revertido %}<br><span class="badge warn">Revertido</span> <small class="muted">{{ m.revertido_por.nombre if m.revertido_por else '' }} · {{ m.revertido_fecha|fh if m.revertido_fecha else '' }} · {{ m.revertido_motivo or '' }}</small>{% endif %}</td><td>{{ m.medio.nombre }}{% if t.en_ajuste and es_admin and not m.medio.es_efectivo %}
+        <form method="post" action="{{ url_for('turno_mov_medio', tid=t.id, mid=m.id) }}" class="no-print" style="display:flex;gap:4px;margin-top:4px" onclick="event.stopPropagation()">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <select class="input" name="medio_id" style="padding:2px 6px;font-size:.78rem;height:auto"><option value="">Cambiar medio…</option>{% for md in medios_no_ef %}{% if md.id != m.medio_id %}<option value="{{ md.id }}">{{ md.nombre }}</option>{% endif %}{% endfor %}</select>
+          <button class="btn ghost sm">OK</button></form>{% endif %}</td><td>{{ m.usuario.nombre if m.usuario else '' }}</td>
       <td class="num {{ 'pos' if m.tipo == 'ingreso' else 'neg' }}">{{ '+' if m.tipo == 'ingreso' else '−' }}{{ m.valor|pesos }}</td>
       <td>{% if m.reversible %}<form method="post" action="{{ url_for('caja_mov_anular', mid=m.id) }}" data-motivo="Esta caja ya está cerrada: se registrará el movimiento contrario en la caja abierta. ¿Por qué reviertes este movimiento de {{ m.valor|pesos }}?{% if not current_user.puede('admin') %} (Se le avisará al administrador){% endif %}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="motivo"><input type="hidden" name="volver" value="{{ url_for('turno_detalle', tid=t.id) }}"><button class="btn ghost sm">↺ Revertir</button></form>{% endif %}</td></tr>{% endfor %}</tbody>
   </table></div>

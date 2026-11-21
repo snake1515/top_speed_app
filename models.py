@@ -465,10 +465,20 @@ class Turno(db.Model):
     denominaciones = db.Column(db.Text)  # JSON {"100000": 3, ...}
     resumen = db.Column(db.Text)         # JSON con totales por medio al cerrar
     nota_cierre = db.Column(db.String(300))
+    # reabierta por el administrador solo para ajustes (estado "ajuste"): el efectivo queda bloqueado
+    reabierto_por_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
+    reabierto_por = db.relationship("Usuario", foreign_keys=[reabierto_por_id])
+    reabierto_en = db.Column(db.DateTime)
+    motivo_reapertura = db.Column(db.String(300))
+    ajustes_log = db.Column(db.Text)  # bitácora de reaperturas y ajustes
 
     @property
     def abierto(self):
         return self.estado == "abierto"
+
+    @property
+    def en_ajuste(self):
+        return self.estado == "ajuste"
 
 
 class MovCaja(db.Model):

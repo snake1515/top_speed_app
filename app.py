@@ -1233,7 +1233,71 @@ def turno_detalle(tid):
         abort(404)
     r = resumen_turno(t)
     return render_template("turno_detalle.html", t=t, r=r, denoms=json.loads(t.denominaciones or "{}"),
-                           denominaciones=DENOMINACIONES)
+                           denominaciones=DENOMINACIONES,
+                           medios_no_ef=[m for m in MedioPago.query.filter_by(activo=True).order_by(MedioPago.orden).all()
+                                         if not m.es_efectivo])
+
+
+# --------------------------------------------- reabrir caja para ajustes (solo administrador)
+def _turno_accion(tid, accion, exito):
+    t = get_or_404(Turno, tid)
+    try:
+        msg = accion(t)
+        db.session.commit()
+        flash(msg or exito, "ok")
+    except ErrorNegocio as e:
+        db.session.rollback()
+        errores_flash(e)
+    return redirect(url_for("turno_detalle", tid=tid))
+
+
+@app.route("/caja/turno/<int:tid>/reabrir", methods=["POST"])
+@requiere("admin")
+def turno_reabrir(tid):
+    def accion(t):
+        services.reabrir_turno_ajuste(t, current_user, request.form.get("motivo"))
+        avisar_cambio("Caja", f"Caja #{t.numero} reabierta para ajustes", t.motivo_reapertura,
+                      url_for("turno_detalle", tid=t.id))
+        return f"Caja #{t.numero} reabierta para ajustes. El efectivo queda bloqueado; al terminar, vuelve a cerrarla."
+    return _turno_accion(tid, accion, "")
+
+
+@app.route("/caja/turno/<int:tid>/ajuste", methods=["POST"])
+@requiere("admin")
+def turno_ajuste(tid):
+    f = request.form
+
+    def accion(t):
+        medio = db.session.get(MedioPago, int(f.get("medio_id") or 0)) if (f.get("medio_id") or "").isdigit() else None
+        services.ajuste_turno(t, current_user, f.get("tipo"), n(f.get("valor")), medio, f.get("motivo"))
+        return f"Ajuste registrado en la caja #{t.numero}."
+    return _turno_accion(tid, accion, "")
+
+
+@app.route("/caja/turno/<int:tid>/mov/<int:mid>/medio", methods=["POST"])
+@requiere("admin")
+def turno_mov_medio(tid, mid):
+    def accion(t):
+        m = get_or_404(MovCaja, mid)
+        if m.turno_id != t.id:
+            abort(404)
+        val = request.form.get("medio_id") or ""
+        medio = db.session.get(MedioPago, int(val)) if val.isdigit() else None
+        antes = services.cambiar_medio_mov(m, current_user, medio)
+        return f"Movimiento pasado de {antes} a {medio.nombre}."
+    return _turno_accion(tid, accion, "")
+
+
+@app.route("/caja/turno/<int:tid>/recerrar", methods=["POST"])
+@requiere("admin")
+def turno_recerrar(tid):
+    def accion(t):
+        services.recerrar_turno(t, current_user)
+        avisar_cambio("Caja", f"Caja #{t.numero} cerrada de nuevo después de ajustes",
+                      (t.ajustes_log or "").split("\n")[-6:] and "\n".join((t.ajustes_log or "").split("\n")[-6:]),
+                      url_for("turno_detalle", tid=t.id))
+        return f"Caja #{t.numero} cerrada de nuevo con los ajustes."
+    return _turno_accion(tid, accion, "")
 
 
 BILLETES = [d for d in DENOMINACIONES if d >= 2000]

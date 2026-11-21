@@ -319,6 +319,84 @@ def cerrar_turno(t, usuario, contado, denominaciones, nota=""):
     return t
 
 
+# ----------------------------------------------- reapertura de caja para ajustes (solo administrador)
+def _log_turno(t, usuario, texto):
+    linea = f"{ahora().strftime('%d/%m/%Y %I:%M %p')} · {usuario.nombre}: {texto}"
+    t.ajustes_log = ((t.ajustes_log + "\n") if t.ajustes_log else "") + linea[:300]
+
+
+def reabrir_turno_ajuste(t, usuario, motivo):
+    """Reabre una caja cerrada SOLO para ajustes de medios distintos al efectivo (transferencias, Nequi,
+    tarjeta…). El efectivo contado, la base y el cuadre de efectivo no se pueden modificar."""
+    if t.estado != "cerrado":
+        raise ErrorNegocio("Solo se puede reabrir una caja cerrada.")
+    motivo = (motivo or "").strip()
+    if len(motivo) < 5:
+        raise ErrorNegocio("Escribe el motivo de la reapertura (ej. transferencia registrada como Nequi y era Bancolombia).")
+    t.estado = "ajuste"
+    t.reabierto_por_id = usuario.id
+    t.reabierto_en = ahora()
+    t.motivo_reapertura = motivo[:300]
+    _log_turno(t, usuario, f"reabrió la caja para ajustes · {motivo}")
+
+
+def _exigir_ajuste(t):
+    if not t.en_ajuste:
+        raise ErrorNegocio("Esta caja no está reabierta para ajustes.")
+
+
+def ajuste_turno(t, usuario, tipo, valor, medio, motivo):
+    """Entrada o salida de ajuste en una caja reabierta. Nunca en efectivo."""
+    _exigir_ajuste(t)
+    if tipo not in ("ingreso", "egreso"):
+        raise ErrorNegocio("Elige si el ajuste mete o saca dinero.")
+    if medio is None:
+        raise ErrorNegocio("Elige el medio.")
+    if medio.es_efectivo:
+        raise ErrorNegocio("La caja reabierta no permite modificar el efectivo. Haz el ajuste de efectivo en la caja abierta de hoy.")
+    motivo = (motivo or "").strip()
+    if len(motivo) < 5:
+        raise ErrorNegocio("Escribe el motivo del ajuste.")
+    m = mov_caja(tipo, valor, medio, f"Ajuste (caja reabierta): {motivo}"[:200], "ajuste", None, usuario.id, turno=t)
+    _log_turno(t, usuario, f"{'entrada' if tipo == 'ingreso' else 'salida'} de ajuste {pesos(round(valor))} en {medio.nombre} · {motivo}")
+    return m
+
+
+def cambiar_medio_mov(m, usuario, medio):
+    """Cambia el medio de un movimiento de una caja reabierta (ej. Nequi → Bancolombia). No se permite
+    pasar de efectivo a otro medio ni al revés, porque cambiaría el efectivo ya contado."""
+    t = m.turno
+    _exigir_ajuste(t)
+    if m.anulado:
+        raise ErrorNegocio("Ese movimiento está anulado.")
+    if medio is None:
+        raise ErrorNegocio("Elige el nuevo medio.")
+    if m.medio.es_efectivo or medio.es_efectivo:
+        raise ErrorNegocio("No se puede cambiar de o hacia efectivo en una caja reabierta: el efectivo ya fue contado.")
+    if m.medio_id == medio.id:
+        raise ErrorNegocio(f"Ese movimiento ya está en {medio.nombre}.")
+    antes = m.medio.nombre
+    m.medio = medio
+    for pg in PagoVenta.query.filter_by(mov_caja_id=m.id).all():
+        pg.medio = medio
+    for pg in PagoCompra.query.filter_by(mov_caja_id=m.id).all():
+        pg.medio = medio
+    _log_turno(t, usuario, f"cambió el medio de «{m.concepto[:60]}» ({pesos(m.valor)}): {antes} → {medio.nombre}")
+    return antes
+
+
+def recerrar_turno(t, usuario):
+    """Vuelve a cerrar una caja reabierta: recalcula el resumen por medio; el efectivo queda como estaba."""
+    _exigir_ajuste(t)
+    r = resumen_turno(t)
+    if round(r["efectivo_esperado"]) != round(t.efectivo_esperado or 0):
+        raise ErrorNegocio("El efectivo de esta caja cambió; revisa los movimientos antes de volver a cerrarla.")
+    t.resumen = json.dumps([{"medio": d["medio"].nombre, "tipo": d["medio"].tipo, "ingresos": d["ingresos"],
+                             "egresos": d["egresos"], "neto": d["neto"]} for d in r["medios"]])
+    t.estado = "cerrado"
+    _log_turno(t, usuario, "volvió a cerrar la caja")
+
+
 # =================================================================== ventas
 def registrar_venta(usuario, items, pagos, cliente=None, cliente_nombre="", cliente_doc="", cliente_tel="",
                     lista="detal", descuento=0.0, credito=False, nota="", pedido=None, cotizacion=None):
