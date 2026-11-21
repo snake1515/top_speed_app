@@ -2,7 +2,7 @@
 {% block content %}
 {% set portada = not q and not cat and pagina == 1 %}
 {% set wa = ('57' ~ cfg.whatsapp) if cfg.whatsapp and cfg.whatsapp|length == 10 else cfg.whatsapp %}
-{% set lugar = (cfg.lat ~ ',' ~ cfg.lng) if cfg.lat and cfg.lng else ((cfg.direccion or '') ~ ', ' ~ (cfg.ciudad or '')) %}
+{% set lugar = (cfg.lat ~ ',' ~ cfg.lng) if cfg.lat and cfg.lng else ((cfg.direccion or '')|replace(' No. ', ' # ')|replace(' No ', ' # ') ~ ', ' ~ (cfg.ciudad or '') ~ ', Norte de Santander, Colombia') %}
 {% set hay_lugar = (cfg.lat and cfg.lng) or cfg.direccion %}
 {% if portada %}{% set hor = horario_tienda() %}
 <section class="s-hero">
