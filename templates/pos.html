@@ -115,9 +115,9 @@
     </div>
     <div class="field"><label>Dónde se compra (proveedor)</label><input class="input" id="ar-donde" placeholder="Ej. Distrimotos centro" list="ar-provs"><datalist id="ar-provs">{% for pv in proveedores %}<option value="{{ pv.nombre }}">{% endfor %}</datalist></div>
     <div class="field"><label>¿Cómo se paga la compra afuera? *</label>
-      <div class="pay-grid" style="grid-template-columns:1fr 1fr">
-        <button type="button" class="pay-btn" data-arpago="caja">💵 Efectivo de la caja</button>
-        <button type="button" class="pay-btn" data-arpago="credito">🧾 A crédito con el proveedor</button>
+      <div class="pay-grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">
+        {% for m in medios %}<button type="button" class="pay-btn" data-arpago="{{ m.id }}" data-arnom="{{ m.nombre }}" data-artipo="{{ m.tipo }}">{{ '💵' if m.tipo == 'efectivo' else '💳' if m.tipo == 'tarjeta' else '📲' }} {{ m.nombre }}</button>
+        {% endfor %}<button type="button" class="pay-btn" data-arpago="credito" data-arnom="crédito">🧾 A crédito con el proveedor</button>
       </div>
       <div class="hint" id="ar-pago-hint"></div></div>
     <div class="form-row">
@@ -175,7 +175,7 @@ function pintarCarrito() {
   if (!carrito.length) { box.innerHTML = '<p class="empty">Busca y agrega repuestos.<br><small>El lector de código de barras también funciona aquí.</small></p>'; }
   else box.innerHTML = carrito.map((it, i) => {
     const disp = it.p.virtual ? Infinity : it.p.stock - (it.p.reservado || 0);
-    const alerta = it.arrastre ? `<span class="badge virtual">Arrastre · compra ${it.compra && it.compra.pago === 'credito' ? 'a crédito' : 'con caja'}</span>` : it.p.virtual ? '<span class="badge virtual">Virtual</span>' : it.cantidad > it.p.stock ? `<span class="badge err">solo hay ${NUM(it.p.stock)}</span>` : (it.cantidad > disp ? `<span class="badge warn">${NUM(it.p.reservado)} apartado(s) web</span>` : '');
+    const alerta = it.arrastre ? `<span class="badge virtual">Arrastre · compra ${it.compra && it.compra.pago === 'credito' ? 'a crédito' : 'con ' + esc(arPagoNombre(it.compra && it.compra.pago) || 'caja')}</span>` : it.p.virtual ? '<span class="badge virtual">Virtual</span>' : it.cantidad > it.p.stock ? `<span class="badge err">solo hay ${NUM(it.p.stock)}</span>` : (it.cantidad > disp ? `<span class="badge warn">${NUM(it.p.reservado)} apartado(s) web</span>` : '');
     const bajoCosto = VE_COSTO && it.p.costo && it.precio < it.p.costo ? '<span class="badge err">bajo costo</span>' : '';
     return `<div class="ci">
       <div><div class="nm">${esc(it.p.nombre)}</div><div class="cd">${it.p.interno ? '<b>' + esc(it.p.interno) + '</b> · ' : ''}${esc(it.p.codigo)}${it.p.ubicacion ? ' · 📍' + esc(it.p.ubicacion) : ''} ${alerta} ${bajoCosto}</div></div>
@@ -289,10 +289,19 @@ function precioSugerido(costo) {
   return Math.ceil(Math.round(base) / paso) * paso;
 }
 let arPrecioManual = false, arPago = null, arReusar = null;
+function arPagoBtn(v) { return document.querySelector(`[data-arpago="${v}"]`); }
+function arPagoNombre(v) {
+  if (v === 'caja') return 'efectivo';
+  const b = arPagoBtn(v); return b ? b.dataset.arnom : '';
+}
 function pintarArPago() {
+  if (arPago === 'caja') { const ef = document.querySelector('[data-artipo="efectivo"]'); if (ef) arPago = ef.dataset.arpago; }
   document.querySelectorAll('[data-arpago]').forEach(b => b.classList.toggle('on', b.dataset.arpago === arPago));
-  $('ar-pago-hint').textContent = arPago === 'caja' ? 'Al cobrar la venta se registra la compra y la salida de ese efectivo de la caja.'
-    : arPago === 'credito' ? 'Al cobrar la venta se registra la compra como cuenta por pagar al proveedor (30 días).' : '';
+  const b = arPago ? arPagoBtn(arPago) : null;
+  $('ar-pago-hint').textContent = !b ? '' : arPago === 'credito'
+    ? 'Al cobrar la venta se registra la compra como cuenta por pagar al proveedor (30 días).'
+    : b.dataset.artipo === 'efectivo' ? 'Al cobrar la venta se registra la compra y la salida de ese efectivo de la caja.'
+    : `Al cobrar la venta se registra la compra pagada por ${b.dataset.arnom} (sale de ${b.dataset.arnom} en el cuadre de caja).`;
 }
 document.querySelectorAll('[data-arpago]').forEach(b => b.addEventListener('click', () => { arPago = b.dataset.arpago; pintarArPago(); }));
 function abrirArrastre(p) {
@@ -330,7 +339,7 @@ $('ar-guardar').addEventListener('click', async () => {
   const prov = $('ar-donde').value.trim(), errs = [];
   if (!costo) errs.push('Escribe cuánto cuesta comprarlo afuera.');
   if (!precio) errs.push('Escribe el precio de venta.');
-  if (!arPago) errs.push('Elige cómo se paga la compra afuera: efectivo de la caja o a crédito.');
+  if (!arPago) errs.push('Elige cómo se paga la compra afuera: efectivo, Nequi, transferencia… o a crédito.');
   if (arPago === 'credito' && !prov) errs.push('Para comprar a crédito escribe el proveedor.');
   if (errs.length) { $('ar-err').innerHTML = errs.map(m => `<div class="flash err">${esc(m)}</div>`).join(''); return; }
   const compra = { costo, pago: arPago, proveedor: prov };
@@ -339,7 +348,7 @@ $('ar-guardar').addEventListener('click', async () => {
     carrito = carrito.filter(it => it.p.id !== arReusar.id);
     carrito.unshift({ p: arReusar, cantidad: q, precio, manual: true, arrastre: true, compra });
     pintarCarrito(); $('buscar').value = '';
-    aviso(`✓ Venta de arrastre: <b>${esc(arReusar.nombre)}</b>. Al cobrar se registra la compra ${arPago === 'caja' ? 'con efectivo de la caja' : 'a crédito'}.`);
+    aviso(`✓ Venta de arrastre: <b>${esc(arReusar.nombre)}</b>. Al cobrar se registra la compra ${arPago === 'credito' ? 'a crédito' : 'pagada con ' + esc(arPagoNombre(arPago))}.`);
     return;
   }
   if (arEnviando) return; arEnviando = true; $('ar-guardar').disabled = true;

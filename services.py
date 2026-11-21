@@ -558,12 +558,19 @@ def compras_de_arrastre(venta, usuario, items):
             costo = round(float(cpr.get("costo") or 0))
         except (TypeError, ValueError):
             costo = 0
-        pago = cpr.get("pago") if cpr.get("pago") in ("caja", "credito") else None
+        # pago: "credito" (cuenta por pagar) o el medio con que se paga: id del medio (Efectivo, Nequi,
+        # Bancolombia, Llave…) o "caja" (= efectivo, ventas antiguas)
+        pago = str(cpr.get("pago") or "")
+        if pago == "caja":
+            pago = str(efectivo().id)
+        if pago != "credito":
+            m = db.session.get(MedioPago, int(pago)) if pago.isdigit() else None
+            pago = str(m.id) if m and m.activo else None
         prov = (cpr.get("proveedor") or "").strip()[:140]
         if costo <= 0:
             errores.append(f"«{it.nombre}»: escribe cuánto cuesta comprarlo afuera.")
         if not pago:
-            errores.append(f"«{it.nombre}»: indica si la compra se paga con efectivo de la caja o a crédito.")
+            errores.append(f"«{it.nombre}»: elige cómo se paga la compra afuera (efectivo, Nequi, transferencia… o a crédito).")
         if pago == "credito" and not prov:
             errores.append(f"«{it.nombre}»: para comprar a crédito escribe a qué proveedor.")
         grupos.setdefault((prov.lower(), pago), {"prov": prov, "pago": pago, "lineas": []})["lineas"].append((it, costo))
@@ -579,7 +586,7 @@ def compras_de_arrastre(venta, usuario, items):
                 db.session.add(proveedor)
                 db.session.flush()
         pago = ({"modo": "credito"} if g["pago"] == "credito"
-                else {"modo": "contado", "medio": efectivo(), "desde_caja": True})
+                else {"modo": "contado", "medio": db.session.get(MedioPago, int(g["pago"])), "desde_caja": True})
         c = registrar_compra(usuario, proveedor,
                              [{"producto_id": it.producto_id, "cantidad": it.cantidad, "costo": costo} for it, costo in g["lineas"]],
                              nota=f"Venta de arrastre {venta.folio}" + (f" · {venta.cliente_nombre}" if venta.cliente_nombre else ""),

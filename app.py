@@ -703,7 +703,8 @@ def pos_venta():
         try:   # aviso al admin: compras hechas afuera para ventas de arrastre
             for c in compras:
                 avisar_cambio("Compras", f"Compra de arrastre C-{c.numero:05d} por {pesos(c.total)} para la venta {v.folio}",
-                              ("Pagada con efectivo de la caja" if (c.pagado or 0) >= (c.total or 0) - 0.5
+                              (("Pagada con " + ", ".join(sorted({pg.medio.nombre for pg in c.pagos if pg.medio})) or "Pagada")
+                               if (c.pagado or 0) >= (c.total or 0) - 0.5
                                else f"A crédito con {c.proveedor.nombre if c.proveedor else 'el proveedor'}")
                               + "\n" + "\n".join(f"{cant(i.cantidad)} × {i.producto.nombre[:50]}" for i in c.items),
                               url_for("venta_detalle", vid=v.id))
