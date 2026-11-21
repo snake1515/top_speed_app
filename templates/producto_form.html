@@ -184,7 +184,7 @@
   function ganDesdeDetal(forzar) {
     const c = costoBase(), d = num(document.getElementById('pd')?.value), info = document.getElementById('gan-real');
     if (!c || !d) { if (info) info.textContent = ''; return; }
-    const base = d / (1 + ivaPct() / 100), pesos = Math.round(base - c), pc = Math.round((base / c - 1) * 1000) / 10;
+    const base = d / (1 + ivaPct() / 100), pesos = Math.round(base - c), pc = Math.floor((base / c - 1) * 1000) / 10;
     if (info) info.innerHTML = `Ganancia con este precio: <b>${COP(pesos)}</b> · <b>${String(pc).replace('.', ',')} %</b> sobre el costo${pesos < 0 ? ' <span class="neg">(¡pierdes!)</span>' : ''}`;
     if (!forzar) return;
     const t = document.getElementById('gtipo'), g = document.getElementById('gvalor');
