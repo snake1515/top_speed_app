@@ -41,6 +41,17 @@
     {% endif %}
     {% if t.nota_cierre %}<p class="note">{{ t.nota_cierre }}</p>{% endif %}
     {% if t.ajustes_log %}<details style="margin-top:8px"><summary class="muted">Historial de reaperturas y ajustes</summary><div style="white-space:pre-line;font-size:.85rem;margin-top:6px">{{ t.ajustes_log }}</div></details>{% endif %}
+    {% if es_admin and t.estado == 'cerrado' and es_ultima and not hay_abierta %}
+    <details class="no-print" id="reabrir" style="margin-top:12px"><summary><b>↩ Reabrir caja (se cerró por error)</b></summary>
+      <script>if (location.hash === '#reabrir') document.currentScript.parentElement.open = true;</script>
+      <form method="post" action="{{ url_for('turno_reabrir_error', tid=t.id) }}" style="margin-top:8px"
+            onsubmit="return confirm('¿Reabrir la caja #{{ t.numero }}? Se borra este cierre (conteo y diferencia) y la caja vuelve a recibir ventas.')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <p class="hint">Solo administrador. La caja vuelve a quedar abierta como estaba, con su base y sus movimientos; el cierre se anula (queda en el historial) y se vuelve a contar al cerrar.</p>
+        <div class="field"><input class="input" name="motivo" placeholder="Motivo (ej. el cajero la cerró a mediodía por error)" required></div>
+        <button class="btn">Reabrir caja</button>
+      </form></details>
+    {% endif %}
     {% if es_admin and t.estado == 'cerrado' %}
     <details class="no-print" style="margin-top:12px"><summary><b>🔧 Reabrir caja para ajustes</b></summary>
       <form method="post" action="{{ url_for('turno_reabrir', tid=t.id) }}" style="margin-top:8px">

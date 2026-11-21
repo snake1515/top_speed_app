@@ -1234,6 +1234,8 @@ def turno_detalle(tid):
     r = resumen_turno(t)
     return render_template("turno_detalle.html", t=t, r=r, denoms=json.loads(t.denominaciones or "{}"),
                            denominaciones=DENOMINACIONES,
+                           es_ultima=(Turno.query.order_by(Turno.id.desc()).first().id == t.id),
+                           hay_abierta=turno_abierto() is not None,
                            medios_no_ef=[m for m in MedioPago.query.filter_by(activo=True).order_by(MedioPago.orden).all()
                                          if not m.es_efectivo])
 
@@ -1260,6 +1262,23 @@ def turno_reabrir(tid):
                       url_for("turno_detalle", tid=t.id))
         return f"Caja #{t.numero} reabierta para ajustes. El efectivo queda bloqueado; al terminar, vuelve a cerrarla."
     return _turno_accion(tid, accion, "")
+
+
+@app.route("/caja/turno/<int:tid>/reabrir-error", methods=["POST"])
+@requiere("admin")
+def turno_reabrir_error(tid):
+    t = get_or_404(Turno, tid)
+    try:
+        services.reabrir_turno_error(t, current_user, request.form.get("motivo"))
+        avisar_cambio("Caja", f"Caja #{t.numero} reabierta (se había cerrado por error)",
+                      (t.ajustes_log or "").split("\n")[-1], url_for("turno_detalle", tid=t.id))
+        db.session.commit()
+        flash(f"Caja #{t.numero} abierta de nuevo. Sigue vendiendo normal y ciérrala con el conteo al final del día.", "ok")
+        return redirect(url_for("caja"))
+    except ErrorNegocio as e:
+        db.session.rollback()
+        errores_flash(e)
+    return redirect(url_for("turno_detalle", tid=tid))
 
 
 @app.route("/caja/turno/<int:tid>/ajuste", methods=["POST"])

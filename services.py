@@ -340,6 +340,31 @@ def reabrir_turno_ajuste(t, usuario, motivo):
     _log_turno(t, usuario, f"reabrió la caja para ajustes · {motivo}")
 
 
+def reabrir_turno_error(t, usuario, motivo):
+    """Caja cerrada por error: el administrador la vuelve a abrir tal cual estaba (sigue recibiendo ventas y
+    movimientos) y se borra el cierre (conteo, diferencia). Solo la última caja y si no hay otra abierta."""
+    if t.estado != "cerrado":
+        raise ErrorNegocio("Solo se puede reabrir una caja cerrada.")
+    if turno_abierto() is not None:
+        raise ErrorNegocio("Ya hay una caja abierta. Ciérrala primero si quieres reabrir esta.")
+    ultima = Turno.query.order_by(Turno.id.desc()).first()
+    if ultima is None or ultima.id != t.id:
+        raise ErrorNegocio("Solo se puede reabrir la última caja. Después de esta ya se abrió otra; "
+                           "si necesitas corregir algo, usa «Reabrir para ajustes».")
+    motivo = (motivo or "").strip()
+    if len(motivo) < 5:
+        raise ErrorNegocio("Escribe por qué se reabre (ej. se cerró por error a mitad del día).")
+    _log_turno(t, usuario, f"reabrió la caja (cierre por error) · cierre anulado: contado {pesos(t.efectivo_contado or 0)}, "
+                           f"diferencia {pesos(t.diferencia or 0)}, cerrada por {t.cerrado_por.nombre if t.cerrado_por else '—'} "
+                           f"el {t.cierre.strftime('%d/%m/%Y %I:%M %p') if t.cierre else '—'} · {motivo}")
+    t.estado = "abierto"
+    t.cierre = None
+    t.cerrado_por_id = None
+    t.efectivo_esperado = t.efectivo_contado = t.diferencia = None
+    t.denominaciones = t.resumen = None
+    t.nota_cierre = None
+
+
 def _exigir_ajuste(t):
     if not t.en_ajuste:
         raise ErrorNegocio("Esta caja no está reabierta para ajustes.")

@@ -23,6 +23,7 @@
     <div class="sum-row"><span>Efectivo contado</span><b>{{ ultimo.efectivo_contado|pesos }}</b></div>
     <div class="sum-row"><span>Diferencia</span><b class="{{ 'neg' if ultimo.diferencia < 0 else ('pos' if ultimo.diferencia > 0 else '') }}">{{ ultimo.diferencia|pesos }}</b></div>
     <a href="{{ url_for('turno_detalle', tid=ultimo.id) }}">Ver detalle</a>
+    {% if current_user.puede('admin') %} · <a href="{{ url_for('turno_detalle', tid=ultimo.id) }}#reabrir">¿Se cerró por error? Reabrirla</a>{% endif %}
   </div>
   {% endif %}
 </div>
