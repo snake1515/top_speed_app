@@ -189,6 +189,26 @@ def procesar_imagen(archivo, lado=1000):
     except Exception:
         raise ErrorNegocio("No pude leer la imagen. Usa una foto JPG o PNG.")
 
+def descargar_imagen(url):
+    """Baja una foto desde un enlace (https) para ponerla a un repuesto. Máximo 8 MB."""
+    import urllib.request
+    if not re.match(r"^https?://", url, re.I):
+        raise ErrorNegocio("El enlace de la foto debe empezar por https://")
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (MotoSpeed)"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            if not (r.headers.get("Content-Type") or "").lower().startswith("image/"):
+                raise ErrorNegocio("Ese enlace no es una imagen. Copia la dirección de la imagen (clic derecho → Copiar dirección de imagen).")
+            datos = r.read(8 * 1024 * 1024 + 1)
+    except ErrorNegocio:
+        raise
+    except Exception:
+        raise ErrorNegocio("No pude descargar la foto de ese enlace.")
+    if len(datos) > 8 * 1024 * 1024:
+        raise ErrorNegocio("La foto del enlace pasa de 8 MB.")
+    return BytesIO(datos)
+
+
 def leer_soporte(arch):
     """Archivo de soporte subido (foto o PDF) -> (datos, mime, nombre) o None si no se subió nada.
     Las fotos se reducen a JPG de 1600 px; los PDF hasta 5 MB."""
@@ -1738,6 +1758,10 @@ def producto_form(pid=None):
             errores.append("Si cargas stock inicial escribe también el costo unitario.")
         foto = request.files.get("foto")
         try:
+            foto_url = (request.form.get("foto_url") or "").strip()
+            if (not foto or not foto.filename) and foto_url:
+                foto = descargar_imagen(foto_url)
+                foto.filename = "enlace.jpg"
             if foto and foto.filename:
                 p.imagen = procesar_imagen(foto)
                 p.imagen_mime = "image/jpeg"

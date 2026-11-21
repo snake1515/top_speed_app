@@ -99,6 +99,7 @@
         <h2 style="margin-bottom:10px">Foto</h2>
         <img src="{{ url_for('img_producto', pid=p.id, v=p.imagen_v) if p.imagen_v else url_for('static', filename='sin-foto.svg') }}" id="prev" style="width:100%;aspect-ratio:1;object-fit:contain;border-radius:10px;border:1px solid var(--line);background:#fafaf8" alt="">
         <input class="input" type="file" name="foto" accept="image/*" style="margin-top:8px" onchange="if(this.files[0]) document.getElementById('prev').src = URL.createObjectURL(this.files[0])">
+        <input class="input" type="url" name="foto_url" placeholder="…o pega el enlace de una imagen (https://…)" style="margin-top:8px">
         <div class="hint">Se reduce sola para que cargue rápido en la tienda.</div>
       </div>
       <div class="card">
