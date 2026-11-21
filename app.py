@@ -1593,10 +1593,14 @@ def productos():
         lista = [p for p in lista if p.virtual]
     elif filtro == "sinfoto":
         lista = [p for p in lista if not p.imagen_v]
+    elif filtro == "generica":
+        lista = [p for p in lista if p.imagen_lote == "generica"]
     elif filtro == "sinprecio":
         lista = [p for p in lista if not (p.precio_detal or 0) > 0]
     total_valor = sum(p.valor_inventario for p in lista)
+    n_genericas = Producto.query.filter(Producto.activo.is_(True), Producto.imagen_lote == "generica").count()
     return render_template("productos.html", productos=lista[:600], total=len(lista), q=q, cat=cat, filtro=filtro,
+                           n_genericas=n_genericas,
                            categorias=Categoria.query.order_by(Categoria.nombre).all(), total_valor=total_valor,
                            reservado=reservado_por_producto())
 
@@ -1762,11 +1766,15 @@ def producto_form(pid=None):
             if (not foto or not foto.filename) and foto_url:
                 foto = descargar_imagen(foto_url)
                 foto.filename = "enlace.jpg"
+            generica = bool(request.form.get("foto_generica"))
             if foto and foto.filename:
                 p.imagen = procesar_imagen(foto)
                 p.imagen_mime = "image/jpeg"
                 p.imagen_v = (p.imagen_v or 0) + 1
-                p.imagen_lote = "manual"   # foto subida a mano: la de catálogo ya no la reemplaza
+                # foto subida a mano: la de catálogo ya no la reemplaza. «generica» = foto de referencia, no del producto real
+                p.imagen_lote = "generica" if generica else "manual"
+            elif p.imagen_v and (p.imagen_lote == "generica") != generica:
+                p.imagen_lote = "generica" if generica else "manual"
         except ErrorNegocio as e:
             errores += e.errores
         if errores:
