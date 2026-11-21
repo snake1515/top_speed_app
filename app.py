@@ -3472,6 +3472,25 @@ def horario_tienda():
 app.jinja_env.globals["horario_tienda"] = horario_tienda
 
 
+def lugar_maps():
+    """Texto para Google Maps: coordenadas si están; si no, la dirección limpia («No.» → «#», sin «Local 2»)."""
+    cfg = config()
+    if cfg.lat and cfg.lng:
+        return f"{cfg.lat},{cfg.lng}"
+    d = re.sub(r"\s+", " ", cfg.direccion or "").strip()
+    if not d:
+        return ""
+    d = re.sub(r"\s+(?:No\.?|N°|Nº|#)\s*", " # ", d, flags=re.I)
+    d = re.sub(r"\s*(?:local|loc\.?|lc)\s*\w+", "", d, flags=re.I)
+    ciudad = (cfg.ciudad or "").strip()
+    if ciudad and normalizar(ciudad) not in normalizar(d):
+        d += ", " + ciudad
+    return d + ", Norte de Santander, Colombia"
+
+
+app.jinja_env.globals["lugar_maps"] = lugar_maps
+
+
 def precio_tienda(p):
     return p.precio_detal
 
