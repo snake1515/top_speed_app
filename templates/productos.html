@@ -25,7 +25,7 @@
   <button class="btn dark">Buscar</button>
 </form>
 <div class="tabs">
-  {% for k, l in [('', 'Activos'), ('bajos', 'Bajo mínimo'), ('agotados', 'Agotados'), ('virtual', 'Bodega virtual'), ('sinfoto', 'Sin foto'), ('generica', 'Foto genérica'), ('sinprecio', 'Sin precio'), ('inactivos', 'Inactivos')] %}
+  {% for k, l in [('', 'Activos'), ('bajos', 'Bajo mínimo'), ('agotados', 'Agotados'), ('fisico', 'En bodega física'), ('virtual', 'Bodega virtual'), ('sinfoto', 'Sin foto'), ('generica', 'Foto genérica'), ('sinprecio', 'Sin precio'), ('inactivos', 'Inactivos')] %}
   <a class="{{ 'on' if filtro == k }}" href="{{ url_for('productos', f=k, q=q, cat=cat) }}">{{ l }}</a>{% endfor %}
 </div>
 <div class="card"><div class="table-wrap"><table>

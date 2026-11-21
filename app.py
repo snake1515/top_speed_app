@@ -1591,6 +1591,8 @@ def productos():
         lista = [p for p in lista if (p.stock or 0) <= 0 and not p.virtual]
     elif filtro == "virtual":
         lista = [p for p in lista if p.virtual]
+    elif filtro == "fisico":   # unidades reales en el local (no bodega virtual)
+        lista = [p for p in lista if not p.virtual and (p.stock or 0) > 0]
     elif filtro == "sinfoto":
         lista = [p for p in lista if not p.imagen_v]
     elif filtro == "generica":
