@@ -266,6 +266,7 @@ class Producto(db.Model):
     volver_virtual = db.Column(db.Boolean, nullable=False, default=False)
     # "arrastre": lo creó el cajero en una venta de arrastre (repuesto que no se tenía y se compra afuera)
     origen = db.Column(db.String(12))
+    imagen_lote = db.Column(db.String(80))   # foto de catálogo puesta automáticamente (fotos_catalogo.py)
     donde_comprar = db.Column(db.String(120))  # proveedor / almacén donde se consigue
 
     def texto_base(self):

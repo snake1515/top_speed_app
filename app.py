@@ -375,6 +375,12 @@ with app.app_context():
     db.create_all()
     migrar()
     semilla()
+    try:
+        import fotos_catalogo
+        fotos_catalogo.aplicar()
+    except Exception as e:   # una foto dañada no debe tumbar la app
+        db.session.rollback()
+        print(f"AVISO fotos de catálogo: {e}", flush=True)
     if not Usuario.query.first():
         clave = os.getenv("ADMIN_PASSWORD")
         if clave:
@@ -1682,6 +1688,7 @@ def producto_form(pid=None):
                 p.imagen = procesar_imagen(foto)
                 p.imagen_mime = "image/jpeg"
                 p.imagen_v = (p.imagen_v or 0) + 1
+                p.imagen_lote = "manual"   # foto subida a mano: la de catálogo ya no la reemplaza
         except ErrorNegocio as e:
             errores += e.errores
         if errores:
@@ -1769,6 +1776,7 @@ def producto_foto_borrar(pid):
     p = get_or_404(Producto, pid)
     p.imagen = None
     p.imagen_v = 0
+    p.imagen_lote = "manual"   # la quitaron a mano: la foto de catálogo no vuelve a ponerse
     db.session.commit()
     flash("Foto eliminada.", "ok")
     return redirect(url_for("producto_form", pid=pid))
