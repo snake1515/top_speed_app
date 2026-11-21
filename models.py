@@ -158,6 +158,12 @@ class Config(db.Model):
     tienda_envio = db.Column(db.String(300), default="Domicilios en la ciudad con costo según la zona. Envíos nacionales por transportadora (pago contra entrega o anticipado).")
     tienda_muestra_agotados = db.Column(db.Boolean, nullable=False, default=True)
     reserva_horas = db.Column(db.Integer, nullable=False, default=48)
+    # horario del local («08:00-18:00»; vacío = cerrado) y redes, para la portada de la tienda
+    horario_lv = db.Column(db.String(20), default="08:00-18:00")
+    horario_sab = db.Column(db.String(20), default="08:00-17:00")
+    horario_dom = db.Column(db.String(20), default="08:00-12:00")
+    facebook_url = db.Column(db.String(200))
+    instagram_url = db.Column(db.String(200))
     # nómina (Colombia 2026, editable)
     smmlv = db.Column(db.Float, default=1750905)
     aux_transporte = db.Column(db.Float, default=249095)

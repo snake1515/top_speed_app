@@ -1,16 +1,43 @@
 {% extends "tienda_base.html" %}
 {% block content %}
-{% if not q and not cat and pagina == 1 %}
+{% set portada = not q and not cat and pagina == 1 %}
+{% set wa = ('57' ~ cfg.whatsapp) if cfg.whatsapp and cfg.whatsapp|length == 10 else cfg.whatsapp %}
+{% set lugar = (cfg.lat ~ ',' ~ cfg.lng) if cfg.lat and cfg.lng else ((cfg.direccion or '') ~ ', ' ~ (cfg.ciudad or '')) %}
+{% set hay_lugar = (cfg.lat and cfg.lng) or cfg.direccion %}
+{% if portada %}{% set hor = horario_tienda() %}
 <section class="s-hero">
   <div>
     <img class="marca" src="{{ url_for('logo', v=cfg.logo_v) }}" alt="{{ cfg.nombre }}">
     <h1>{{ cfg.eslogan or 'Repuestos para tu moto' }}</h1>
     <p>{{ cfg.tienda_mensaje or '' }}</p>
+    <div class="s-cta">
+      <a class="btn lg" href="#catalogo">Ver catálogo</a>
+      {% if wa %}<a class="btn lg wa" target="_blank" rel="noopener" href="https://wa.me/{{ wa }}?text={{ ('Hola ' ~ cfg.nombre ~ ', quiero información sobre un repuesto')|urlencode }}">WhatsApp</a>{% endif %}
+      {% if hay_lugar %}<a class="btn lg s-cta-sec" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination={{ lugar|urlencode }}">Cómo llegar</a>{% endif %}
+    </div>
   </div>
   <img class="mascota" src="{{ url_for('static', filename='mascota.webp', v=STATIC_V) }}" alt="Mascota de {{ cfg.nombre }}">
 </section>
+
+<section class="s-info">
+  <div class="s-info-c">
+    <div class="s-info-h"><span class="ico">🕗</span><h3>Horario</h3>
+      <span class="s-estado {{ 'on' if hor.abierto }}">{% if hor.abierto %}Abierto ahora · cierra {{ hor.cierra }}{% else %}Cerrado ahora{% endif %}</span></div>
+    <ul class="s-horario">{% for d, h in hor.filas %}<li><span>{{ d }}</span><b>{{ h }}</b></li>{% endfor %}</ul>
+  </div>
+  <div class="s-info-c">
+    <div class="s-info-h"><span class="ico">📍</span><h3>Visítanos</h3></div>
+    <p class="s-dir">{{ cfg.direccion or '' }}{% if cfg.ciudad %}<br>{{ cfg.ciudad }}{% endif %}</p>
+    {% if hay_lugar %}<a class="btn sec" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination={{ lugar|urlencode }}">Abrir en Google Maps</a>{% endif %}
+  </div>
+  <div class="s-info-c s-info-dark">
+    <div class="s-info-h"><span class="ico">🔧</span><h3>¿No ves tu repuesto?</h3></div>
+    <p>Dinos la referencia o el modelo de tu moto y te lo conseguimos.</p>
+    {% if wa %}<a class="btn wa" target="_blank" rel="noopener" href="https://wa.me/{{ wa }}?text={{ 'Hola, estoy buscando un repuesto para mi moto: '|urlencode }}">Pedir por WhatsApp</a>{% endif %}
+  </div>
+</section>
 {% endif %}
-<div class="s-layout">
+<div class="s-layout" id="catalogo">
   <nav class="s-cats">
     <h3>Categorías</h3>
     <a href="{{ url_for('tienda', q=q) }}" class="{{ 'on' if not cat }}">Todo</a>
@@ -36,4 +63,15 @@
     {% endif %}
   </section>
 </div>
+{% if portada and hay_lugar %}
+<section class="s-mapa">
+  <div>
+    <h2>Encuéntranos</h2>
+    <p>{{ cfg.direccion or '' }}{% if cfg.ciudad %}, {{ cfg.ciudad }}{% endif %}</p>
+    <a class="btn" target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination={{ lugar|urlencode }}">Cómo llegar</a>
+  </div>
+  <iframe title="Ubicación de {{ cfg.nombre }}" loading="lazy" referrerpolicy="no-referrer-when-downgrade"
+    src="https://www.google.com/maps?q={{ lugar|urlencode }}&z=17&output=embed"></iframe>
+</section>
+{% endif %}
 {% endblock %}

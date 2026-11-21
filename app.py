@@ -3001,6 +3001,13 @@ def configuracion():
             cfg.tienda_mensaje = (f.get("tienda_mensaje") or "").strip()[:300] or None
             cfg.tienda_envio = (f.get("tienda_envio") or "").strip()[:300] or None
             cfg.reserva_horas = max(int(n(f.get("reserva_horas"), 48)), 1)
+            for campo in ("horario_lv", "horario_sab", "horario_dom"):
+                setattr(cfg, campo, limpiar_horario(f.get(campo)))
+            for campo in ("facebook_url", "instagram_url"):
+                url = (f.get(campo) or "").strip()[:200]
+                if url and not url.startswith(("http://", "https://")):
+                    url = "https://" + url
+                setattr(cfg, campo, url or None)
         elif sec == "socios":
             accion = f.get("accion")
             if accion == "nuevo" or (accion == "activar" and not cfg.socios_token):
@@ -3425,6 +3432,46 @@ def preventa_reporte():
 
 
 # ========================================================= tienda pública
+def limpiar_horario(txt):
+    """«8-18», «8:00 - 18:00» o «08:00-18:00» → «08:00-18:00». Vacío o ilegible = cerrado (None)."""
+    m = re.fullmatch(r"\s*(\d{1,2})(?::(\d{2}))?\s*-\s*(\d{1,2})(?::(\d{2}))?\s*", txt or "")
+    if not m:
+        return None
+    h1, m1, h2, m2 = int(m.group(1)), int(m.group(2) or 0), int(m.group(3)), int(m.group(4) or 0)
+    if not (0 <= h1 <= 23 and 0 <= h2 <= 24 and m1 < 60 and m2 < 60) or (h1, m1) >= (h2, m2):
+        return None
+    return f"{h1:02d}:{m1:02d}-{h2:02d}:{m2:02d}"
+
+
+def _hora_ampm(hhmm):
+    h, m = map(int, hhmm.split(":"))
+    suf = "a.m." if h < 12 else "p.m."
+    h12 = h % 12 or 12
+    return f"{h12}:{m:02d} {suf}" if m else f"{h12} {suf}"
+
+
+def horario_tienda():
+    """Horario para la portada: filas legibles y si el local está abierto en este momento (hora de Colombia)."""
+    cfg = config()
+    tramos = [("Lunes a viernes", cfg.horario_lv, range(0, 5)), ("Sábados", cfg.horario_sab, (5,)),
+              ("Domingos", cfg.horario_dom, (6,))]
+    filas, abierto, cierra = [], False, None
+    t = ahora()
+    hm = t.strftime("%H:%M")
+    for etiqueta, h, dias in tramos:
+        if h and "-" in h:
+            ini, fin = h.split("-")
+            filas.append((etiqueta, f"{_hora_ampm(ini)} – {_hora_ampm(fin)}"))
+            if t.weekday() in dias and ini <= hm < fin:
+                abierto, cierra = True, _hora_ampm(fin)
+        else:
+            filas.append((etiqueta, "Cerrado"))
+    return {"filas": filas, "abierto": abierto, "cierra": cierra}
+
+
+app.jinja_env.globals["horario_tienda"] = horario_tienda
+
+
 def precio_tienda(p):
     return p.precio_detal
 

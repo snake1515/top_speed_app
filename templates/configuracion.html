@@ -75,6 +75,18 @@ document.getElementById('gps').addEventListener('click', e => { const b = e.targ
     <div class="field" style="margin-top:10px"><label>Mensaje de bienvenida</label><input class="input" name="tienda_mensaje" value="{{ cfg.tienda_mensaje or '' }}"></div>
     <div class="field"><label>Información de envíos</label><textarea class="input" name="tienda_envio" rows="2">{{ cfg.tienda_envio or '' }}</textarea></div>
     <div class="field"><label>Horas que se aparta el stock de un pedido</label><input class="input" name="reserva_horas" value="{{ cfg.reserva_horas }}" style="max-width:120px"></div>
+    <h3 style="margin:14px 0 6px">Horario del local</h3>
+    <div class="form-row c3">
+      <div class="field"><label>Lunes a viernes</label><input class="input" name="horario_lv" value="{{ cfg.horario_lv or '' }}" placeholder="08:00-18:00"></div>
+      <div class="field"><label>Sábados</label><input class="input" name="horario_sab" value="{{ cfg.horario_sab or '' }}" placeholder="08:00-17:00"></div>
+      <div class="field"><label>Domingos</label><input class="input" name="horario_dom" value="{{ cfg.horario_dom or '' }}" placeholder="08:00-12:00"></div>
+    </div>
+    <p class="hint">Formato 24 horas, por ejemplo «08:00-18:00». Déjalo vacío si ese día no abren. La tienda muestra «Abierto ahora» o «Cerrado» según la hora de Colombia.</p>
+    <h3 style="margin:14px 0 6px">Redes sociales</h3>
+    <div class="form-row">
+      <div class="field"><label>Página de Facebook</label><input class="input" name="facebook_url" value="{{ cfg.facebook_url or '' }}" placeholder="https://facebook.com/…"></div>
+      <div class="field"><label>Instagram</label><input class="input" name="instagram_url" value="{{ cfg.instagram_url or '' }}" placeholder="https://instagram.com/…"></div>
+    </div>
     <p class="hint">Dirección pública de la tienda: <a href="{{ url_for('tienda', _external=True) }}" target="_blank">{{ url_for('tienda', _external=True) }}</a></p>
     <button class="btn">Guardar</button>
   </form>
