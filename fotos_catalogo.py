@@ -40,6 +40,7 @@ def aplicar():
                 previa = (p.imagen_lote or "").split("@")[0]
                 if p.imagen_lote != clave and (not p.imagen_lote or previa == clave.split("@")[0]):
                     p.imagen = datos
+                    p.imagen_mini = None
                     p.imagen_mime = "image/jpeg"
                     p.imagen_v = (p.imagen_v or 0) + 1
                     p.imagen_lote = clave

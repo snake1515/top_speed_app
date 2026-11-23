@@ -484,22 +484,37 @@ def logo_recibo():
 def img_producto(pid):
     tam = request.args.get("s")
     v = request.args.get("v", type=int)
-    if tam == "t" and v is not None and (pid, v) in _MINIATURAS:
-        # Miniatura ya lista en memoria: se entrega sin consultar la base de datos
+    if tam == "t":
+        if v is None or (pid, v) not in _MINIATURAS:
+            # Solo se trae de la base la miniatura (~15 KB), no la foto completa
+            fila = db.session.query(Producto.imagen_mini, Producto.imagen_v).filter(Producto.id == pid).first()
+            if fila is None or not fila[1]:
+                return redirect(url_for("static", filename="sin-foto.svg"))
+            mini, ver = fila
+            if not mini:
+                p = db.session.get(Producto, pid)
+                if not p.imagen:
+                    return redirect(url_for("static", filename="sin-foto.svg"))
+                mini = hacer_miniatura(p.imagen)
+                p.imagen_mini = mini
+                db.session.commit()
+            v = ver
+            _guardar_cache(_MINIATURAS, (pid, v), mini, 3000)
         r = send_file(BytesIO(_MINIATURAS[(pid, v)]), mimetype="image/jpeg")
         r.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return r
+    if tam != "og" and v is not None and (pid, v) in _FOTOS:
+        r = send_file(BytesIO(_FOTOS[(pid, v)]), mimetype="image/jpeg")
+        r.headers["Cache-Control"] = "public, max-age=2592000"
         return r
     p = db.session.get(Producto, pid)
     if p is None or not p.imagen:
         return redirect(url_for("static", filename="sin-foto.svg"))
-    if tam == "t":
-        r = send_file(BytesIO(miniatura(p.id, p.imagen_v or 0, p.imagen)), mimetype="image/jpeg")
-        r.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-        return r
     if tam == "og":
         # Vista previa al compartir (WhatsApp/Facebook): JPEG cuadrado de 600 px, liviano (< 300 KB)
         return send_file(BytesIO(imagen_vista_previa(p.id, p.imagen_v or 0, p.imagen)), mimetype="image/jpeg",
                          max_age=2592000)
+    _guardar_cache(_FOTOS, (p.id, p.imagen_v or 0), p.imagen, 250)
     r = send_file(BytesIO(p.imagen), mimetype=p.imagen_mime or "image/jpeg")
     r.headers["Cache-Control"] = "public, max-age=2592000"
     return r
@@ -509,46 +524,27 @@ _VISTA_PREVIA = {}
 _MINIATURAS = {}
 
 
-def miniatura(pid, version, datos):
-    """JPEG de 400 px (~20 KB) para listados de la tienda, el POS y el inventario; queda en memoria."""
-    clave = (pid, version)
-    if clave not in _MINIATURAS:
-        from PIL import Image, ImageOps
-        try:
-            img = ImageOps.exif_transpose(Image.open(BytesIO(datos))).convert("RGB")
-            img.thumbnail((400, 400), Image.LANCZOS)
-            buf = BytesIO()
-            img.save(buf, "JPEG", quality=82, optimize=True, progressive=True)
-            if len(_MINIATURAS) > 3000:
-                _MINIATURAS.clear()
-            _MINIATURAS[clave] = buf.getvalue()
-        except Exception:
-            return datos
-    return _MINIATURAS[clave]
+_FOTOS = {}
 
 
-def precargar_miniaturas():
-    """Al arrancar, deja listas en memoria las miniaturas de todos los repuestos (en segundo plano)."""
-    from sqlalchemy.orm import undefer
+def _guardar_cache(cache, clave, datos, maximo):
+    """Caché en memoria de imágenes, para no volver a pedirlas a la base de datos (cuida el egress de Supabase)."""
+    if len(cache) >= maximo:
+        cache.pop(next(iter(cache)))
+    cache[clave] = datos
+
+
+def hacer_miniatura(datos):
+    """JPEG de 400 px (~15 KB) para listados de la tienda, el POS y el inventario."""
+    from PIL import Image, ImageOps
     try:
-        with app.app_context():
-            ids = [i for (i,) in db.session.query(Producto.id).filter(Producto.imagen_v > 0).all()]
-            for k in range(0, len(ids), 40):
-                lote = (Producto.query.options(undefer(Producto.imagen))
-                        .filter(Producto.id.in_(ids[k:k + 40])).all())
-                for p in lote:
-                    if p.imagen:
-                        miniatura(p.id, p.imagen_v or 0, p.imagen)
-                db.session.expunge_all()
-            db.session.remove()
-        print(f"Miniaturas listas: {len(_MINIATURAS)}", flush=True)
-    except Exception as e:
-        print(f"AVISO miniaturas: {e}", flush=True)
-
-
-if os.getenv("PRECARGAR_MINIATURAS", "1") == "1":
-    import threading
-    threading.Thread(target=precargar_miniaturas, daemon=True).start()
+        img = ImageOps.exif_transpose(Image.open(BytesIO(datos))).convert("RGB")
+        img.thumbnail((400, 400), Image.LANCZOS)
+        buf = BytesIO()
+        img.save(buf, "JPEG", quality=82, optimize=True, progressive=True)
+        return buf.getvalue()
+    except Exception:
+        return datos
 
 
 def imagen_vista_previa(pid, version, datos):
@@ -1777,6 +1773,7 @@ def producto_form(pid=None):
             generica = bool(request.form.get("foto_generica"))
             if foto and foto.filename:
                 p.imagen = procesar_imagen(foto)
+                p.imagen_mini = hacer_miniatura(p.imagen)
                 p.imagen_mime = "image/jpeg"
                 p.imagen_v = (p.imagen_v or 0) + 1
                 # foto subida a mano: la de catálogo ya no la reemplaza. «generica» = foto de referencia, no del producto real
@@ -1869,6 +1866,7 @@ def por_surtir():
 def producto_foto_borrar(pid):
     p = get_or_404(Producto, pid)
     p.imagen = None
+    p.imagen_mini = None
     p.imagen_v = 0
     p.imagen_lote = "manual"   # la quitaron a mano: la foto de catálogo no vuelve a ponerse
     db.session.commit()

@@ -258,6 +258,7 @@ class Producto(db.Model):
     ganancia_valor = db.Column(db.Float)
     activo = db.Column(db.Boolean, nullable=False, default=True)
     imagen = deferred(db.Column(db.LargeBinary))
+    imagen_mini = deferred(db.Column(db.LargeBinary))   # miniatura de 400 px para listados (pesa ~15 KB)
     imagen_mime = db.Column(db.String(40))
     imagen_v = db.Column(db.Integer, nullable=False, default=0)
     creado = db.Column(db.DateTime, default=ahora)

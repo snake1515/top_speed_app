@@ -534,6 +534,7 @@ def cargar_imagenes_zip(archivo, procesar, solo_sin_foto=False, desde=0, cuantas
             continue
         for p in destino:
             p.imagen = datos
+            p.imagen_mini = None
             p.imagen_mime = "image/jpeg"
             p.imagen_v = (p.imagen_v or 0) + 1
         productos += len(destino)
