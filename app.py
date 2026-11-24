@@ -1150,7 +1150,7 @@ def caja_traslado():
 
 
 @app.route("/caja-mayor")
-@requiere("admin")
+@requiere("cajero")
 def caja_mayor():
     from models import MovCajaMayor, CATEGORIAS_CAJA_MAYOR
     saldos = services.saldos_caja_mayor()

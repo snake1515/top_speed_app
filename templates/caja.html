@@ -70,7 +70,7 @@
   <div>
     <form class="card" method="post" action="{{ url_for('caja_traslado') }}" id="traslado">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <div class="card-head"><h2>Pasar a caja mayor</h2>{% if current_user.puede('admin') %}<a href="{{ url_for('caja_mayor') }}">Ver caja mayor</a>{% endif %}</div>
+      <div class="card-head"><h2>Pasar a caja mayor</h2><a href="{{ url_for('caja_mayor') }}">Ver caja mayor</a></div>
       <p class="hint" style="margin-top:0">En efectivo se deja una base de <b>{{ cfg.caja_base_meta|pesos }}</b> en la caja; lo demás, y lo de Nequi y transferencias, pasa a la caja mayor. Puedes cambiar los valores.</p>
       <div class="table-wrap"><table>
         <thead><tr><th>Medio</th><th class="num">En la caja</th><th class="num">Pasar</th></tr></thead>
