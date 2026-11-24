@@ -68,6 +68,33 @@
     </div>
   </div>
   <div>
+    <form class="card" method="post" action="{{ url_for('caja_traslado') }}" id="traslado">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="card-head"><h2>Pasar a caja mayor</h2>{% if current_user.puede('admin') %}<a href="{{ url_for('caja_mayor') }}">Ver caja mayor</a>{% endif %}</div>
+      <p class="hint" style="margin-top:0">En efectivo se deja una base de <b>{{ cfg.caja_base_meta|pesos }}</b> en la caja; lo demás, y lo de Nequi y transferencias, pasa a la caja mayor. Puedes cambiar los valores.</p>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Medio</th><th class="num">En la caja</th><th class="num">Pasar</th></tr></thead>
+        <tbody>{% for x in traslado %}
+          <tr><td><b>{{ x.medio.nombre }}</b>{% if x.medio.es_efectivo %}<br><small class="muted">deja {{ cfg.caja_base_meta|pesos }}</small>{% endif %}</td>
+            <td class="num">{{ x.disponible|pesos }}</td>
+            <td class="num" style="width:44%"><input class="input" name="tras_{{ x.medio.id }}" data-pesos inputmode="numeric" value="{{ '{:,.0f}'.format(x.sugerido).replace(',', '.') if x.sugerido > 0 else '' }}" placeholder="0" style="text-align:right"></td></tr>
+        {% endfor %}</tbody>
+      </table></div>
+      <input class="input" name="nota" placeholder="Nota (opcional)" style="margin:8px 0">
+      <button class="btn" style="width:100%" id="btn-traslado">⇪ Pasar a caja mayor <span id="tras-total"></span></button>
+    </form>
+    <script>
+    (function () {
+      const f = document.getElementById('traslado'); if (!f) return;
+      const num = s => parseInt(String(s || '').replace(/\D/g, '') || '0', 10);
+      const pinta = () => { const t = [...f.querySelectorAll('[name^=tras_]')].reduce((a, i) => a + num(i.value), 0);
+        document.getElementById('tras-total').textContent = t ? '· $ ' + t.toLocaleString('es-CO') : ''; };
+      f.addEventListener('input', pinta, true); pinta();
+      f.addEventListener('submit', e => { const t = [...f.querySelectorAll('[name^=tras_]')].reduce((a, i) => a + num(i.value), 0);
+        if (!t || !confirm('¿Pasar $ ' + t.toLocaleString('es-CO') + ' a la caja mayor?')) e.preventDefault(); });
+    })();
+    </script>
+
     <form class="card" method="post" action="{{ url_for('caja_movimiento') }}" id="f-mov" enctype="multipart/form-data">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <h2 style="margin-bottom:10px">Entrada o salida de dinero</h2>

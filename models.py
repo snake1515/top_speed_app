@@ -76,7 +76,8 @@ CATEGORIAS_CAJA_MENOR = ["Transporte y domicilios", "Mensajería", "Aseo y cafet
 # cómo se llama cada salida de caja según su origen (para discriminar los egresos)
 CLASE_EGRESO = {"compra": "Pago a proveedor", "proveedor": "Pago a proveedor", "caja_menor": "Caja menor",
                 "gasto": "Gasto del negocio", "nomina": "Nómina", "devolucion": "Devolución a cliente",
-                "reverso": "Reversos", "manual": "Otras salidas", "ajuste": "Ajuste de caja"}
+                "reverso": "Reversos", "manual": "Otras salidas", "ajuste": "Ajuste de caja",
+                "caja_mayor": "Traslado a caja mayor"}
 CATEGORIAS_GASTO = ["Arriendo", "Servicios públicos", "Internet y teléfono", "Transporte y domicilios",
                     "Publicidad", "Mantenimiento del local", "Papelería y empaques", "Impuestos",
                     "Contador", "Comisiones bancarias", "Otros"]
@@ -151,6 +152,7 @@ class Config(db.Model):
     tienda_activa = db.Column(db.Boolean, nullable=False, default=True)
     # reporte para socios: enlace secreto de solo consulta, sin usuario ni clave
     socios_token = db.Column(db.String(40))
+    caja_base_meta = db.Column(db.Float, nullable=False, default=400000)   # efectivo que se deja en la caja diaria
     socios_activo = db.Column(db.Boolean, nullable=False, default=False)
     socios_visitas = db.Column(db.Integer, nullable=False, default=0)
     socios_ultima = db.Column(db.DateTime)
@@ -490,6 +492,30 @@ class Turno(db.Model):
     @property
     def en_ajuste(self):
         return self.estado == "ajuste"
+
+
+class MovCajaMayor(db.Model):
+    """Caja mayor (tesorería): donde se guarda lo que sobra de la caja diaria, por medio de pago."""
+    __tablename__ = "ts_caja_mayor"
+    id = db.Column(db.Integer, primary_key=True)
+    fecha = db.Column(db.DateTime, nullable=False, default=ahora, index=True)
+    tipo = db.Column(db.String(10), nullable=False)          # entrada / salida
+    valor = db.Column(db.Float, nullable=False)
+    medio_id = db.Column(db.Integer, db.ForeignKey("ts_medios_pago.id"), nullable=False)
+    medio = db.relationship("MedioPago")
+    concepto = db.Column(db.String(200), nullable=False)
+    origen = db.Column(db.String(20), nullable=False, default="manual")   # traslado / devolucion / manual
+    categoria = db.Column(db.String(60))
+    mov_caja_id = db.Column(db.Integer, db.ForeignKey("ts_mov_caja.id"))  # movimiento enlazado en la caja diaria
+    turno_id = db.Column(db.Integer, db.ForeignKey("ts_turnos.id"))
+    turno = db.relationship("Turno")
+    anulado = db.Column(db.Boolean, nullable=False, default=False)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
+    usuario = db.relationship("Usuario", foreign_keys=[usuario_id])
+
+
+CATEGORIAS_CAJA_MAYOR = ["Consignación al banco", "Pago a proveedor", "Gasto del negocio", "Retiro de socio",
+                         "Préstamo", "Otra salida"]
 
 
 class MovCaja(db.Model):

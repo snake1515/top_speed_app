@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Caja mayor · {{ cfg.nombre }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Caja mayor</h1><p>Donde se guarda lo que sobra de la caja diaria: efectivo por encima de la base, Nequi, transferencias…</p></div>
+  <div class="actions"><a class="btn sec" href="{{ url_for('caja') }}#traslado">⇪ Pasar desde la caja diaria</a></div>
+</div>
+
+<div class="kpis">
+  <div class="kpi hl"><div class="lbl">Total en caja mayor</div><div class="val">{{ total|pesos }}</div></div>
+  {% for x in filas if x.saldo or x.entradas %}
+  <div class="kpi"><div class="lbl">{{ x.medio.nombre }}</div><div class="val">{{ x.saldo|pesos }}</div><div class="sub">entró {{ x.entradas|pesos }} · salió {{ x.salidas|pesos }}</div></div>
+  {% endfor %}
+</div>
+
+<div class="grid g-main">
+  <div>
+    <div class="card">
+      <h2 style="margin-bottom:8px">Movimientos</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Fecha</th><th>Concepto</th><th>Medio</th><th class="num">Valor</th><th></th></tr></thead>
+        <tbody>{% for m in movs %}
+          <tr class="{{ 'anulado' if m.anulado }}" {% if m.anulado %}style="opacity:.5;text-decoration:line-through"{% endif %}>
+            <td>{{ m.fecha|fh }}</td>
+            <td>{% if m.origen == 'traslado' %}<span class="badge blue">Desde caja diaria</span>{% elif m.origen == 'devolucion' %}<span class="badge warn">A caja diaria</span>{% elif m.categoria %}<span class="badge">{{ m.categoria }}</span>{% endif %}
+              {{ m.concepto }}<br><small class="muted">{{ m.usuario.nombre if m.usuario else '' }}{% if m.anulado %} · anulado{% endif %}</small></td>
+            <td>{{ m.medio.nombre }}</td>
+            <td class="num {{ 'pos' if m.tipo == 'entrada' else 'neg' }}">{{ '+' if m.tipo == 'entrada' else '−' }}{{ m.valor|pesos }}</td>
+            <td>{% if not m.anulado %}<form method="post" action="{{ url_for('caja_mayor_anular', mid=m.id) }}" onsubmit="return confirm('¿Anular este movimiento de {{ m.valor|pesos }}?{% if m.mov_caja_id %} También se revierte en la caja diaria.{% endif %}')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn ghost sm" title="Anular">↺ Anular</button></form>{% endif %}</td>
+          </tr>
+        {% else %}<tr><td colspan="5" class="empty">Todavía no hay movimientos. Pasa plata desde la caja diaria con «Pasar a caja mayor».</td></tr>{% endfor %}</tbody>
+      </table></div>
+    </div>
+  </div>
+  <div>
+    <form class="card" method="post" action="{{ url_for('caja_mayor_mov') }}" id="f-cm">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <h2 style="margin-bottom:10px">Entrada o salida</h2>
+      <div class="form-row" style="grid-template-columns:1fr 1fr 1fr">
+        <label class="check"><input type="radio" name="tipo" value="salida" checked> Salida</label>
+        <label class="check"><input type="radio" name="tipo" value="entrada"> Entrada</label>
+        <label class="check"><input type="radio" name="tipo" value="a_caja"> A caja diaria</label>
+      </div>
+      <div class="field"><label>Medio</label><select class="input" name="medio_id">{% for m in medios %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}</select></div>
+      <div class="field"><label>Valor</label><input class="input" name="valor" inputmode="numeric" required></div>
+      <div class="field" id="cm-cat"><label>Tipo de salida</label><select class="input" name="categoria">{% for c in categorias %}<option>{{ c }}</option>{% endfor %}</select></div>
+      <div class="field"><label>Concepto</label><input class="input" name="concepto" placeholder="Ej. consignación Bancolombia, pago factura Tiger, retiro Carlos…"></div>
+      <p class="hint" id="cm-hint">Sale de la caja mayor (consignación, pago a proveedor, retiro de un socio…).</p>
+      <button class="btn" style="width:100%">Registrar</button>
+    </form>
+    <form class="card" method="post" action="{{ url_for('caja_mayor_base') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <h2 style="margin-bottom:6px">Base de la caja diaria</h2>
+      <p class="hint" style="margin-top:0">Efectivo que se deja en la caja; lo que pase de aquí se sugiere pasar a la caja mayor.</p>
+      <div style="display:flex;gap:8px"><input class="input" name="base" data-pesos inputmode="numeric" value="{{ '{:,.0f}'.format(cfg.caja_base_meta or 0).replace(',', '.') }}"><button class="btn sec">Guardar</button></div>
+    </form>
+  </div>
+</div>
+<script>
+(function () {
+  const f = document.getElementById('f-cm');
+  const pinta = () => {
+    const t = f.querySelector('[name=tipo]:checked').value;
+    document.getElementById('cm-cat').style.display = t === 'salida' ? '' : 'none';
+    document.getElementById('cm-hint').textContent = t === 'salida' ? 'Sale de la caja mayor (consignación, pago a proveedor, retiro de un socio…).'
+      : t === 'entrada' ? 'Entra a la caja mayor sin pasar por la caja diaria (ej. saldo inicial, aporte de un socio).'
+      : 'Sale de la caja mayor y entra a la caja diaria abierta (ej. completar la base o el cambio).';
+  };
+  f.addEventListener('change', pinta); pinta();
+})();
+</script>
+{% endblock %}

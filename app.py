@@ -286,6 +286,7 @@ AVISOS_CAMBIOS = {
     "compra_pago_medio": "Compras",
     "cliente_form": "Clientes", "cliente_archivar": "Clientes",
     "caja_movimiento": "Caja", "caja_ajuste": "Caja",
+    "caja_traslado": "Caja mayor", "caja_mayor_mov": "Caja mayor", "caja_mayor_anular": "Caja mayor", "caja_mayor_base": "Caja mayor",
     "usuario_form": "Usuarios", "configuracion": "Configuración",
     "ruta_form": "Rutas", "ruta_clientes": "Rutas",
 }
@@ -1068,7 +1069,8 @@ def caja():
     medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.orden).all()
     proveedores = Proveedor.query.filter_by(activo=True).order_by(Proveedor.nombre).all()
     compras_pend = [c for c in Compra.query.filter(Compra.anulada.is_(False)).order_by(Compra.fecha).all() if c.saldo > 0.5]
-    return render_template("caja.html", t=t, r=r, ultimo=ultimo, medios=medios, denominaciones=DENOMINACIONES,
+    traslado = services.sugerido_traslado(t, config().caja_base_meta) if t else []
+    return render_template("caja.html", t=t, r=r, ultimo=ultimo, medios=medios, denominaciones=DENOMINACIONES, traslado=traslado,
                            proveedores=proveedores, compras_pend=compras_pend, cats_menor=CATEGORIAS_CAJA_MENOR)
 
 
@@ -1123,6 +1125,85 @@ def caja_movimiento():
         db.session.rollback()
         errores_flash(e)
     return redirect(url_for("caja"))
+
+
+# ============================================================ caja mayor
+@app.route("/caja/traslado", methods=["POST"])
+@requiere("cajero")
+def caja_traslado():
+    """Pasa a la caja mayor lo que sobra de la caja diaria (efectivo sobre la base, Nequi, transferencias…)."""
+    f = request.form
+    valores = {}
+    for k, v in f.items():
+        if k.startswith("tras_") and k[5:].isdigit():
+            valores[int(k[5:])] = n(v)
+    try:
+        hechos = services.trasladar_a_caja_mayor(current_user, valores, f.get("nota"))
+        db.session.commit()
+        flash("Pasaste a la caja mayor " + " · ".join(f"{m.medio.nombre} {pesos(m.valor)}" for m in hechos)
+              + f" (total {pesos(sum(m.valor for m in hechos))}).", "ok")
+        g.aviso_texto = f"Desde la caja #{hechos[0].turno.numero if hechos[0].turno else ''}"
+    except ErrorNegocio as e:
+        db.session.rollback()
+        errores_flash(e)
+    return redirect(url_for("caja") + "#traslado")
+
+
+@app.route("/caja-mayor")
+@requiere("admin")
+def caja_mayor():
+    from models import MovCajaMayor, CATEGORIAS_CAJA_MAYOR
+    saldos = services.saldos_caja_mayor()
+    medios = MedioPago.query.filter_by(activo=True).order_by(MedioPago.orden).all()
+    filas = [{"medio": m, **saldos.get(m.id, {"entradas": 0.0, "salidas": 0.0, "saldo": 0.0})} for m in medios]
+    filas += [{"medio": d["medio"], **d} for mid, d in saldos.items() if all(m.id != mid for m in medios)]
+    movs = MovCajaMayor.query.order_by(MovCajaMayor.fecha.desc(), MovCajaMayor.id.desc()).limit(300).all()
+    return render_template("caja_mayor.html", filas=filas, total=sum(x["saldo"] for x in filas), movs=movs,
+                           medios=medios, categorias=CATEGORIAS_CAJA_MAYOR, t=turno_abierto())
+
+
+@app.route("/caja-mayor/mov", methods=["POST"])
+@requiere("admin")
+def caja_mayor_mov():
+    f = request.form
+    medio = db.session.get(MedioPago, int(f.get("medio_id") or 0)) if (f.get("medio_id") or "").isdigit() else None
+    tipo = f.get("tipo")
+    a_caja = tipo == "a_caja"
+    try:
+        mm = services.mov_caja_mayor(current_user, "salida" if a_caja else tipo, n(f.get("valor")), medio,
+                                     f.get("concepto"), f.get("categoria"), a_caja=a_caja)
+        db.session.commit()
+        flash(("Devolviste a la caja diaria " if a_caja else ("Entrada a la caja mayor: " if mm.tipo == "entrada" else "Salida de la caja mayor: "))
+              + f"{mm.medio.nombre} {pesos(mm.valor)} · {mm.concepto}", "ok")
+    except ErrorNegocio as e:
+        db.session.rollback()
+        errores_flash(e)
+    return redirect(url_for("caja_mayor"))
+
+
+@app.route("/caja-mayor/<int:mid>/anular", methods=["POST"])
+@requiere("admin")
+def caja_mayor_anular(mid):
+    from models import MovCajaMayor
+    mm = get_or_404(MovCajaMayor, mid)
+    try:
+        services.anular_caja_mayor(current_user, mm)
+        db.session.commit()
+        flash(f"Movimiento de caja mayor anulado: {mm.medio.nombre} {pesos(mm.valor)} · {mm.concepto}", "ok")
+    except ErrorNegocio as e:
+        db.session.rollback()
+        errores_flash(e)
+    return redirect(url_for("caja_mayor"))
+
+
+@app.route("/caja-mayor/base", methods=["POST"])
+@requiere("admin")
+def caja_mayor_base():
+    cfg = config()
+    cfg.caja_base_meta = max(round(n(request.form.get("base"))), 0)
+    db.session.commit()
+    flash(f"Base que se deja en la caja diaria: {pesos(cfg.caja_base_meta)}.", "ok")
+    return redirect(request.form.get("volver") or url_for("caja_mayor"))
 
 
 @app.route("/caja/mov/<int:mid>")

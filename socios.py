@@ -6,7 +6,7 @@ from datetime import date, datetime, timedelta
 import reportes as rpt
 from inversion import fijos_del_mes, reporte_aportes
 from models import Compra, Gasto, Producto, Venta, ahora
-from services import resumen_turno, turno_abierto
+from services import resumen_turno, saldos_caja_mayor, turno_abierto
 
 MESES = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre",
          "noviembre", "diciembre"]
@@ -132,6 +132,7 @@ def datos(cfg, per="hoy", desde_txt=None, hasta_txt=None):
 
     return {
         "inventario": inventario,
+        "caja_mayor": sorted((d for d in saldos_caja_mayor().values() if abs(d["saldo"]) > 0.5), key=lambda d: d["medio"].orden),
         "clave": clave, "desde": desde, "hasta": hasta, "nombre": nombre, "r": r, "ant": ant, "comp": comp,
         "d_ant": d_ant, "h_ant": h_ant,
         "gastos": gastos, "fijos": fijos, "compras": compras,

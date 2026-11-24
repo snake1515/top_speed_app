@@ -1357,3 +1357,107 @@ def crear_pedido_preventa(usuario, cliente, items, nota="", lat=None, lng=None):
     db.session.flush()
     registrar_visita(usuario, cliente, "pedido", nota, lat, lng, ped)
     return ped
+
+
+# ============================================================ caja mayor (tesorería)
+def saldos_caja_mayor():
+    """{medio_id: {"medio", "entradas", "salidas", "saldo"}} con lo que hay hoy en la caja mayor."""
+    from models import MovCajaMayor
+    out = {}
+    for m in MovCajaMayor.query.filter_by(anulado=False).all():
+        d = out.setdefault(m.medio_id, {"medio": m.medio, "entradas": 0.0, "salidas": 0.0})
+        d["entradas" if m.tipo == "entrada" else "salidas"] += m.valor
+    for d in out.values():
+        d["saldo"] = d["entradas"] - d["salidas"]
+    return out
+
+
+def sugerido_traslado(turno, base_meta):
+    """Por medio: lo que hay en la caja diaria y lo que se sugiere pasar a la caja mayor.
+    Efectivo: lo que pase de la base que se deja (ej. 443.000 − 400.000 = 43.000). Otros medios: todo el neto del turno."""
+    r = resumen_turno(turno)
+    ef = efectivo()
+    filas = [{"medio": ef, "disponible": r["efectivo_esperado"],
+              "sugerido": max(round(r["efectivo_esperado"] - (base_meta or 0)), 0)}]
+    for d in r["medios"]:
+        if d["medio"].id == ef.id:
+            continue
+        filas.append({"medio": d["medio"], "disponible": round(d["neto"]), "sugerido": max(round(d["neto"]), 0)})
+    for m in MedioPago.query.filter_by(activo=True).order_by(MedioPago.orden).all():
+        if all(f["medio"].id != m.id for f in filas):
+            filas.append({"medio": m, "disponible": 0, "sugerido": 0})
+    return filas
+
+
+def trasladar_a_caja_mayor(usuario, valores, nota=""):
+    """valores: {medio_id: valor}. Sale de la caja diaria (egreso «Traslado a caja mayor») y entra a la caja mayor."""
+    from models import MovCajaMayor
+    t = turno_abierto()
+    if t is None:
+        raise ErrorNegocio("No hay caja abierta.")
+    hechos = []
+    for mid, valor in valores.items():
+        valor = round(valor or 0)
+        if valor <= 0:
+            continue
+        medio = db.session.get(MedioPago, int(mid))
+        if medio is None:
+            continue
+        concepto = "Traslado a caja mayor" + (f" · {nota.strip()}" if nota and nota.strip() else "")
+        mc = mov_caja("egreso", valor, medio, concepto, "caja_mayor", None, usuario.id, turno=t)
+        mm = MovCajaMayor(tipo="entrada", valor=valor, medio=medio, origen="traslado", mov_caja_id=mc.id, turno_id=t.id,
+                          concepto=f"Traslado desde la caja #{t.numero}" + (f" · {nota.strip()}" if nota and nota.strip() else ""),
+                          usuario_id=usuario.id)
+        db.session.add(mm)
+        db.session.flush()
+        mc.ref_id = mm.id
+        hechos.append(mm)
+    if not hechos:
+        raise ErrorNegocio("Escribe cuánto pasas a la caja mayor en al menos un medio de pago.")
+    return hechos
+
+
+def mov_caja_mayor(usuario, tipo, valor, medio, concepto, categoria=None, a_caja=False):
+    """Entrada o salida manual de la caja mayor. a_caja=True: la salida vuelve a la caja diaria (ej. completar la base)."""
+    from models import MovCajaMayor
+    valor = round(valor or 0)
+    errores = []
+    if tipo not in ("entrada", "salida"):
+        errores.append("Elige si es entrada o salida.")
+    if medio is None:
+        errores.append("Elige el medio de pago.")
+    if valor <= 0:
+        errores.append("El valor debe ser mayor a 0.")
+    if not a_caja and len((concepto or "").strip()) < 3:
+        errores.append("Escribe el concepto (ej. consignación al banco, pago a Tiger, retiro de socio).")
+    if errores:
+        raise ErrorNegocio(errores)
+    if tipo == "salida":
+        saldo = saldos_caja_mayor().get(medio.id, {}).get("saldo", 0)
+        if valor > saldo + 0.5:
+            raise ErrorNegocio(f"En la caja mayor solo hay {pesos(saldo)} en {medio.nombre}; no alcanza para sacar {pesos(valor)}.")
+    mm = MovCajaMayor(tipo=tipo, valor=valor, medio=medio, usuario_id=usuario.id, categoria=(categoria or None) and categoria[:60],
+                      origen="devolucion" if a_caja else "manual",
+                      concepto=((concepto or "").strip() or ("Devuelto a la caja diaria" if a_caja else ""))[:200])
+    db.session.add(mm)
+    db.session.flush()
+    if a_caja:
+        t = turno_abierto()
+        if t is None:
+            raise ErrorNegocio("Para devolver plata a la caja diaria tiene que haber una caja abierta.")
+        mc = mov_caja("ingreso", valor, medio, f"Desde la caja mayor · {mm.concepto}"[:200], "caja_mayor", mm.id, usuario.id, turno=t)
+        mm.mov_caja_id, mm.turno_id = mc.id, t.id
+    return mm
+
+
+def anular_caja_mayor(usuario, mm):
+    """Anula un movimiento de la caja mayor; si venía de la caja diaria (traslado o devolución) revierte también ese lado."""
+    if mm.anulado:
+        return
+    if mm.tipo == "entrada":
+        saldo = saldos_caja_mayor().get(mm.medio_id, {}).get("saldo", 0)
+        if mm.valor > saldo + 0.5:
+            raise ErrorNegocio(f"No se puede anular: en la caja mayor ya solo hay {pesos(saldo)} en {mm.medio.nombre}.")
+    if mm.mov_caja_id:
+        anular_mov_caja(mm.mov_caja_id, usuario.id, f"Reverso caja mayor: {mm.concepto}"[:200])
+    mm.anulado = True

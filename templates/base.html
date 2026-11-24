@@ -45,6 +45,7 @@
       {% if current_user.puede('cajero') %}
       <div class="nav-sep">Ventas</div>
       <a href="{{ url_for('caja') }}" class="{{ 'on' if ep in ('caja', 'turnos', 'turno_detalle') }}"><span class="ico">⊟</span>Caja y cuadre</a>
+      {% if current_user.puede('admin') %}<a href="{{ url_for('caja_mayor') }}" class="{{ 'on' if ep == 'caja_mayor' }}"><span class="ico">⛁</span>Caja mayor</a>{% endif %}
       <a href="{{ url_for('ventas') }}" class="{{ 'on' if ep in ('ventas', 'venta_detalle') }}"><span class="ico">$</span>Ventas</a>
       {% if cfg.fe_activa %}<a href="{{ url_for('facturacion_dian') }}" class="{{ 'on' if ep == 'facturacion_dian' }}"><span class="ico">§</span>Factura DIAN{% if FE_PEND %}<span class="cnt">{{ FE_PEND }}</span>{% endif %}</a>{% endif %}
       <a href="{{ url_for('pedidos') }}" class="{{ 'on' if ep.startswith('pedido') }}"><span class="ico">🛒</span>Pedidos (web y ruta){% if PEDIDOS_PEND %}<span class="cnt">{{ PEDIDOS_PEND }}</span>{% endif %}</a>

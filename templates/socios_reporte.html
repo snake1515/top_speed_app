@@ -256,7 +256,7 @@
   </div></details>
 
   <!-- ================= CAJA ================= -->
-  <details class="sec"><summary>🏧 Caja de hoy <span class="tot">{{ 'Abierta' if d.caja else 'Cerrada' }}</span></summary>
+  <details class="sec"><summary>🏧 Caja <span class="tot">{{ (d.caja_mayor|sum(attribute='saldo'))|pesos }} en caja mayor</span></summary>
   <div class="cuerpo">
     {% if d.caja %}
       <div class="fila"><div class="izq"><b>Caja #{{ d.caja.turno.numero }}</b><small>Abierta {{ d.caja.turno.apertura.strftime('%d/%m %I:%M %p').lower() if d.caja.turno.apertura else '' }}{% if d.caja.turno.usuario %} por {{ d.caja.turno.usuario.nombre }}{% endif %}</small></div><div class="der">{{ d.caja.num }} venta(s)</div></div>
@@ -264,6 +264,10 @@
       <div class="fila"><div class="izq"><b>Efectivo que debería haber</b><small>Base + entradas − salidas en efectivo</small></div><div class="der">{{ d.caja.esperado|pesos }}</div></div>
       {% for nom, v in d.caja.medios %}<div class="fila"><div class="izq"><small>{{ nom }} (neto)</small></div><div class="der">{{ v|pesos }}</div></div>{% endfor %}
     {% else %}<div class="vacio">No hay caja abierta en este momento.</div>{% endif %}
+    <div class="sub">Caja mayor (lo guardado)</div>
+    {% for x in d.caja_mayor %}<div class="fila"><div class="izq"><b>{{ x.medio.nombre }}</b></div><div class="der">{{ x.saldo|pesos }}</div></div>
+    {% else %}<div class="vacio">La caja mayor está vacía.</div>{% endfor %}
+    {% if d.caja_mayor %}<div class="fila"><div class="izq"><b>Total caja mayor</b></div><div class="der">{{ d.caja_mayor|sum(attribute='saldo')|pesos }}</div></div>{% endif %}
   </div></details>
 
   <!-- ================= APORTES DE SOCIOS ================= -->
