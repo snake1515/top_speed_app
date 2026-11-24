@@ -5,11 +5,13 @@
 {% else %}<div class="page-head"><div><h1>Registrar compra a proveedor</h1><p>Suma al inventario y recalcula el costo promedio ponderado de cada repuesto.</p></div><a class="btn sec" href="{{ url_for('compras') }}">← Compras</a></div>{% endif %}
 <form method="post" id="f-compra">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% if desde_surtir %}<input type="hidden" name="desde_surtir" value="1">
+  <div class="note" style="margin-bottom:12px">Cargado desde <a href="{{ url_for('por_surtir') }}">Por surtir</a>: las unidades pendientes y el costo estimado. Ajusta el costo real de la factura y registra; al guardar se entregan solas esas ventas y vuelves a Por surtir.</div>{% endif %}
   <div class="grid g-main">
     <div class="card">{% include "_picker.html" %}</div>
     <div>
       <div class="card">
-        <div class="field"><label>Proveedor</label><select class="input" name="proveedor_id"><option value="">— Sin proveedor —</option>{% for p in proveedores %}<option value="{{ p.id }}" {{ 'selected' if c and c.proveedor_id == p.id }}>{{ p.nombre }}</option>{% endfor %}</select>
+        <div class="field"><label>Proveedor</label><select class="input" name="proveedor_id"><option value="">— Sin proveedor —</option>{% for p in proveedores %}<option value="{{ p.id }}" {{ 'selected' if (c and c.proveedor_id == p.id) or (prov_sel and prov_sel == p.id) }}>{{ p.nombre }}</option>{% endfor %}</select>
           <div class="hint"><a href="{{ url_for('proveedor_form', volver=url_for('compra_nueva')) }}">＋ Crear proveedor</a></div></div>
         <div class="form-row" style="grid-template-columns:1fr 1fr">
           <div class="field"><label>Nº factura</label><input class="input" name="factura" value="{{ c.factura or '' if c else '' }}"></div>

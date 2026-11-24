@@ -1955,18 +1955,23 @@ def producto_detalle(pid):
                            pendientes=services.pendientes_por_surtir(p.id))
 
 
-@app.route("/inventario/por-surtir")
-@requiere("cajero", "bodega")
-def por_surtir():
-    """Ventas de la bodega virtual que todavía hay que comprar para entregar."""
-    items = services.pendientes_por_surtir()
+def _resumen_por_surtir(items=None):
+    items = services.pendientes_por_surtir() if items is None else items
     resumen = {}
     for it in items:
         r = resumen.setdefault(it.producto_id, {"p": it.producto, "cantidad": 0.0, "ventas": 0, "costo": 0.0})
         r["cantidad"] += it.por_surtir
         r["ventas"] += 1
         r["costo"] += it.por_surtir * (it.costo_estimado or 0)
-    resumen = sorted(resumen.values(), key=lambda r: r["p"].nombre)
+    return sorted(resumen.values(), key=lambda r: r["p"].nombre)
+
+
+@app.route("/inventario/por-surtir")
+@requiere("cajero", "bodega")
+def por_surtir():
+    """Ventas de la bodega virtual que todavía hay que comprar para entregar."""
+    items = services.pendientes_por_surtir()
+    resumen = _resumen_por_surtir(items)
     return render_template("por_surtir.html", items=items, resumen=resumen,
                            total_costo=sum(r["costo"] for r in resumen))
 
@@ -2265,12 +2270,28 @@ def compra_nueva():
             if cambios:
                 flash("Precio detal actualizado: " + " · ".join(f"{p.codigo} {p.nombre[:30]} {pesos(a)} → {pesos(b)}" for p, a, b in cambios[:15])
                       + (f" y {len(cambios) - 15} más" if len(cambios) > 15 else ""), "ok")
+            if f.get("desde_surtir"):
+                pend = len(services.pendientes_por_surtir())
+                flash(f"Las ventas por surtir de esta compra quedaron entregadas. {'Quedan ' + str(pend) + ' repuesto(s) por surtir.' if pend else 'Ya no queda nada por surtir. 👌'}", "ok")
+                return redirect(url_for("por_surtir"))
             return redirect(url_for("compra_detalle", cid=c.id))
         except ErrorNegocio as e:
             db.session.rollback()
             errores_flash(e)
+    pre, pre_lineas, prov_sel = precarga_producto(), [], None
+    if request.args.get("surtir"):
+        # desde «Por surtir»: carga las unidades pendientes y el costo estimado (uno o todos los repuestos)
+        solo = request.args.get("p", type=int)
+        filas = [r for r in _resumen_por_surtir() if not solo or r["p"].id == solo]
+        pre = None
+        pre_lineas = [{"p": producto_json(r["p"], ver_costo=True), "q": r["cantidad"],
+                       "c": round(r["costo"] / r["cantidad"]) if r["cantidad"] else 0} for r in filas]
+        lugares = {(r["p"].donde_comprar or "").strip().lower() for r in filas}
+        if len(lugares) == 1 and next(iter(lugares)):
+            prov_sel = next((pv.id for pv in proveedores if pv.nombre.strip().lower() == next(iter(lugares))), None)
     return render_template("compra_form.html", medios=medios, proveedores=proveedores, turno=turno_abierto(),
-                           hoy=ahora().date(), pre=precarga_producto())
+                           hoy=ahora().date(), pre=pre, pre_lineas=pre_lineas, prov_sel=prov_sel,
+                           desde_surtir=bool(request.args.get("surtir")))
 
 
 @app.route("/compras/<int:cid>")

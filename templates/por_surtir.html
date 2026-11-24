@@ -2,7 +2,7 @@
 {% block title %}Por surtir · bodega virtual{% endblock %}
 {% block content %}
 <div class="page-head"><div><h1>Por surtir</h1><p>Repuestos de la bodega virtual que ya vendiste y todavía hay que comprar para entregar.</p></div>
-  {% if current_user.puede('bodega') %}<div class="actions"><a class="btn" href="{{ url_for('compra_nueva') }}">⇣ Registrar compra</a></div>{% endif %}</div>
+  {% if current_user.puede('bodega') %}<div class="actions">{% if resumen %}<a class="btn" href="{{ url_for('compra_nueva', surtir=1) }}">⇣ Comprar todo lo pendiente</a>{% else %}<a class="btn" href="{{ url_for('compra_nueva') }}">⇣ Registrar compra</a>{% endif %}</div>{% endif %}</div>
 <div class="note" style="margin-bottom:14px">Cuando registres la compra de estos repuestos, la app entrega solas estas ventas (las más antiguas primero), cambia el costo virtual por el costo real y el repuesto pasa al inventario real con costo promedio.</div>
 {% if resumen %}
 <div class="card" style="margin-bottom:14px">
@@ -13,7 +13,7 @@
       <td class="mono"><b>{{ r.p.codigo_interno or '' }}</b> {{ r.p.codigo }}</td><td><a href="{{ url_for('producto_detalle', pid=r.p.id) }}">{{ r.p.nombre }}</a>{% if r.p.donde_comprar %}<br><small class="muted">Comprar en: {{ r.p.donde_comprar }}</small>{% endif %}</td>
       <td class="num"><b>{{ r.cantidad|cant }}</b></td><td class="num">{{ r.ventas }}</td>
       {% if current_user.ve_costos %}<td class="num">{{ r.costo|pesos }}</td>{% endif %}
-      <td>{% if current_user.puede('bodega') %}<a class="btn sm sec" href="{{ url_for('compra_nueva', p=r.p.id) }}">Comprar</a>{% endif %}</td></tr>{% endfor %}</tbody>
+      <td>{% if current_user.puede('bodega') %}<a class="btn sm sec" href="{{ url_for('compra_nueva', surtir=1, p=r.p.id) }}">Comprar</a>{% endif %}</td></tr>{% endfor %}</tbody>
   </table></div>
 </div>
 <div class="card">
