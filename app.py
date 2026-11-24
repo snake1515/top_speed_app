@@ -1056,6 +1056,35 @@ def cartera():
                            vencido=sum(d["vencido"] for d in filas), hoy=hoy)
 
 
+@app.route("/cuentas-por-pagar")
+@requiere("cajero", "bodega")
+def cuentas_por_pagar():
+    """Lo que se le debe a cada proveedor: compras a crédito con saldo, agrupadas por proveedor."""
+    hoy = ahora().date()
+    solo_vencidas = request.args.get("f") == "vencidas"
+    compras = [c for c in Compra.query.filter(Compra.anulada.is_(False), Compra.pagado < Compra.total)
+               .order_by(Compra.vence.is_(None), Compra.vence, Compra.fecha).all() if (c.saldo or 0) > 0.5]
+    por_prov = defaultdict(lambda: {"saldo": 0.0, "vencido": 0.0, "pronto": 0.0, "compras": [], "proximo": None})
+    for c in compras:
+        vencida = bool(c.vence and c.vence < hoy)
+        if solo_vencidas and not vencida:
+            continue
+        d = por_prov[c.proveedor_id or 0]
+        d["proveedor"] = c.proveedor
+        d["saldo"] += c.saldo
+        d["compras"].append(c)
+        if vencida:
+            d["vencido"] += c.saldo
+        elif c.vence and (c.vence - hoy).days <= 7:
+            d["pronto"] += c.saldo
+        if c.vence and (d["proximo"] is None or c.vence < d["proximo"]):
+            d["proximo"] = c.vence
+    filas = sorted(por_prov.values(), key=lambda d: (-d["vencido"], -d["saldo"]))
+    return render_template("cuentas_por_pagar.html", filas=filas, hoy=hoy, solo_vencidas=solo_vencidas,
+                           total=sum(d["saldo"] for d in filas), vencido=sum(d["vencido"] for d in filas),
+                           pronto=sum(d["pronto"] for d in filas), num_compras=sum(len(d["compras"]) for d in filas))
+
+
 # =================================================================== caja
 DENOMINACIONES = [100000, 50000, 20000, 10000, 5000, 2000, 1000, 500, 200, 100, 50]
 

@@ -51,6 +51,7 @@
       <a href="{{ url_for('pedidos') }}" class="{{ 'on' if ep.startswith('pedido') }}"><span class="ico">🛒</span>Pedidos (web y ruta){% if PEDIDOS_PEND %}<span class="cnt">{{ PEDIDOS_PEND }}</span>{% endif %}</a>
       <a href="{{ url_for('cotizaciones') }}" class="{{ 'on' if ep.startswith('cotizacion') }}"><span class="ico">✎</span>Cotizaciones</a>
       <a href="{{ url_for('cartera') }}" class="{{ 'on' if ep == 'cartera' }}"><span class="ico">⏳</span>Cartera (crédito)</a>
+      <a href="{{ url_for('cuentas_por_pagar') }}" class="{{ 'on' if ep == 'cuentas_por_pagar' }}"><span class="ico">🧾</span>Cuentas por pagar</a>
       <a href="{{ url_for('clientes') }}" class="{{ 'on' if ep.startswith('cliente') }}"><span class="ico">☺</span>Clientes</a>
       <a href="{{ url_for('tienda') }}" target="_blank"><span class="ico">↗</span>Tienda online</a>
       {% endif %}
@@ -74,6 +75,7 @@
       {% endif %}
       {% if current_user.puede('bodega') %}
       <a href="{{ url_for('compras') }}" class="{{ 'on' if ep.startswith('compra') }}"><span class="ico">⇣</span>Compras</a>
+      {% if current_user.rol == 'bodega' %}<a href="{{ url_for('cuentas_por_pagar') }}" class="{{ 'on' if ep == 'cuentas_por_pagar' }}"><span class="ico">🧾</span>Cuentas por pagar</a>{% endif %}
       <a href="{{ url_for('proveedores') }}" class="{{ 'on' if ep.startswith('proveedor') }}"><span class="ico">⛟</span>Proveedores</a>
       <a href="{{ url_for('ajustes') }}" class="{{ 'on' if ep.startswith('ajuste') }}"><span class="ico">±</span>Ajustes</a>
       <a href="{{ url_for('kardex') }}" class="{{ 'on' if ep == 'kardex' }}"><span class="ico">≡</span>Kardex</a>

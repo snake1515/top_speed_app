@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Cuentas por pagar{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Cuentas por pagar</h1><p>Lo que le debemos a cada proveedor por compras a crédito.</p></div>
+  <div class="actions">
+    <a class="btn sm {{ 'dark' if not solo_vencidas else 'sec' }}" href="{{ url_for('cuentas_por_pagar') }}">Todas</a>
+    <a class="btn sm {{ 'dark' if solo_vencidas else 'sec' }}" href="{{ url_for('cuentas_por_pagar', f='vencidas') }}">Solo vencidas</a>
+  </div>
+</div>
+<div class="kpis">
+  <div class="kpi hl"><div class="lbl">Total por pagar</div><div class="val">{{ total|pesos }}</div></div>
+  <div class="kpi"><div class="lbl">Vencido</div><div class="val {{ 'neg' if vencido }}">{{ vencido|pesos }}</div></div>
+  <div class="kpi"><div class="lbl">Vence en 7 días</div><div class="val">{{ pronto|pesos }}</div></div>
+  <div class="kpi"><div class="lbl">Compras a crédito</div><div class="val">{{ num_compras }}</div><div class="sub">{{ filas|length }} proveedor(es)</div></div>
+</div>
+{% for d in filas %}
+<div class="card">
+  <div class="card-head">
+    <div><h2>{% if d.proveedor and current_user.puede('bodega') %}<a href="{{ url_for('proveedor_form', pid=d.proveedor.id) }}">{{ d.proveedor.nombre }}</a>{% elif d.proveedor %}{{ d.proveedor.nombre }}{% else %}Sin proveedor{% endif %}</h2>
+      <small class="muted">{% if d.proveedor %}{% if d.proveedor.nit %}NIT {{ d.proveedor.nit }} · {% endif %}{{ d.proveedor.telefono or '' }}{% endif %}{% if d.proximo %}{{ ' · ' if d.proveedor and (d.proveedor.nit or d.proveedor.telefono) }}próximo vencimiento {{ d.proximo|f }}{% endif %}</small></div>
+    <div class="actions"><b style="font-size:1.2rem">{{ d.saldo|pesos }}</b>
+      {% if d.vencido %}<span class="badge err">vencido {{ d.vencido|pesos }}</span>{% endif %}
+      {% if d.pronto %}<span class="badge warn">vence pronto {{ d.pronto|pesos }}</span>{% endif %}</div>
+  </div>
+  <div class="table-wrap"><table>
+    <thead><tr><th>Compra</th><th>Factura</th><th>Fecha</th><th>Vence</th><th class="num">Total</th><th class="num">Pagado</th><th class="num">Saldo</th><th></th></tr></thead>
+    <tbody>{% for c in d.compras %}{% set dias = (c.vence - hoy).days if c.vence else none %}
+      <tr><td><a href="{{ url_for('compra_detalle', cid=c.id) }}">C-{{ '%05d'|format(c.numero) }}</a></td>
+        <td>{{ c.factura or '—' }}</td><td>{{ c.fecha|f }}</td>
+        <td>{% if c.vence %}{{ c.vence|f }}<br>{% if dias < 0 %}<span class="badge err">vencida hace {{ -dias }} d</span>{% elif dias == 0 %}<span class="badge warn">vence hoy</span>{% elif dias <= 7 %}<span class="badge warn">en {{ dias }} d</span>{% else %}<small class="muted">en {{ dias }} d</small>{% endif %}{% else %}<small class="muted">sin fecha</small>{% endif %}</td>
+        <td class="num">{{ c.total|pesos }}</td><td class="num">{{ c.pagado|pesos }}</td><td class="num"><b>{{ c.saldo|pesos }}</b></td>
+        <td>{% if current_user.puede('bodega') %}<a class="btn sm sec" href="{{ url_for('compra_detalle', cid=c.id) }}#pago">Pagar</a>{% endif %}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+</div>
+{% else %}
+<div class="card"><p class="empty">{{ 'No hay compras vencidas. 👌' if solo_vencidas else 'No le debemos nada a ningún proveedor. 👌' }}</p></div>
+{% endfor %}
+{% endblock %}

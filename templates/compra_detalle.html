@@ -51,7 +51,7 @@
             <input type="file" name="soporte" accept="image/*,application/pdf" style="display:none" onchange="this.form.submit()"></label>
         </form>{% endfor %}
       {% if c.saldo and not c.anulada %}
-      <form method="post" action="{{ url_for('compra_pago', cid=c.id) }}" enctype="multipart/form-data" style="margin-top:12px">
+      <form id="pago" method="post" action="{{ url_for('compra_pago', cid=c.id) }}" enctype="multipart/form-data" style="margin-top:12px">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-row" style="grid-template-columns:1fr 1fr">
           <input class="input" name="valor" value="{{ c.saldo|round|int }}" inputmode="numeric">
