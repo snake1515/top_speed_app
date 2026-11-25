@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Ajustes de caja{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Ajustes de caja</h1><p>Documentos AJC para rectificar entradas o salidas de la caja diaria (base) o de la caja mayor.</p></div>
+  <div class="actions">
+    <a class="btn sm {{ 'dark' if not filtro else 'sec' }}" href="{{ url_for('caja_ajustes') }}">Todos</a>
+    <a class="btn sm {{ 'dark' if filtro == 'diaria' else 'sec' }}" href="{{ url_for('caja_ajustes', caja='diaria') }}">Caja diaria</a>
+    <a class="btn sm {{ 'dark' if filtro == 'mayor' else 'sec' }}" href="{{ url_for('caja_ajustes', caja='mayor') }}">Caja mayor</a>
+  </div>
+</div>
+<div class="card">
+  <div class="table-wrap"><table>
+    <thead><tr><th>Ajuste</th><th>Fecha</th><th>Caja</th><th>Motivo</th><th>Medio</th><th class="num">Valor</th><th>Hizo</th></tr></thead>
+    <tbody>{% for a in ajustes %}
+      <tr {% if a.anulado %}style="opacity:.5"{% endif %}>
+        <td><a href="{{ url_for('caja_ajuste_doc', aid=a.id) }}"><b>{{ a.folio }}</b></a>{% if a.anulado %} <span class="badge err">Anulado</span>{% endif %}</td>
+        <td>{{ a.fecha|fh }}</td>
+        <td>{{ a.nombre_caja }}{% if a.turno %} #{{ a.turno.numero }}{% endif %}</td>
+        <td><b>{{ a.motivo }}</b><br><small class="muted">{{ a.detalle }}</small></td>
+        <td>{{ a.medio.nombre }}</td>
+        <td class="num {{ 'pos' if a.tipo == 'ingreso' else 'neg' }}">{{ '+' if a.tipo == 'ingreso' else '−' }}{{ a.valor|pesos }}</td>
+        <td>{{ a.usuario.nombre if a.usuario else '' }}</td>
+      </tr>
+    {% else %}<tr><td colspan="7" class="empty">Todavía no hay ajustes de caja.</td></tr>{% endfor %}</tbody>
+  </table></div>
+</div>
+{% endblock %}

@@ -180,6 +180,7 @@ class Config(db.Model):
     sig_ajuste = db.Column(db.Integer, nullable=False, default=1)
     sig_carga = db.Column(db.Integer, nullable=False, default=1)
     sig_vale = db.Column(db.Integer, nullable=False, default=1)
+    sig_ajuste_caja = db.Column(db.Integer, nullable=False, default=1)
     sig_cod_interno = db.Column(db.Integer, nullable=False, default=0)  # el primero es 0000
     sig_anulacion = db.Column(db.Integer, nullable=False, default=1)
     sig_dev_compra = db.Column(db.Integer, nullable=False, default=1)
@@ -504,8 +505,9 @@ class MovCajaMayor(db.Model):
     medio_id = db.Column(db.Integer, db.ForeignKey("ts_medios_pago.id"), nullable=False)
     medio = db.relationship("MedioPago")
     concepto = db.Column(db.String(200), nullable=False)
-    origen = db.Column(db.String(20), nullable=False, default="manual")   # traslado / devolucion / manual
+    origen = db.Column(db.String(20), nullable=False, default="manual")   # traslado / devolucion / manual / ajuste / pago_compra / gasto
     categoria = db.Column(db.String(60))
+    ref_id = db.Column(db.Integer)            # compra o gasto que se pagó desde la caja mayor
     mov_caja_id = db.Column(db.Integer, db.ForeignKey("ts_mov_caja.id"))  # movimiento enlazado en la caja diaria
     turno_id = db.Column(db.Integer, db.ForeignKey("ts_turnos.id"))
     turno = db.relationship("Turno")
@@ -514,8 +516,45 @@ class MovCajaMayor(db.Model):
     usuario = db.relationship("Usuario", foreign_keys=[usuario_id])
 
 
-CATEGORIAS_CAJA_MAYOR = ["Consignación al banco", "Pago a proveedor", "Gasto del negocio", "Retiro de socio",
-                         "Préstamo", "Otra salida"]
+CATEGORIAS_CAJA_MAYOR = ["Consignación al banco", "Retiro de socio", "Préstamo", "Otra salida"]
+
+
+MOTIVOS_AJUSTE_CAJA = ["Sobrante", "Faltante", "Corrección de un error", "Dinero de prueba", "Saldo inicial", "Otro"]
+
+
+class AjusteCaja(db.Model):
+    """Documento de ajuste de caja (AJC-0001): corrige la caja diaria o la caja mayor con una entrada
+    o una salida y su motivo. Es distinto al traslado entre cajas."""
+    __tablename__ = "ts_ajustes_caja"
+    id = db.Column(db.Integer, primary_key=True)
+    numero = db.Column(db.Integer, nullable=False, index=True)
+    fecha = db.Column(db.DateTime, nullable=False, default=ahora, index=True)
+    caja = db.Column(db.String(10), nullable=False)      # diaria / mayor
+    tipo = db.Column(db.String(10), nullable=False)      # ingreso / egreso
+    valor = db.Column(db.Float, nullable=False)
+    medio_id = db.Column(db.Integer, db.ForeignKey("ts_medios_pago.id"), nullable=False)
+    medio = db.relationship("MedioPago")
+    motivo = db.Column(db.String(60), nullable=False)
+    detalle = db.Column(db.String(300), nullable=False)
+    turno_id = db.Column(db.Integer, db.ForeignKey("ts_turnos.id"))
+    turno = db.relationship("Turno")
+    mov_caja_id = db.Column(db.Integer, db.ForeignKey("ts_mov_caja.id"))
+    mov_mayor_id = db.Column(db.Integer, db.ForeignKey("ts_caja_mayor.id"))
+    usuario_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
+    usuario = db.relationship("Usuario", foreign_keys=[usuario_id])
+    anulado = db.Column(db.Boolean, nullable=False, default=False)
+    anulado_por_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
+    anulado_por = db.relationship("Usuario", foreign_keys=[anulado_por_id])
+    anulado_fecha = db.Column(db.DateTime)
+    motivo_anulacion = db.Column(db.String(200))
+
+    @property
+    def folio(self):
+        return f"AJC-{self.numero:04d}"
+
+    @property
+    def nombre_caja(self):
+        return "Caja mayor" if self.caja == "mayor" else "Caja diaria"
 
 
 class MovCaja(db.Model):

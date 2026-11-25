@@ -1458,6 +1458,137 @@ def anular_caja_mayor(usuario, mm):
         saldo = saldos_caja_mayor().get(mm.medio_id, {}).get("saldo", 0)
         if mm.valor > saldo + 0.5:
             raise ErrorNegocio(f"No se puede anular: en la caja mayor ya solo hay {pesos(saldo)} en {mm.medio.nombre}.")
+    if mm.origen == "ajuste":
+        raise ErrorNegocio("Ese movimiento es un documento de ajuste: anúlalo desde el ajuste.")
     if mm.mov_caja_id:
         anular_mov_caja(mm.mov_caja_id, usuario.id, f"Reverso caja mayor: {mm.concepto}"[:200])
+    if mm.origen == "pago_compra" and mm.ref_id:
+        c = db.session.get(Compra, mm.ref_id)
+        pg = next((p for p in reversed(c.pagos) if not p.desde_caja and round(p.valor) == round(mm.valor)
+                   and p.medio_id == mm.medio_id), None) if c else None
+        if pg is not None:
+            c.pagos.remove(pg)
+            c.pagado = max((c.pagado or 0) - mm.valor, 0)
+    if mm.origen == "gasto" and mm.ref_id:
+        g = db.session.get(Gasto, mm.ref_id)
+        if g is not None:
+            g.anulado = True
     mm.anulado = True
+
+
+# ============================================================ documento de ajuste de caja (AJC)
+def crear_ajuste_caja(usuario, caja, tipo, valor, medio, motivo, detalle):
+    """Ajuste de la caja diaria o de la caja mayor: entrada (ingreso) o salida (egreso) con su motivo."""
+    from models import AjusteCaja, MovCajaMayor, MOTIVOS_AJUSTE_CAJA
+    valor = round(valor or 0)
+    detalle = (detalle or "").strip()
+    errores = []
+    if caja not in ("diaria", "mayor"):
+        errores.append("Elige qué caja ajustas: la diaria o la caja mayor.")
+    if tipo not in ("ingreso", "egreso"):
+        errores.append("Elige si el ajuste es una entrada o una salida de dinero.")
+    if medio is None:
+        errores.append("Elige el medio de pago.")
+    if valor <= 0:
+        errores.append("El valor debe ser mayor a 0.")
+    if motivo not in MOTIVOS_AJUSTE_CAJA:
+        errores.append("Elige el motivo del ajuste.")
+    if len(detalle) < 5:
+        errores.append("Explica el ajuste en el detalle (ej. sobrante del cuadre del lunes, error al digitar un pago).")
+    if errores:
+        raise ErrorNegocio(errores)
+    a = AjusteCaja(numero=siguiente("sig_ajuste_caja"), caja=caja, tipo=tipo, valor=valor, medio=medio,
+                   motivo=motivo, detalle=detalle[:300], usuario_id=usuario.id)
+    db.session.add(a)
+    db.session.flush()
+    texto = f"Ajuste {a.folio} · {motivo}: {detalle}"[:200]
+    if caja == "diaria":
+        t = turno_abierto()
+        if t is None:
+            raise ErrorNegocio("Para ajustar la caja diaria tiene que haber una caja abierta.")
+        mc = mov_caja(tipo, valor, medio, texto, "ajuste", a.id, usuario.id, turno=t)
+        a.mov_caja_id, a.turno_id = mc.id, t.id
+    else:
+        if tipo == "egreso":
+            saldo = saldos_caja_mayor().get(medio.id, {}).get("saldo", 0)
+            if valor > saldo + 0.5:
+                raise ErrorNegocio(f"En la caja mayor solo hay {pesos(saldo)} en {medio.nombre}; el ajuste no puede sacar {pesos(valor)}.")
+        mm = MovCajaMayor(tipo="entrada" if tipo == "ingreso" else "salida", valor=valor, medio=medio, concepto=texto,
+                          origen="ajuste", categoria="Ajuste", usuario_id=usuario.id)
+        db.session.add(mm)
+        db.session.flush()
+        a.mov_mayor_id = mm.id
+    return a
+
+
+def anular_ajuste_caja(usuario, a, motivo):
+    from models import MovCajaMayor
+    if a.anulado:
+        raise ErrorNegocio("Ese ajuste ya está anulado.")
+    if len((motivo or "").strip()) < 3:
+        raise ErrorNegocio("Escribe por qué anulas el ajuste.")
+    if a.mov_caja_id:
+        anular_mov_caja(a.mov_caja_id, usuario.id, f"Anulación {a.folio}: {motivo}"[:200])
+    if a.mov_mayor_id:
+        mm = db.session.get(MovCajaMayor, a.mov_mayor_id)
+        if mm and not mm.anulado:
+            if mm.tipo == "entrada":
+                saldo = saldos_caja_mayor().get(mm.medio_id, {}).get("saldo", 0)
+                if mm.valor > saldo + 0.5:
+                    raise ErrorNegocio(f"No se puede anular: en la caja mayor ya solo hay {pesos(saldo)} en {mm.medio.nombre}.")
+            mm.anulado = True
+    a.anulado = True
+    a.anulado_por_id = usuario.id
+    a.anulado_fecha = ahora()
+    a.motivo_anulacion = motivo.strip()[:200]
+
+
+# ============================================================ pagos desde la caja mayor
+def pagar_desde_caja_mayor(usuario, clase, valor, medio, compra=None, categoria=None, descripcion=""):
+    """Egreso por pago desde la caja mayor: a un proveedor (abona a una compra a crédito y baja la cuenta
+    por pagar) o un gasto del negocio (queda en Gastos y en los reportes). No toca la caja diaria."""
+    from models import MovCajaMayor, CATEGORIAS_GASTO
+    valor = round(valor or 0)
+    descripcion = (descripcion or "").strip()
+    errores = []
+    if medio is None:
+        errores.append("Elige con qué medio se paga.")
+    if valor <= 0:
+        errores.append("El valor debe ser mayor a 0.")
+    if clase == "proveedor" and compra is None:
+        errores.append("Elige la compra que le pagas al proveedor.")
+    if clase == "gasto":
+        if categoria not in CATEGORIAS_GASTO:
+            errores.append("Elige la categoría del gasto.")
+        if len(descripcion) < 3:
+            errores.append("Describe el gasto (ej. arriendo de diciembre, recibo de luz).")
+    if clase not in ("proveedor", "gasto"):
+        errores.append("Elige si pagas a un proveedor o un gasto.")
+    if errores:
+        raise ErrorNegocio(errores)
+    saldo = saldos_caja_mayor().get(medio.id, {}).get("saldo", 0)
+    if valor > saldo + 0.5:
+        raise ErrorNegocio(f"En la caja mayor solo hay {pesos(saldo)} en {medio.nombre}; no alcanza para pagar {pesos(valor)}.")
+    if clase == "proveedor":
+        pagar_compra(compra, usuario, valor, medio, False)
+        prov = compra.proveedor.nombre if compra.proveedor else "proveedor"
+        concepto = f"Pago compra C-{compra.numero:05d} · {prov}" + (f" · {descripcion}" if descripcion else "")
+        mm = MovCajaMayor(tipo="salida", valor=valor, medio=medio, concepto=concepto[:200], origen="pago_compra",
+                          categoria="Pago a proveedor", ref_id=compra.id, usuario_id=usuario.id)
+    else:
+        g = Gasto(categoria=categoria, descripcion=f"{descripcion} (pagado desde la caja mayor)"[:200], valor=valor,
+                  medio_id=medio.id, usuario_id=usuario.id)
+        db.session.add(g)
+        db.session.flush()
+        mm = MovCajaMayor(tipo="salida", valor=valor, medio=medio, concepto=f"Gasto · {categoria}: {descripcion}"[:200],
+                          origen="gasto", categoria="Gasto del negocio", ref_id=g.id, usuario_id=usuario.id)
+    db.session.add(mm)
+    db.session.flush()
+    return mm
+
+
+def anular_salida_mayor_de_gasto(gasto_id):
+    """Cuando se anula un gasto pagado desde la caja mayor, la plata vuelve a la caja mayor."""
+    from models import MovCajaMayor
+    for mm in MovCajaMayor.query.filter_by(origen="gasto", ref_id=gasto_id, anulado=False).all():
+        mm.anulado = True

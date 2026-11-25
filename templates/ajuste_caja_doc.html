@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ajuste {{ a.folio }} · {{ cfg.nombre }}</title>
+<style>
+  @page { size: {{ cfg.ancho_ticket }}mm auto; margin: 0; }
+  body { font-family: "Courier New", ui-monospace, monospace; font-size: {{ '11px' if cfg.ancho_ticket == 58 else '12.5px' }}; color: #000; margin: 0; background: #e9e9e6; }
+  .t { width: {{ cfg.ancho_ticket - 6 }}mm; margin: 14px auto; background: #fff; padding: 4mm; box-shadow: 0 2px 12px rgba(0,0,0,.12); }
+  .c { text-align: center; } .r { text-align: right; } b { font-weight: 700; }
+  .lg { font-size: 1.35em; font-weight: 700; }
+  hr { border: 0; border-top: 1px dashed #000; margin: 6px 0; }
+  table { width: 100%; border-collapse: collapse; } td { vertical-align: top; padding: 1px 0; }
+  img.logo { width: 48mm; max-width: 100%; height: auto; display: block; margin: 0 auto 4px; }
+  .acc { text-align: center; margin: 14px; font-family: system-ui, sans-serif; }
+  .acc a, .acc button { display: inline-block; margin: 3px; padding: 9px 16px; background: #0b0a07; color: #ffc400; border-radius: 8px; text-decoration: none; border: 0; font: inherit; font-weight: 600; cursor: pointer; }
+  .anul { border: 2px solid #000; text-align: center; font-weight: 700; padding: 3px; margin: 4px 0; }
+  .firma { margin-top: 14mm; border-top: 1px solid #000; text-align: center; padding-top: 2px; }
+  .anular { max-width: 420px; margin: 0 auto 30px; font-family: system-ui, sans-serif; background: #fff; padding: 14px; border-radius: 12px; }
+  .anular input { width: 100%; padding: 9px; border: 1px solid #ccc; border-radius: 8px; font: inherit; box-sizing: border-box; margin: 6px 0; }
+  .anular button { background: #c62828; color: #fff; border: 0; border-radius: 8px; padding: 9px 16px; font-weight: 700; cursor: pointer; }
+  @media print { body { background: #fff; } .t { box-shadow: none; margin: 0; width: auto; padding: 3mm 3mm 4mm; } .acc, .anular { display: none; } }
+</style>
+</head>
+<body>
+{% with msgs = get_flashed_messages(with_categories=true) %}{% for c, m in msgs %}<div class="acc" style="margin:10px auto;max-width:420px;padding:10px;border-radius:10px;background:{{ '#fde3e3' if c == 'err' else '#dff3ea' }};color:{{ '#8a1c1c' if c == 'err' else '#0c5c41' }}">{{ m }}</div>{% endfor %}{% endwith %}
+<div class="t">
+  <img class="logo" src="{{ url_for('logo_recibo', v=cfg.logo_v) }}" alt="">
+  <div class="c lg">{{ cfg.nombre }}</div>
+  <div class="c">{% if cfg.nit %}NIT {{ cfg.nit }}{% endif %}</div>
+  <hr>
+  <div class="c"><b>AJUSTE DE {{ a.nombre_caja|upper }}</b><br><span class="lg">{{ a.folio }}</span></div>
+  {% if a.anulado %}<div class="anul">ANULADO</div>{% endif %}
+  <hr>
+  <table>
+    <tr><td>Fecha</td><td class="r">{{ a.fecha|fh }}</td></tr>
+    <tr><td>Caja</td><td class="r">{{ a.nombre_caja }}{% if a.turno %} #{{ a.turno.numero }}{% endif %}</td></tr>
+    <tr><td>Tipo</td><td class="r"><b>{{ 'ENTRADA (ingreso)' if a.tipo == 'ingreso' else 'SALIDA (egreso)' }}</b></td></tr>
+    <tr><td>Medio</td><td class="r">{{ a.medio.nombre }}</td></tr>
+    <tr><td>Motivo</td><td class="r">{{ a.motivo }}</td></tr>
+  </table>
+  <hr>
+  <div><b>Detalle:</b><br>{{ a.detalle }}</div>
+  <hr>
+  <table><tr><td class="lg">VALOR</td><td class="r lg">{{ '+' if a.tipo == 'ingreso' else '−' }}{{ a.valor|pesos }}</td></tr></table>
+  <hr>
+  <div>Registró: {{ a.usuario.nombre if a.usuario else '' }}</div>
+  {% if a.anulado %}<div>Anuló: {{ a.anulado_por.nombre if a.anulado_por else '' }} · {{ a.anulado_fecha|fh if a.anulado_fecha else '' }}<br>Motivo: {{ a.motivo_anulacion }}</div>{% endif %}
+  <div class="firma">Firma de quien autoriza</div>
+</div>
+<div class="acc"><button onclick="print()">🖨 Imprimir</button>
+  <a href="{{ url_for('caja_mayor') if a.caja == 'mayor' else url_for('caja') }}">Volver a la {{ a.nombre_caja|lower }}</a>
+  {% if current_user.puede('admin') %}<a href="{{ url_for('caja_ajustes') }}">Todos los ajustes</a>{% endif %}</div>
+{% if current_user.puede('admin') and not a.anulado %}
+<form class="anular" method="post" action="{{ url_for('caja_ajuste_anular', aid=a.id) }}" onsubmit="return confirm('¿Anular el ajuste {{ a.folio }}? Se revierte en la {{ a.nombre_caja|lower }}.')">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <b>Anular este ajuste</b>
+  <input name="motivo" required minlength="3" placeholder="¿Por qué lo anulas?">
+  <button>Anular ajuste</button>
+</form>
+{% endif %}
+</body>
+</html>

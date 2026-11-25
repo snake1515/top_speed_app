@@ -285,8 +285,8 @@ AVISOS_CAMBIOS = {
     "venta_devolucion": "Ventas", "venta_abono": "Cartera", "pedido_cancelar": "Pedidos",
     "compra_pago_medio": "Compras",
     "cliente_form": "Clientes", "cliente_archivar": "Clientes",
-    "caja_movimiento": "Caja", "caja_ajuste": "Caja",
-    "caja_traslado": "Caja mayor", "caja_mayor_mov": "Caja mayor", "caja_mayor_anular": "Caja mayor", "caja_mayor_base": "Caja mayor",
+    "caja_movimiento": "Caja", "caja_ajuste": "Ajustes de caja",
+    "caja_traslado": "Caja mayor", "caja_mayor_mov": "Caja mayor", "caja_mayor_pago": "Caja mayor", "caja_ajuste_anular": "Ajustes de caja", "caja_mayor_anular": "Caja mayor", "caja_mayor_base": "Caja mayor",
     "usuario_form": "Usuarios", "configuracion": "Configuración",
     "ruta_form": "Rutas", "ruta_clientes": "Rutas",
 }
@@ -1099,7 +1099,8 @@ def caja():
     proveedores = Proveedor.query.filter_by(activo=True).order_by(Proveedor.nombre).all()
     compras_pend = [c for c in Compra.query.filter(Compra.anulada.is_(False)).order_by(Compra.fecha).all() if c.saldo > 0.5]
     traslado = services.sugerido_traslado(t, config().caja_base_meta) if t else []
-    return render_template("caja.html", t=t, r=r, ultimo=ultimo, medios=medios, denominaciones=DENOMINACIONES, traslado=traslado,
+    from models import MOTIVOS_AJUSTE_CAJA
+    return render_template("caja.html", t=t, r=r, ultimo=ultimo, medios=medios, denominaciones=DENOMINACIONES, traslado=traslado, motivos_ajuste=MOTIVOS_AJUSTE_CAJA,
                            proveedores=proveedores, compras_pend=compras_pend, cats_menor=CATEGORIAS_CAJA_MENOR)
 
 
@@ -1187,8 +1188,12 @@ def caja_mayor():
     filas = [{"medio": m, **saldos.get(m.id, {"entradas": 0.0, "salidas": 0.0, "saldo": 0.0})} for m in medios]
     filas += [{"medio": d["medio"], **d} for mid, d in saldos.items() if all(m.id != mid for m in medios)]
     movs = MovCajaMayor.query.order_by(MovCajaMayor.fecha.desc(), MovCajaMayor.id.desc()).limit(300).all()
+    from models import MOTIVOS_AJUSTE_CAJA, CATEGORIAS_GASTO
+    compras_pend = [c for c in Compra.query.filter(Compra.anulada.is_(False), Compra.pagado < Compra.total)
+                    .order_by(Compra.vence.is_(None), Compra.vence, Compra.fecha).all() if (c.saldo or 0) > 0.5]
     return render_template("caja_mayor.html", filas=filas, total=sum(x["saldo"] for x in filas), movs=movs,
-                           medios=medios, categorias=CATEGORIAS_CAJA_MAYOR, t=turno_abierto())
+                           medios=medios, categorias=CATEGORIAS_CAJA_MAYOR, t=turno_abierto(), compras_pend=compras_pend,
+                           cats_gasto=CATEGORIAS_GASTO, motivos_ajuste=MOTIVOS_AJUSTE_CAJA, hoy=ahora().date())
 
 
 @app.route("/caja-mayor/mov", methods=["POST"])
@@ -1268,27 +1273,73 @@ def caja_mov_detalle(mid):
 @app.route("/caja/ajuste", methods=["POST"])
 @requiere("admin")
 def caja_ajuste():
-    """Ajuste de caja (solo administrador): saca o mete dinero para corregir la caja (dinero de prueba,
-    faltantes o sobrantes ya revisados). Queda con su motivo en los movimientos y en el cuadre."""
+    """Documento de ajuste de caja AJC (solo administrador) para la caja diaria o la caja mayor: entrada o salida
+    con su motivo (sobrante, faltante, corrección…). Es distinto al traslado entre cajas."""
     f = request.form
+    caja = f.get("caja") or "diaria"
+    medio = db.session.get(MedioPago, int(f.get("medio_id") or 0)) if (f.get("medio_id") or "").isdigit() else None
     try:
-        tipo = f.get("tipo")
-        if tipo not in ("ingreso", "egreso"):
-            raise ErrorNegocio("Elige si el ajuste saca o mete dinero.")
-        medio = db.session.get(MedioPago, int(f.get("medio_id") or 0))
-        if medio is None:
-            raise ErrorNegocio("Elige el medio.")
-        motivo = (f.get("motivo") or "").strip()
-        if len(motivo) < 5:
-            raise ErrorNegocio("Escribe el motivo del ajuste (ej. retiro de dinero de prueba).")
-        valor = n(f.get("valor"))
-        mov_caja(tipo, valor, medio, f"Ajuste de caja: {motivo}"[:200], "ajuste", None, current_user.id)
+        aj = services.crear_ajuste_caja(current_user, caja, f.get("tipo"), n(f.get("valor")), medio, f.get("motivo"), f.get("detalle"))
         db.session.commit()
-        flash(f"Ajuste registrado: {'salen' if tipo == 'egreso' else 'entran'} {pesos(round(valor))} en {medio.nombre}.", "ok")
+        flash(f"Ajuste {aj.folio} registrado en la {aj.nombre_caja.lower()}: {'entran' if aj.tipo == 'ingreso' else 'salen'} {pesos(aj.valor)} en {aj.medio.nombre}.", "ok")
+        g.aviso_texto = f"{aj.motivo}: {aj.detalle}"
+        return redirect(url_for("caja_ajuste_doc", aid=aj.id))
     except ErrorNegocio as e:
         db.session.rollback()
         errores_flash(e)
-    return redirect(url_for("caja"))
+    return redirect(url_for("caja_mayor") if caja == "mayor" else url_for("caja"))
+
+
+@app.route("/caja/ajustes")
+@requiere("admin")
+def caja_ajustes():
+    from models import AjusteCaja
+    q = AjusteCaja.query
+    if request.args.get("caja") in ("diaria", "mayor"):
+        q = q.filter_by(caja=request.args["caja"])
+    ajustes = q.order_by(AjusteCaja.numero.desc()).limit(500).all()
+    return render_template("caja_ajustes.html", ajustes=ajustes, filtro=request.args.get("caja", ""))
+
+
+@app.route("/caja/ajuste/<int:aid>")
+@requiere("cajero")
+def caja_ajuste_doc(aid):
+    from models import AjusteCaja
+    return render_template("ajuste_caja_doc.html", a=get_or_404(AjusteCaja, aid))
+
+
+@app.route("/caja/ajuste/<int:aid>/anular", methods=["POST"])
+@requiere("admin")
+def caja_ajuste_anular(aid):
+    from models import AjusteCaja
+    aj = get_or_404(AjusteCaja, aid)
+    try:
+        services.anular_ajuste_caja(current_user, aj, request.form.get("motivo"))
+        db.session.commit()
+        flash(f"Ajuste {aj.folio} anulado: se revirtió en la {aj.nombre_caja.lower()}.", "ok")
+    except ErrorNegocio as e:
+        db.session.rollback()
+        errores_flash(e)
+    return redirect(url_for("caja_ajuste_doc", aid=aid))
+
+
+@app.route("/caja-mayor/pago", methods=["POST"])
+@requiere("admin")
+def caja_mayor_pago():
+    """Egreso por pago desde la caja mayor: a un proveedor (compra a crédito) o un gasto del negocio."""
+    f = request.form
+    medio = db.session.get(MedioPago, int(f.get("medio_id") or 0)) if (f.get("medio_id") or "").isdigit() else None
+    compra = db.session.get(Compra, int(f.get("compra_id") or 0)) if (f.get("compra_id") or "").isdigit() else None
+    try:
+        mm = services.pagar_desde_caja_mayor(current_user, f.get("clase"), n(f.get("valor")), medio, compra=compra,
+                                             categoria=f.get("categoria"), descripcion=f.get("descripcion"))
+        db.session.commit()
+        flash(f"Pago desde la caja mayor: {mm.medio.nombre} {pesos(mm.valor)} · {mm.concepto}"
+              + (f". La compra queda con saldo {pesos(compra.saldo)}." if compra and compra.saldo > 0.5 else (". La compra quedó pagada." if compra else "")), "ok")
+    except ErrorNegocio as e:
+        db.session.rollback()
+        errores_flash(e)
+    return redirect(url_for("caja_mayor"))
 
 
 @app.route("/caja/movimiento/<int:mid>/anular", methods=["POST"])
@@ -3033,6 +3084,7 @@ def gasto_anular(gid):
     if not g.anulado:
         try:
             anular_mov_caja(g.mov_caja_id, current_user.id, f"Reverso gasto: {g.descripcion[:150]}")
+            services.anular_salida_mayor_de_gasto(g.id)   # si se pagó desde la caja mayor, la plata vuelve allá
             g.anulado = True
             db.session.commit()
             flash("Gasto anulado.", "ok")
