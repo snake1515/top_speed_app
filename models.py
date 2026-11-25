@@ -1392,6 +1392,17 @@ def semilla():
     cfg = config()
     if cfg.nombre and "top speed" in cfg.nombre.lower():  # cambio de marca
         cfg.nombre = "Moto Speed"
+    # pagos y salidas de la caja mayor hechos antes de los comprobantes: les da su número CE para poder reimprimir
+    sin_ce = (MovCajaMayor.query.filter(MovCajaMayor.tipo == "salida", MovCajaMayor.numero.is_(None),
+                                        MovCajaMayor.origen.in_(["pago_compra", "gasto", "manual"]))
+              .order_by(MovCajaMayor.id).all())
+    for mm in sin_ce:
+        mm.numero = cfg.sig_egreso_mayor or 1
+        cfg.sig_egreso_mayor = mm.numero + 1
+        if mm.origen == "pago_compra" and not mm.beneficiario and mm.ref_id:
+            c = db.session.get(Compra, mm.ref_id)
+            if c and c.proveedor:
+                mm.beneficiario = c.proveedor.nombre[:140]
     if not MedioPago.query.first():
         for i, (nom, tipo) in enumerate([("Efectivo", "efectivo"), ("Nequi", "transferencia"),
                                          ("Daviplata", "transferencia"), ("Bancolombia", "transferencia"),
