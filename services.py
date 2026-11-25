@@ -1417,7 +1417,7 @@ def trasladar_a_caja_mayor(usuario, valores, nota=""):
     return hechos
 
 
-def mov_caja_mayor(usuario, tipo, valor, medio, concepto, categoria=None, a_caja=False):
+def mov_caja_mayor(usuario, tipo, valor, medio, concepto, categoria=None, a_caja=False, beneficiario=""):
     """Entrada o salida manual de la caja mayor. a_caja=True: la salida vuelve a la caja diaria (ej. completar la base)."""
     from models import MovCajaMayor
     valor = round(valor or 0)
@@ -1439,6 +1439,9 @@ def mov_caja_mayor(usuario, tipo, valor, medio, concepto, categoria=None, a_caja
     mm = MovCajaMayor(tipo=tipo, valor=valor, medio=medio, usuario_id=usuario.id, categoria=(categoria or None) and categoria[:60],
                       origen="devolucion" if a_caja else "manual",
                       concepto=((concepto or "").strip() or ("Devuelto a la caja diaria" if a_caja else ""))[:200])
+    if tipo == "salida" and not a_caja:
+        mm.numero = siguiente("sig_egreso_mayor")
+        mm.beneficiario = (beneficiario or "").strip()[:140] or None
     db.session.add(mm)
     db.session.flush()
     if a_caja:
@@ -1544,7 +1547,7 @@ def anular_ajuste_caja(usuario, a, motivo):
 
 
 # ============================================================ pagos desde la caja mayor
-def pagar_desde_caja_mayor(usuario, clase, valor, medio, compra=None, categoria=None, descripcion=""):
+def pagar_desde_caja_mayor(usuario, clase, valor, medio, compra=None, categoria=None, descripcion="", beneficiario=""):
     """Egreso por pago desde la caja mayor: a un proveedor (abona a una compra a crédito y baja la cuenta
     por pagar) o un gasto del negocio (queda en Gastos y en los reportes). No toca la caja diaria."""
     from models import MovCajaMayor, CATEGORIAS_GASTO
@@ -1574,7 +1577,7 @@ def pagar_desde_caja_mayor(usuario, clase, valor, medio, compra=None, categoria=
         prov = compra.proveedor.nombre if compra.proveedor else "proveedor"
         concepto = f"Pago compra C-{compra.numero:05d} · {prov}" + (f" · {descripcion}" if descripcion else "")
         mm = MovCajaMayor(tipo="salida", valor=valor, medio=medio, concepto=concepto[:200], origen="pago_compra",
-                          categoria="Pago a proveedor", ref_id=compra.id, usuario_id=usuario.id)
+                          categoria="Pago a proveedor", ref_id=compra.id, usuario_id=usuario.id, beneficiario=prov[:140])
     else:
         g = Gasto(categoria=categoria, descripcion=f"{descripcion} (pagado desde la caja mayor)"[:200], valor=valor,
                   medio_id=medio.id, usuario_id=usuario.id)
@@ -1582,6 +1585,9 @@ def pagar_desde_caja_mayor(usuario, clase, valor, medio, compra=None, categoria=
         db.session.flush()
         mm = MovCajaMayor(tipo="salida", valor=valor, medio=medio, concepto=f"Gasto · {categoria}: {descripcion}"[:200],
                           origen="gasto", categoria="Gasto del negocio", ref_id=g.id, usuario_id=usuario.id)
+    if beneficiario:
+        mm.beneficiario = beneficiario.strip()[:140]
+    mm.numero = siguiente("sig_egreso_mayor")
     db.session.add(mm)
     db.session.flush()
     return mm

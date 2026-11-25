@@ -23,10 +23,10 @@
           <tr class="{{ 'anulado' if m.anulado }}" {% if m.anulado %}style="opacity:.5;text-decoration:line-through"{% endif %}>
             <td>{{ m.fecha|fh }}</td>
             <td>{% if m.origen == 'traslado' %}<span class="badge blue">Desde caja diaria</span>{% elif m.origen == 'devolucion' %}<span class="badge warn">A caja diaria</span>{% elif m.categoria %}<span class="badge {{ 'blue' if m.origen == 'pago_compra' else ('warn' if m.origen == 'gasto' else ('err' if m.origen == 'ajuste' else '')) }}">{{ m.categoria }}</span>{% endif %}
-              {{ m.concepto }}<br><small class="muted">{{ m.usuario.nombre if m.usuario else '' }}{% if m.anulado %} · anulado{% endif %}</small></td>
+              {{ m.concepto }}<br><small class="muted">{% if m.numero %}<b>{{ m.folio }}</b> · {% endif %}{{ m.usuario.nombre if m.usuario else '' }}{% if m.beneficiario %} · recibió {{ m.beneficiario }}{% endif %}{% if m.anulado %} · anulado{% endif %}</small></td>
             <td>{{ m.medio.nombre }}</td>
             <td class="num {{ 'pos' if m.tipo == 'entrada' else 'neg' }}">{{ '+' if m.tipo == 'entrada' else '−' }}{{ m.valor|pesos }}</td>
-            <td>{% if m.origen == 'ajuste' %}{% set aj_id = m.concepto %}<a class="btn ghost sm" href="{{ url_for('caja_ajustes', caja='mayor') }}">Ver ajuste</a>{% elif not m.anulado and current_user.puede('admin') %}<form method="post" action="{{ url_for('caja_mayor_anular', mid=m.id) }}" onsubmit="return confirm('¿Anular este movimiento de {{ m.valor|pesos }}?{% if m.mov_caja_id %} También se revierte en la caja diaria.{% endif %}')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn ghost sm" title="Anular">↺ Anular</button></form>{% endif %}</td>
+            <td style="white-space:nowrap">{% if m.numero %}<a class="btn ghost sm" href="{{ url_for('caja_mayor_recibo', mid=m.id) }}" target="_blank" title="Reimprimir comprobante">🖨 {{ m.folio }}</a>{% endif %}{% if m.origen == 'ajuste' %}{% set aj_id = m.concepto %}<a class="btn ghost sm" href="{{ url_for('caja_ajustes', caja='mayor') }}">Ver ajuste</a>{% elif not m.anulado and current_user.puede('admin') %}<form method="post" action="{{ url_for('caja_mayor_anular', mid=m.id) }}" onsubmit="return confirm('¿Anular este movimiento de {{ m.valor|pesos }}?{% if m.mov_caja_id %} También se revierte en la caja diaria.{% endif %}')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn ghost sm" title="Anular">↺ Anular</button></form>{% endif %}</td>
           </tr>
         {% else %}<tr><td colspan="5" class="empty">Todavía no hay movimientos. Pasa plata desde la caja diaria con «Pasar a caja mayor».</td></tr>{% endfor %}</tbody>
       </table></div>
@@ -55,6 +55,7 @@
         <div class="field"><label>Pagado con</label><select class="input" name="medio_id">{% for x in filas %}<option value="{{ x.medio.id }}">{{ x.medio.nombre }} ({{ x.saldo|pesos }})</option>{% endfor %}</select></div>
       </div>
       <div class="field"><input class="input" name="descripcion" id="p-desc" placeholder="Nota (opcional): referencia de la transferencia…"></div>
+      <div class="field"><input class="input" name="beneficiario" placeholder="Quién recibe la plata (opcional; si no, el proveedor)"></div>
       <button class="btn" style="width:100%">Registrar pago</button>
       <p class="hint">El pago a proveedor baja la cuenta por pagar de esa compra; el gasto queda en Gastos y en los reportes. No toca la caja diaria.</p>
     </form>
@@ -70,6 +71,7 @@
       <div class="field"><label>Medio</label><select class="input" name="medio_id">{% for m in medios %}<option value="{{ m.id }}">{{ m.nombre }}</option>{% endfor %}</select></div>
       <div class="field"><label>Valor</label><input class="input" name="valor" inputmode="numeric" required></div>
       <div class="field" id="cm-cat"><label>Tipo de salida</label><select class="input" name="categoria">{% for c in categorias %}<option>{{ c }}</option>{% endfor %}</select></div>
+      <div class="field" id="cm-benef"><label>Quién recibe (opcional)</label><input class="input" name="beneficiario" placeholder="Ej. Carlos Parada, Bancolombia…"></div>
       <div class="field"><label>Concepto</label><input class="input" name="concepto" placeholder="Ej. consignación Bancolombia, pago factura Tiger, retiro Carlos…"></div>
       <p class="hint" id="cm-hint">Sale de la caja mayor (consignación, retiro de un socio, préstamo…). Para pagar a un proveedor o un gasto usa «Pagar desde la caja mayor».</p>
       <button class="btn" style="width:100%">Registrar</button>
@@ -122,6 +124,7 @@
   const pinta = () => {
     const t = f.querySelector('[name=tipo]:checked').value;
     document.getElementById('cm-cat').style.display = t === 'salida' ? '' : 'none';
+    document.getElementById('cm-benef').style.display = t === 'salida' ? '' : 'none';
     document.getElementById('cm-hint').textContent = t === 'salida' ? 'Sale de la caja mayor (consignación, retiro de un socio, préstamo…). Para pagar a un proveedor o un gasto usa «Pagar desde la caja mayor».'
       : t === 'entrada' ? 'Entra a la caja mayor sin pasar por la caja diaria (ej. saldo inicial, aporte de un socio).'
       : 'Sale de la caja mayor y entra a la caja diaria abierta (ej. completar la base o el cambio).';

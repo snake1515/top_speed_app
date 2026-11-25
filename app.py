@@ -1205,10 +1205,12 @@ def caja_mayor_mov():
     a_caja = tipo == "a_caja"
     try:
         mm = services.mov_caja_mayor(current_user, "salida" if a_caja else tipo, n(f.get("valor")), medio,
-                                     f.get("concepto"), f.get("categoria"), a_caja=a_caja)
+                                     f.get("concepto"), f.get("categoria"), a_caja=a_caja, beneficiario=f.get("beneficiario"))
         db.session.commit()
         flash(("Devolviste a la caja diaria " if a_caja else ("Entrada a la caja mayor: " if mm.tipo == "entrada" else "Salida de la caja mayor: "))
               + f"{mm.medio.nombre} {pesos(mm.valor)} · {mm.concepto}", "ok")
+        if mm.numero:
+            return redirect(url_for("caja_mayor_recibo", mid=mm.id, auto=1))
     except ErrorNegocio as e:
         db.session.rollback()
         errores_flash(e)
@@ -1283,7 +1285,7 @@ def caja_ajuste():
         db.session.commit()
         flash(f"Ajuste {aj.folio} registrado en la {aj.nombre_caja.lower()}: {'entran' if aj.tipo == 'ingreso' else 'salen'} {pesos(aj.valor)} en {aj.medio.nombre}.", "ok")
         g.aviso_texto = f"{aj.motivo}: {aj.detalle}"
-        return redirect(url_for("caja_ajuste_doc", aid=aj.id))
+        return redirect(url_for("caja_ajuste_doc", aid=aj.id, auto=1))
     except ErrorNegocio as e:
         db.session.rollback()
         errores_flash(e)
@@ -1305,7 +1307,7 @@ def caja_ajustes():
 @requiere("cajero")
 def caja_ajuste_doc(aid):
     from models import AjusteCaja
-    return render_template("ajuste_caja_doc.html", a=get_or_404(AjusteCaja, aid))
+    return render_template("ajuste_caja_doc.html", a=get_or_404(AjusteCaja, aid), auto=request.args.get("auto") == "1")
 
 
 @app.route("/caja/ajuste/<int:aid>/anular", methods=["POST"])
@@ -1332,14 +1334,29 @@ def caja_mayor_pago():
     compra = db.session.get(Compra, int(f.get("compra_id") or 0)) if (f.get("compra_id") or "").isdigit() else None
     try:
         mm = services.pagar_desde_caja_mayor(current_user, f.get("clase"), n(f.get("valor")), medio, compra=compra,
-                                             categoria=f.get("categoria"), descripcion=f.get("descripcion"))
+                                             categoria=f.get("categoria"), descripcion=f.get("descripcion"),
+                                             beneficiario=f.get("beneficiario"))
         db.session.commit()
         flash(f"Pago desde la caja mayor: {mm.medio.nombre} {pesos(mm.valor)} · {mm.concepto}"
               + (f". La compra queda con saldo {pesos(compra.saldo)}." if compra and compra.saldo > 0.5 else (". La compra quedó pagada." if compra else "")), "ok")
+        return redirect(url_for("caja_mayor_recibo", mid=mm.id, auto=1))
     except ErrorNegocio as e:
         db.session.rollback()
         errores_flash(e)
     return redirect(url_for("caja_mayor"))
+
+
+@app.route("/caja-mayor/<int:mid>/recibo")
+@requiere("cajero")
+def caja_mayor_recibo(mid):
+    """Comprobante de egreso de la caja mayor (CE-0001): se imprime al pagar y se puede reimprimir."""
+    from models import MovCajaMayor
+    mm = get_or_404(MovCajaMayor, mid)
+    if not mm.numero:
+        abort(404)
+    compra = db.session.get(Compra, mm.ref_id) if mm.origen == "pago_compra" and mm.ref_id else None
+    return render_template("recibo_caja_mayor.html", m=mm, compra=compra, auto=request.args.get("auto") == "1",
+                           reimpresion=request.args.get("auto") != "1")
 
 
 @app.route("/caja/movimiento/<int:mid>/anular", methods=["POST"])

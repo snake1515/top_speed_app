@@ -48,7 +48,7 @@
   {% if a.anulado %}<div>Anuló: {{ a.anulado_por.nombre if a.anulado_por else '' }} · {{ a.anulado_fecha|fh if a.anulado_fecha else '' }}<br>Motivo: {{ a.motivo_anulacion }}</div>{% endif %}
   <div class="firma">Firma de quien autoriza</div>
 </div>
-<div class="acc"><button onclick="print()">🖨 Imprimir</button>
+<div class="acc"><button onclick="print()">🖨 {{ 'Imprimir' if auto else 'Reimprimir' }}</button>
   <a href="{{ url_for('caja_mayor') if a.caja == 'mayor' else url_for('caja') }}">Volver a la {{ a.nombre_caja|lower }}</a>
   {% if current_user.puede('admin') %}<a href="{{ url_for('caja_ajustes') }}">Todos los ajustes</a>{% endif %}</div>
 {% if current_user.puede('admin') and not a.anulado %}
@@ -59,5 +59,6 @@
   <button>Anular ajuste</button>
 </form>
 {% endif %}
+{% if auto %}<script>window.addEventListener('load', () => setTimeout(() => window.print(), 300));</script>{% endif %}
 </body>
 </html>

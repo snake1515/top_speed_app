@@ -181,6 +181,7 @@ class Config(db.Model):
     sig_carga = db.Column(db.Integer, nullable=False, default=1)
     sig_vale = db.Column(db.Integer, nullable=False, default=1)
     sig_ajuste_caja = db.Column(db.Integer, nullable=False, default=1)
+    sig_egreso_mayor = db.Column(db.Integer, nullable=False, default=1)
     sig_cod_interno = db.Column(db.Integer, nullable=False, default=0)  # el primero es 0000
     sig_anulacion = db.Column(db.Integer, nullable=False, default=1)
     sig_dev_compra = db.Column(db.Integer, nullable=False, default=1)
@@ -508,6 +509,12 @@ class MovCajaMayor(db.Model):
     origen = db.Column(db.String(20), nullable=False, default="manual")   # traslado / devolucion / manual / ajuste / pago_compra / gasto
     categoria = db.Column(db.String(60))
     ref_id = db.Column(db.Integer)            # compra o gasto que se pagó desde la caja mayor
+    numero = db.Column(db.Integer)            # comprobante de egreso CE-0001 (pagos y salidas)
+    beneficiario = db.Column(db.String(140))  # quien recibe la plata
+
+    @property
+    def folio(self):
+        return f"CE-{self.numero:04d}" if self.numero else ""
     mov_caja_id = db.Column(db.Integer, db.ForeignKey("ts_mov_caja.id"))  # movimiento enlazado en la caja diaria
     turno_id = db.Column(db.Integer, db.ForeignKey("ts_turnos.id"))
     turno = db.relationship("Turno")
