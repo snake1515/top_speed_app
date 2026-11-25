@@ -66,6 +66,18 @@ def datos(cfg, per="hoy", desde_txt=None, hasta_txt=None):
     ant = rpt.resumen(d_ant, h_ant)
     comp = {k: _variacion(r[k], ant[k]) for k in ("ventas_netas", "utilidad_bruta", "gastos", "neta")}
 
+    # ganancia por cobrar: la parte de la ganancia de las ventas a crédito del periodo que todavía no se ha pagado
+    # (proporcional a lo que falta de cada venta)
+    por_cobrar, ventas_pend = 0.0, 0
+    for v in r["ventas"]:
+        saldo = v.saldo or 0
+        if saldo > 0.5 and (v.total or 0) > 0:
+            util = (v.total or 0) - (v.iva or 0) - (v.costo or 0)
+            por_cobrar += util * min(saldo / v.total, 1)
+            ventas_pend += 1
+    ganancia = {"total": r["neta"], "por_cobrar": round(por_cobrar), "cobrada": round(r["neta"] - por_cobrar),
+                "ventas_pend": ventas_pend}
+
     # gastos uno por uno
     gastos = (Gasto.query.filter(Gasto.fecha >= ini, Gasto.fecha < fin, Gasto.anulado.is_(False))
               .order_by(Gasto.fecha.desc(), Gasto.id.desc()).all())
@@ -132,6 +144,7 @@ def datos(cfg, per="hoy", desde_txt=None, hasta_txt=None):
 
     return {
         "inventario": inventario,
+        "ganancia": ganancia,
         "caja_mayor": sorted((d for d in saldos_caja_mayor().values() if abs(d["saldo"]) > 0.5), key=lambda d: d["medio"].orden),
         "clave": clave, "desde": desde, "hasta": hasta, "nombre": nombre, "r": r, "ant": ant, "comp": comp,
         "d_ant": d_ant, "h_ant": h_ant,

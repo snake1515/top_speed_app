@@ -101,6 +101,17 @@
                  border-radius: 12px; background: var(--ink); color: var(--amar); font-weight: 700; font-size: .88rem; text-decoration: none; }
   .descargas a:active { transform: scale(.98); }
   .descargas a.ancho { grid-column: 1 / -1; background: #f4f4f2; color: var(--ink); border: 1px solid var(--line); }
+  details.gan > summary { list-style: none; cursor: pointer; }
+  details.gan > summary::-webkit-details-marker { display: none; }
+  details.gan > summary::after { content: none !important; }
+  .gan .ver { font-size: .72rem; color: var(--amar); margin-left: 6px; white-space: nowrap; }
+  details.gan[open] .ver { opacity: .6; }
+  .gan-det { background: rgba(255,255,255,.08); border-radius: 12px; padding: 8px 10px; margin-top: 10px; position: relative; z-index: 1; }
+  .gan-fila { display: flex; justify-content: space-between; gap: 8px; padding: 5px 0; font-size: .9rem; }
+  .gan-fila + .gan-fila { border-top: 1px solid rgba(255,255,255,.12); }
+  .gan-fila small { display: block; color: #aaa; font-size: .72rem; }
+  .gan-fila b { color: var(--amar); white-space: nowrap; }
+  .gan-nota { font-size: .72rem; color: #aaa; margin-top: 4px; }
   @media (min-width: 640px) {
     .hero { padding-right: 200px; min-height: 210px; }
     .hero img { height: 230px; right: 6px; }
@@ -143,14 +154,24 @@
   <div class="hero">
     <img src="{{ url_for('static', filename='mascota.webp') }}" alt="Valkira, la mascota de {{ cfg.nombre }}">
     <div class="hola">¡Hola, socios! 👋</div>
-    <div class="l">Lo que va quedando (ganancia neta)</div>
-    <div class="v">{{ neta|pesos }}</div>
-    <div class="c">{{ var(d.comp.neta) }}</div>
+    {% set G = d.ganancia %}
+    <details class="gan">
+      <summary>
+        <div class="l">Ganancia total <span class="ver">▾ ver detalle</span></div>
+        <div class="v">{{ G.total|pesos }}</div>
+        <div class="c">{{ var(d.comp.neta) }}</div>
+      </summary>
+      <div class="gan-det">
+        <div class="gan-fila"><span>✅ Ganancia cobrada</span><b>{{ G.cobrada|pesos }}</b></div>
+        <div class="gan-fila"><span>⏳ Ganancia por cobrar<small>{{ G.ventas_pend }} venta(s) a crédito con saldo</small></span><b>{{ G.por_cobrar|pesos }}</b></div>
+        <div class="gan-nota">Ya descontados gastos, nómina y pérdidas. La parte por cobrar es la ganancia de las ventas a crédito que los clientes aún no pagan.</div>
+      </div>
+    </details>
     <div class="burbuja">
       {% if P.num_ventas == 0 and not P.gastos %}Todavía no hay movimiento en este periodo. ¡Aquí les cuento apenas arranque!
-      {% elif neta > 0 %}¡Vamos bien! Las ventas ya cubren los gastos y van quedando <b style="white-space:nowrap">{{ neta|pesos }}</b>. 🔥
-      {% elif P.utilidad_bruta > 0 %}Las ventas dejan <b style="white-space:nowrap">{{ P.utilidad_bruta|pesos }}</b>, pero los gastos van <b style="white-space:nowrap">{{ (P.gastos + P.nomina + P.perdidas)|pesos }}</b>. ¡A vender más! 💪
-      {% else %}Por ahora hay más gastos que ganancia. ¡Con cada venta lo recuperamos! 💪{% endif %}
+      {% elif G.total > 0 %}¡Vamos bien! La ganancia total va en <b style="white-space:nowrap">{{ G.total|pesos }}</b>{% if G.por_cobrar > 0 %}: <b style="white-space:nowrap">{{ G.cobrada|pesos }}</b> ya cobrada y <b style="white-space:nowrap">{{ G.por_cobrar|pesos }}</b> por cobrar{% endif %}. 🔥
+      {% elif P.utilidad_bruta > 0 %}La ganancia total va en <b style="white-space:nowrap">{{ G.total|pesos }}</b>: las ventas dejan <b style="white-space:nowrap">{{ P.utilidad_bruta|pesos }}</b>, pero los gastos van <b style="white-space:nowrap">{{ (P.gastos + P.nomina + P.perdidas)|pesos }}</b>. ¡A vender más! 💪
+      {% else %}La ganancia total va en <b style="white-space:nowrap">{{ G.total|pesos }}</b>. ¡Con cada venta lo recuperamos! 💪{% endif %}
     </div>
   </div>
 
