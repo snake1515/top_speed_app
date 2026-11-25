@@ -41,7 +41,11 @@
     const ex = lista.find(p => p.codigo.toLowerCase() === v.toLowerCase() || p.barras === v) || lista[0];
     if (ex) { pkAgregar(ex); q.value = ''; res.innerHTML = ''; } else pintar(); });
   res.addEventListener('click', e => { const el = e.target.closest('.res'); if (!el) return; pkAgregar(lista[el.dataset.i]); q.value = ''; res.innerHTML = ''; q.focus(); });
-  {% if pre %}pkAgregar({{ pre|tojson }});{% endif %}
-  {% for l in pre_lineas or [] %}pkAgregar({{ l.p|tojson }}, {{ l.q|tojson }}, {{ l.c|tojson }});{% endfor %}
+  // las precargas esperan a que la página termine de cargar (esc, COP y NUM se definen al final de base.html)
+  const precargar = () => {
+    {% if pre %}pkAgregar({{ pre|tojson }});{% endif %}
+    {% for l in pre_lineas or [] %}pkAgregar({{ l.p|tojson }}, {{ l.q|tojson }}, {{ l.c|tojson }});{% endfor %}
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', precargar); else precargar();
 })();
 </script>
