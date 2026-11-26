@@ -31,6 +31,8 @@ from models import (CATEGORIAS_CAJA_MENOR, PagoCompra, separar_equivalencias, as
                     Empleado, Gasto, MedioPago, Mensaje, MovCaja, Movimiento, PagoNomina, Pedido, Producto,
                     Proveedor, Turno, Usuario, Venta, ahora, config, db, semilla)
 import services
+import wompi
+from models import CobroWompi
 from services import (ErrorNegocio, abrir_turno, anular_ajuste, anular_compra, anular_mov_caja,
                       anular_venta, cant, cerrar_turno, crear_pedido, devolver, guardar_cotizacion,
                       mov_caja, pagar_compra, pedido_vencido, pesos, registrar_abono, registrar_ajuste,
@@ -259,7 +261,7 @@ def csrf_token():
 
 @app.before_request
 def proteger_post():
-    if request.method == "POST":
+    if request.method == "POST" and request.path != "/wompi/eventos":   # los avisos de Wompi no traen token
         enviado = request.form.get("csrf_token") or request.headers.get("X-CSRF-Token")
         if not enviado or not secrets.compare_digest(enviado, session.get("_csrf", "")):
             if request.is_json or request.headers.get("X-CSRF-Token") is not None:
@@ -710,7 +712,12 @@ def pos():
                         "cliente_tel": ped.telefono, "cliente_doc": ped.documento or "",
                         "items": [{"producto": producto_json(it.producto, ver_costo=current_user.ve_costos),
                                    "cantidad": it.cantidad, "precio": it.precio} for it in ped.items]}
-    return render_template("pos.html", medios=medios, turno=turno_abierto(), precarga=precarga,
+            cobro = services.wompi_cobro_aprobado_de_pedido(ped)
+            medio_w = MedioPago.query.filter_by(wompi=True).first()
+            if cobro and medio_w:
+                precarga["wompi"] = {"cobro": cobro.id, "medio_id": medio_w.id, "nombre": medio_w.nombre,
+                                     "valor": cobro.monto, "tx": cobro.tx_id or ""}
+    return render_template("pos.html", medios=medios, turno=turno_abierto(), precarga=precarga, wompi_activo=wompi.activo(),
                            categorias=Categoria.query.order_by(Categoria.nombre).all(),
                            proveedores=Proveedor.query.filter_by(activo=True).order_by(Proveedor.nombre).all(),
                            destacados=[producto_json(p, ver_costo=current_user.ve_costos) for p in
@@ -1743,6 +1750,9 @@ def pedido_cancelar(pid):
         p.gestion_nota = (request.form.get("motivo") or "").strip()[:300] or "Cancelado"
         db.session.commit()
         flash(f"Pedido {p.folio} cancelado; las unidades apartadas vuelven a estar disponibles.", "ok")
+        if p.pagado_en_linea:
+            flash(f"El cliente ya había pagado {pesos(p.pagado_wompi)} con Wompi (transacción {p.wompi_tx}): "
+                  "devuélvele el dinero desde el panel de Wompi.", "warn")
     return redirect(url_for("pedido_detalle", pid=pid))
 
 
@@ -3349,7 +3359,12 @@ def configuracion():
         db.session.commit()
         flash("Configuración guardada.", "ok")
         return redirect(url_for("configuracion") + "#" + (sec or ""))
-    return render_template("configuracion.html", medios=MedioPago.query.order_by(MedioPago.orden, MedioPago.id).all(),
+    wompi_info = {"activo": wompi.activo(), "prueba": wompi.es_prueba(), "publica": bool(wompi.llave_publica()),
+                  "integridad": bool(os.getenv("WOMPI_INTEGRITY_SECRET")), "eventos": bool(os.getenv("WOMPI_EVENTS_SECRET")),
+                  "privada": bool(os.getenv("WOMPI_PRIVATE_KEY")), "url_eventos": url_for("wompi_eventos", _external=True),
+                  "cobros": CobroWompi.query.order_by(CobroWompi.id.desc()).limit(15).all()}
+    return render_template("configuracion.html", wompi_info=wompi_info, ESTADOS_WOMPI=wompi.ESTADOS, METODOS_WOMPI=wompi.METODOS,
+                           medios=MedioPago.query.order_by(MedioPago.orden, MedioPago.id).all(),
                            categorias=Categoria.query.order_by(Categoria.nombre).all(),
                            conteo_cat={c: n_ for c, n_ in db.session.query(Producto.categoria_id, db.func.count(Producto.id))
                                        .group_by(Producto.categoria_id).all()})
@@ -3936,9 +3951,135 @@ def tienda_estado_pedido(token):
     if p.direccion:
         lineas.append(f"Dirección: {p.direccion}{', ' + p.ciudad if p.ciudad else ''}")
     lineas.append(f"Nombre: {p.nombre}")
+    ultimo = CobroWompi.query.filter_by(pedido_id=p.id).order_by(CobroWompi.id.desc()).first()
     return render_template("tienda_pedido.html", p=p, vencido=pedido_vencido(p),
                            wa=wa_link(cfg.whatsapp, "\n".join(lineas)) if cfg.whatsapp else "",
-                           medios=MedioPago.query.filter(MedioPago.activo.is_(True), MedioPago.tipo != "efectivo").order_by(MedioPago.orden).all())
+                           puede_wompi=_pedido_puede_wompi(p), cobro=ultimo, ESTADOS_WOMPI=wompi.ESTADOS,
+                           medios=MedioPago.query.filter(MedioPago.activo.is_(True), MedioPago.tipo != "efectivo",
+                                                         MedioPago.wompi.is_(False)).order_by(MedioPago.orden).all())
+
+
+# ================================================================ Wompi
+def _medio_wompi():
+    m = MedioPago.query.filter_by(wompi=True, activo=True).first()
+    return m if m and wompi.activo() else None
+
+
+def _pedido_puede_wompi(p):
+    return (p.estado == "pendiente" and not p.es_preventa and not p.pagado_en_linea and not pedido_vencido(p)
+            and (p.total or 0) >= 1500 and _medio_wompi() is not None)
+
+
+def _nuevo_cobro(tipo, monto, pedido=None, usuario=None, prefijo="POS"):
+    c = CobroWompi(referencia=f"{prefijo}-{secrets.token_hex(4).upper()}", token=secrets.token_urlsafe(16),
+                   tipo=tipo, pedido=pedido, monto=round(monto), usuario_id=usuario.id if usuario else None)
+    db.session.add(c)
+    db.session.flush()
+    return c
+
+
+@app.route("/tienda/pedido/<token>/pagar", methods=["POST"])
+def tienda_pagar_pedido(token):
+    """Pago en línea de un pedido de la tienda: crea el cobro y manda al cliente al checkout de Wompi."""
+    p = Pedido.query.filter_by(token=token).first_or_404()
+    if not _pedido_puede_wompi(p):
+        flash("Este pedido ya no se puede pagar en línea. Escríbenos por WhatsApp.", "err")
+        return redirect(url_for("tienda_estado_pedido", token=token))
+    if not limitar("wompi:" + ip(), 12, 3600):
+        flash("Intentaste pagar muchas veces seguidas. Escríbenos por WhatsApp.", "err")
+        return redirect(url_for("tienda_estado_pedido", token=token))
+    c = _nuevo_cobro("pedido", p.total, pedido=p, prefijo=p.folio)
+    db.session.commit()
+    return redirect(wompi.url_checkout(c.referencia, c.monto, url_for("wompi_retorno", _external=True),
+                                       {"email": p.email, "full-name": p.nombre}))
+
+
+@app.route("/pagar/<token>")
+def pagar_publico(token):
+    """Enlace del QR que muestra la caja: lleva al cliente al checkout de Wompi por el valor exacto."""
+    c = CobroWompi.query.filter_by(token=token, tipo="pos").first_or_404()
+    vencido = c.creado < ahora() - timedelta(hours=2)
+    if c.estado == "PENDING" and not c.tx_id and not vencido and wompi.activo():
+        return redirect(wompi.url_checkout(c.referencia, c.monto, url_for("wompi_retorno", _external=True)))
+    return render_template("wompi_resultado.html", c=c, vencido=vencido and c.estado == "PENDING",
+                           ESTADOS=wompi.ESTADOS, METODOS=wompi.METODOS)
+
+
+@app.route("/wompi/retorno")
+def wompi_retorno():
+    """Wompi devuelve al cliente aquí con ?id=<transacción>; se consulta el estado real (no se confía en la URL)."""
+    tx = wompi.consultar(request.args.get("id", "")[:60]) if request.args.get("id") else None
+    c = services.wompi_procesar(tx) if tx else None
+    db.session.commit()
+    if c and c.tipo == "pedido" and c.pedido:
+        if c.aprobado:
+            flash("¡Pago aprobado! Ya estamos alistando tu pedido.", "ok")
+        elif c.estado == "PENDING":
+            flash("Tu pago está en proceso. Te avisamos apenas Wompi lo confirme.", "warn")
+        else:
+            flash("El pago no se aprobó. Puedes intentarlo de nuevo o escribirnos por WhatsApp.", "err")
+        return redirect(url_for("tienda_estado_pedido", token=c.pedido.token))
+    if c is None:
+        return render_template("wompi_resultado.html", c=None, vencido=False, ESTADOS=wompi.ESTADOS,
+                               METODOS=wompi.METODOS)
+    return redirect(url_for("pagar_publico", token=c.token))
+
+
+@app.route("/wompi/eventos", methods=["POST"])
+def wompi_eventos():
+    """URL de eventos de Wompi: confirma los pagos aunque el cliente cierre la ventana antes de volver."""
+    cuerpo = request.get_json(silent=True) or {}
+    if not wompi.evento_valido(cuerpo, request.headers.get("X-Event-Checksum")):
+        print("wompi: evento con firma inválida (revisa WOMPI_EVENTS_SECRET)", flush=True)
+        return jsonify(ok=False), 401
+    if cuerpo.get("event") == "transaction.updated":
+        services.wompi_procesar((cuerpo.get("data") or {}).get("transaction"))
+        db.session.commit()
+    return jsonify(ok=True)
+
+
+@app.route("/pos/wompi/cobro", methods=["POST"])
+@requiere("cajero")
+def pos_wompi_cobro():
+    """Cobro desde la caja: genera el QR que el cliente escanea con su celular para pagar con Wompi."""
+    if _medio_wompi() is None:
+        return jsonify(ok=False, errores=["Wompi no está configurado (faltan las llaves en Render)."]), 400
+    valor = round(n((request.get_json(silent=True) or {}).get("valor")))
+    if valor < 1500:
+        return jsonify(ok=False, errores=["El cobro con Wompi debe ser de al menos $ 1.500."]), 400
+    c = _nuevo_cobro("pos", valor, usuario=current_user)
+    db.session.commit()
+    link = url_for("pagar_publico", token=c.token, _external=True)
+    return jsonify(ok=True, id=c.id, valor=c.monto, link=link, qr=url_for("pos_wompi_qr", cid=c.id),
+                   whatsapp=wa_link("", f"Paga {pesos(c.monto)} a {config().nombre} con Wompi: {link}"),
+                   estado=url_for("pos_wompi_estado", cid=c.id))
+
+
+@app.route("/pos/wompi/<int:cid>/estado")
+@requiere("cajero")
+def pos_wompi_estado(cid):
+    c = get_or_404(CobroWompi, cid)
+    if c.estado == "PENDING" and c.creado < ahora() - timedelta(seconds=15):
+        # por si el aviso de Wompi no ha llegado: se pregunta directamente (con la llave privada)
+        for tx in wompi.buscar_por_referencia(c.referencia):
+            services.wompi_procesar(tx)
+        db.session.commit()
+    return jsonify(id=c.id, estado=c.estado, estado_txt=wompi.ESTADOS.get(c.estado, c.estado), valor=c.monto,
+                   tx=c.tx_id or "", metodo=wompi.METODOS.get(c.metodo or "", c.metodo or ""),
+                   usado=bool(c.venta_id))
+
+
+@app.route("/pos/wompi/<int:cid>/qr.svg")
+@requiere("cajero")
+def pos_wompi_qr(cid):
+    import qrcode
+    import qrcode.image.svg
+    c = get_or_404(CobroWompi, cid)
+    img = qrcode.make(url_for("pagar_publico", token=c.token, _external=True),
+                      image_factory=qrcode.image.svg.SvgPathImage, box_size=12, border=2)
+    buf = BytesIO()
+    img.save(buf)
+    return Response(buf.getvalue(), mimetype="image/svg+xml", headers={"Cache-Control": "no-store"})
 
 
 @app.route("/sw.js")

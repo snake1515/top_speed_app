@@ -8,6 +8,7 @@
     {% if p.estado == 'pendiente' %}<a class="btn lg" href="{{ url_for('pos', pedido=p.id) }}">Confirmar y cobrar</a>{% endif %}
   </div>
 </div>
+{% if p.pagado_en_linea %}<div class="flash ok">💳 Pagado en línea con Wompi: {{ p.pagado_wompi|pesos }} (transacción {{ p.wompi_tx }}).{% if p.estado == 'pendiente' %} Al tocar «Confirmar y cobrar» el pago ya aparece en la caja; solo confirmas la venta.{% endif %}</div>{% endif %}
 {% if p.estado == 'pendiente' and vencido %}<div class="flash warn">La reserva venció ({{ cfg.reserva_horas }} h): estas unidades ya no están apartadas. Aún puedes cobrarlo si hay stock.</div>{% endif %}
 {% if p.estado == 'confirmado' and venta %}<div class="flash ok">Confirmado y cobrado en la venta <a href="{{ url_for('venta_detalle', vid=venta.id) }}">{{ venta.folio }}</a>.</div>{% endif %}
 {% if p.estado == 'cancelado' %}<div class="flash err">Cancelado. {{ p.gestion_nota or '' }}</div>{% endif %}
@@ -35,7 +36,7 @@
     </div>
     {% if p.estado == 'pendiente' %}
     <details class="card"><summary class="neg">Cancelar pedido</summary>
-      <form method="post" action="{{ url_for('pedido_cancelar', pid=p.id) }}" style="margin-top:10px" data-confirm="¿Cancelar el pedido? Se liberan las unidades apartadas.">
+      <form method="post" action="{{ url_for('pedido_cancelar', pid=p.id) }}" style="margin-top:10px" data-confirm="¿Cancelar el pedido? Se liberan las unidades apartadas.{% if p.pagado_en_linea %} OJO: el cliente ya pagó en línea; tendrás que devolverle el dinero desde el panel de Wompi.{% endif %}">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="field"><input class="input" name="motivo" placeholder="Motivo (ej. el cliente no respondió)"></div>
         <button class="btn danger">Cancelar pedido</button></form></details>

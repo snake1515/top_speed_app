@@ -67,7 +67,7 @@
     <div class="cart-total" id="c-total" style="text-align:left"></div>
     <div id="c-items" class="c-items"></div>
     <p class="muted" style="margin:2px 0 12px">Toca un medio para agregarlo. Puedes combinar efectivo y transferencia.</p>
-    <div class="pay-grid">{% for m in medios %}<button type="button" class="pay-btn" data-medio="{{ m.id }}" data-tipo="{{ m.tipo }}" data-nombre="{{ m.nombre }}">{{ m.nombre }}</button>{% endfor %}<button type="button" class="pay-btn credito" id="c-btn-credito" title="Deja el saldo en cartera del cliente">Crédito</button></div>
+    <div class="pay-grid">{% for m in medios if not m.wompi or wompi_activo %}<button type="button" class="pay-btn{{ ' wompi' if m.wompi }}" data-medio="{{ m.id }}" data-tipo="{{ m.tipo }}" data-nombre="{{ m.nombre }}" data-wompi="{{ '1' if m.wompi }}">{{ ('📱 ' ~ m.nombre ~ ' QR') if m.wompi else m.nombre }}</button>{% endfor %}<button type="button" class="pay-btn credito" id="c-btn-credito" title="Deja el saldo en cartera del cliente">Crédito</button></div>
     <div id="c-credito-info" class="note" style="display:none;margin-top:8px"></div>
     <div id="pagos"></div>
     <div id="rapido" class="quick-cash"></div>
@@ -78,6 +78,22 @@
     <div class="field" style="margin-top:10px"><input class="input" id="c-nota" placeholder="Nota (opcional): placa, mecánico, garantía…"></div>
     <div id="c-err"></div>
     <button class="btn lg ok" style="width:100%" id="c-confirmar" type="button">Confirmar venta</button>
+  </div>
+</div>
+
+<!-- modal cobro con Wompi: el cliente escanea el QR con su celular -->
+<div class="modal-bg" id="m-wompi">
+  <div class="modal" style="text-align:center;max-width:420px">
+    <div class="card-head"><h2>Cobrar con Wompi</h2><button class="btn ghost" type="button" id="w-cerrar">✕</button></div>
+    <div class="cart-total" id="w-valor" style="text-align:center"></div>
+    <p class="muted" style="margin:4px 0 8px">El cliente escanea el código con la cámara del celular y paga con tarjeta, PSE, Nequi o Bancolombia.</p>
+    <img id="w-qr" alt="QR de pago" style="width:100%;max-width:280px;aspect-ratio:1;background:#fff;border-radius:10px;padding:6px">
+    <div id="w-estado" class="flash info" style="margin-top:10px">Esperando el pago…</div>
+    <div class="actions" style="justify-content:center;margin-top:8px">
+      <button type="button" class="btn sec sm" id="w-copiar">Copiar enlace</button>
+      <a class="btn sec sm" id="w-wa" target="_blank" rel="noopener">Enviar por WhatsApp</a>
+    </div>
+    <button type="button" class="btn lg ok" style="width:100%;margin-top:12px;display:none" id="w-listo">Listo, volver al cobro</button>
   </div>
 </div>
 
@@ -116,7 +132,7 @@
     <div class="field"><label>Dónde se compra (proveedor)</label><input class="input" id="ar-donde" placeholder="Ej. Distrimotos centro" list="ar-provs"><datalist id="ar-provs">{% for pv in proveedores %}<option value="{{ pv.nombre }}">{% endfor %}</datalist></div>
     <div class="field"><label>¿Cómo se paga la compra afuera? *</label>
       <div class="pay-grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr))">
-        {% for m in medios %}<button type="button" class="pay-btn" data-arpago="{{ m.id }}" data-arnom="{{ m.nombre }}" data-artipo="{{ m.tipo }}">{{ '💵' if m.tipo == 'efectivo' else '💳' if m.tipo == 'tarjeta' else '📲' }} {{ m.nombre }}</button>
+        {% for m in medios if not m.wompi %}<button type="button" class="pay-btn" data-arpago="{{ m.id }}" data-arnom="{{ m.nombre }}" data-artipo="{{ m.tipo }}">{{ '💵' if m.tipo == 'efectivo' else '💳' if m.tipo == 'tarjeta' else '📲' }} {{ m.nombre }}</button>
         {% endfor %}<button type="button" class="pay-btn" data-arpago="credito" data-arnom="crédito">🧾 A crédito con el proveedor</button>
       </div>
       <div class="hint" id="ar-pago-hint"></div></div>
@@ -410,8 +426,8 @@ document.querySelectorAll('[data-cerrar]').forEach(b => b.addEventListener('clic
 function pintarPagos() {
   const t = totales().total;
   $('pagos').innerHTML = pagos.map((pg, i) => `<div class="pay-line">
-      <div><b>${esc(pg.nombre)}</b>${pg.tipo !== 'efectivo' ? `<input class="input" data-ref="${i}" placeholder="Nº transferencia (opcional)" value="${esc(pg.referencia || '')}" style="padding:4px 8px;margin-top:3px;font-size:.85rem">` : ''}</div>
-      <input class="input" data-pago="${i}" value="${Math.round(pg.valor).toLocaleString('es-CO')}" inputmode="numeric" style="text-align:right">
+      <div><b>${esc(pg.nombre)}</b>${pg.wompi ? lineaWompi(pg, i) : pg.tipo !== 'efectivo' ? `<input class="input" data-ref="${i}" placeholder="Nº transferencia (opcional)" value="${esc(pg.referencia || '')}" style="padding:4px 8px;margin-top:3px;font-size:.85rem">` : ''}</div>
+      <input class="input" data-pago="${i}" value="${Math.round(pg.valor).toLocaleString('es-CO')}" inputmode="numeric" style="text-align:right"${pg.cobro ? ' readonly title="Valor del cobro de Wompi"' : ''}>
       <button class="btn ghost sm" data-qp="${i}" type="button">✕</button></div>`).join('');
   const recibido = pagos.reduce((a, p) => a + p.valor, 0);
   const falta = Math.max(t - recibido, 0), cambio = Math.max(recibido - t, 0);
@@ -429,6 +445,49 @@ function pintarPagos() {
     $('rapido').innerHTML = [['Exacto', null], ...cands.map(v => [COP(v), v])].map(([l, v]) => `<button type="button" data-rap="${v ?? ''}">${l}</button>`).join('');
   } else $('rapido').innerHTML = '';
 }
+// ---------- Wompi: cobro con QR desde la caja
+function lineaWompi(pg, i) {
+  if (pg.estado === 'APPROVED') return `<div class="hint" style="color:var(--ok);font-weight:700">✔ Pagado${pg.metodo ? ' con ' + esc(pg.metodo) : ''}${pg.tx ? ' · ' + esc(pg.tx) : ''}</div>`;
+  if (pg.cobro) return `<div class="hint">Esperando el pago… <button type="button" class="btn ghost sm" data-wver="${i}">Ver QR</button></div>`;
+  return `<button type="button" class="btn sm" data-wcobrar="${i}" style="margin-top:3px">📱 Mostrar QR para pagar</button>`;
+}
+let wompiTimer = null, wompiPago = null, wompiDatos = null;
+async function cobrarWompi(i) {
+  const pg = pagos[i];
+  if (!pg || pg.valor < 1500) { $('c-err').innerHTML = '<div class="flash err">Escribe el valor a cobrar con Wompi (mínimo $ 1.500).</div>'; return; }
+  $('c-err').innerHTML = '';
+  const j = await postJSON('{{ url_for('pos_wompi_cobro') }}', { valor: pg.valor });
+  if (!j.ok) { $('c-err').innerHTML = j.errores.map(m => `<div class="flash err">${esc(m)}</div>`).join(''); return; }
+  pg.cobro = j.id; pg.valor = j.valor; pg.estado = 'PENDING'; pg.datos = j;
+  pintarPagos(); verWompi(i);
+}
+function verWompi(i) {
+  wompiPago = pagos[i]; wompiDatos = wompiPago.datos;
+  $('w-valor').textContent = COP(wompiPago.valor);
+  $('w-qr').src = wompiDatos.qr; $('w-wa').href = wompiDatos.whatsapp;
+  $('w-estado').className = 'flash info'; $('w-estado').textContent = 'Esperando el pago…';
+  $('w-listo').style.display = 'none';
+  abrir('m-wompi'); revisarWompi();
+}
+async function revisarWompi() {
+  clearTimeout(wompiTimer);
+  if (!wompiPago || !$('m-wompi').classList.contains('on')) return;
+  let j = null;
+  try { j = await (await fetch(wompiDatos.estado, { headers: { Accept: 'application/json' } })).json(); } catch (e) {}
+  if (j && j.estado === 'APPROVED') {
+    Object.assign(wompiPago, { estado: 'APPROVED', tx: j.tx, metodo: j.metodo });
+    $('w-estado').className = 'flash ok'; $('w-estado').textContent = `✔ Pago aprobado${j.metodo ? ' con ' + j.metodo : ''}. Ya puedes confirmar la venta.`;
+    $('w-listo').style.display = ''; $('w-listo').focus(); pintarPagos(); return;
+  }
+  if (j && ['DECLINED', 'VOIDED', 'ERROR'].includes(j.estado)) {
+    $('w-estado').className = 'flash err'; $('w-estado').textContent = `Pago ${j.estado_txt.toLowerCase()}: no se cobró nada. Genera un QR nuevo o usa otro medio.`;
+    Object.assign(wompiPago, { cobro: null, estado: null, datos: null }); pintarPagos(); return;
+  }
+  wompiTimer = setTimeout(revisarWompi, 3000);
+}
+$('w-cerrar').addEventListener('click', () => { clearTimeout(wompiTimer); cerrar('m-wompi'); });
+$('w-listo').addEventListener('click', () => { cerrar('m-wompi'); $('c-confirmar').focus(); });
+$('w-copiar').addEventListener('click', async () => { try { await navigator.clipboard.writeText(wompiDatos.link); $('w-copiar').textContent = '✔ Copiado'; setTimeout(() => $('w-copiar').textContent = 'Copiar enlace', 1500); } catch (e) { prompt('Copia el enlace:', wompiDatos.link); } });
 function abrirCobro() {
   if (!carrito.length) { $('buscar').focus(); return; }
   const t = totales().total;
@@ -437,8 +496,11 @@ function abrirCobro() {
     + `<button type="button" class="btn ghost sm" id="c-editar" style="margin-top:4px">✎ Cambiar cantidades</button>`;
   $('c-editar').onclick = () => { cerrar('m-cobro'); document.querySelector('.cart').scrollIntoView({ behavior: 'smooth', block: 'start' }); };
   pagos = []; $('c-err').innerHTML = ''; $('c-credito').checked = false;
+  const W = PRECARGA && PRECARGA.wompi;   // pedido de la tienda ya pagado en línea
+  if (W) pagos.push({ medio_id: W.medio_id, nombre: W.nombre + ' (pagado en línea)', tipo: 'tarjeta', wompi: true, valor: W.valor, cobro: W.cobro, estado: 'APPROVED', tx: W.tx });
   const ef = document.querySelector('.pay-btn[data-tipo=efectivo]');
-  if (ef) pagos.push({ medio_id: Number(ef.dataset.medio), nombre: ef.dataset.nombre, tipo: 'efectivo', valor: t });
+  const resto = Math.max(t - pagos.reduce((a, p) => a + p.valor, 0), 0);
+  if (ef && resto > 0) pagos.push({ medio_id: Number(ef.dataset.medio), nombre: ef.dataset.nombre, tipo: 'efectivo', valor: resto });
   pintarPagos(); abrir('m-cobro');
   setTimeout(() => document.querySelector('[data-pago]')?.select(), 50);
 }
@@ -449,7 +511,7 @@ document.querySelectorAll('.pay-btn').forEach(b => b.addEventListener('click', (
   if (ex) return;
   if (pagos.length === 1 && pagos[0].tipo === 'efectivo' && pagos[0].valor === t) pagos = [];  // cambia de medio
   const resto = Math.max(t - pagos.reduce((a, p) => a + p.valor, 0), 0);
-  pagos.push({ medio_id: Number(b.dataset.medio), nombre: b.dataset.nombre, tipo: b.dataset.tipo, valor: resto });
+  pagos.push({ medio_id: Number(b.dataset.medio), nombre: b.dataset.nombre, tipo: b.dataset.tipo, valor: resto, wompi: !!b.dataset.wompi });
   pintarPagos();
   setTimeout(() => document.querySelector(`[data-pago="${pagos.length - 1}"]`)?.select(), 30);
 }));
@@ -458,7 +520,14 @@ $('pagos').addEventListener('input', e => {
   if (e.target.dataset.ref !== undefined) pagos[e.target.dataset.ref].referencia = e.target.value;
 });
 $('pagos').addEventListener('change', e => { if (e.target.dataset.pago !== undefined) pintarPagos(); });
-$('pagos').addEventListener('click', e => { const b = e.target.closest('[data-qp]'); if (b) { pagos.splice(Number(b.dataset.qp), 1); pintarPagos(); } });
+$('pagos').addEventListener('click', e => {
+  const w = e.target.closest('[data-wcobrar]'); if (w) { cobrarWompi(Number(w.dataset.wcobrar)); return; }
+  const v = e.target.closest('[data-wver]'); if (v) { verWompi(Number(v.dataset.wver)); return; }
+  const b = e.target.closest('[data-qp]'); if (!b) return;
+  const pg = pagos[Number(b.dataset.qp)];
+  if (pg.estado === 'APPROVED' && !confirm('Este pago de Wompi ya está aprobado. ¿Quitarlo de la venta? (el dinero no se devuelve solo)')) return;
+  pagos.splice(Number(b.dataset.qp), 1); pintarPagos();
+});
 $('rapido').addEventListener('click', e => {
   const b = e.target.closest('[data-rap]'); if (!b) return;
   const ef = pagos.find(p => p.tipo === 'efectivo'); const t = totales().total;
@@ -511,9 +580,12 @@ function datosVenta() {
 }
 let enviando = false;
 $('c-confirmar').addEventListener('click', async () => {
-  if (enviando) return; enviando = true; $('c-confirmar').disabled = true;
+  if (enviando) return;
+  const wPend = pagos.find(p => p.wompi && p.valor > 0 && p.estado !== 'APPROVED');
+  if (wPend) { $('c-err').innerHTML = '<div class="flash err">Falta que el cliente pague con Wompi: toca «Mostrar QR para pagar» y espera la aprobación.</div>'; return; }
+  enviando = true; $('c-confirmar').disabled = true;
   const d = datosVenta();
-  d.pagos = pagos.map(p => ({ medio_id: p.medio_id, valor: p.valor, referencia: p.referencia || '' }));
+  d.pagos = pagos.map(p => ({ medio_id: p.medio_id, valor: p.valor, referencia: p.referencia || '', wompi_cobro: p.cobro || null }));
   d.credito = $('c-credito').checked; d.nota = $('c-nota').value;
   const j = await postJSON('{{ url_for('pos_venta') }}', d);
   enviando = false; $('c-confirmar').disabled = false;

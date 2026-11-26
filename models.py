@@ -204,6 +204,8 @@ class MedioPago(db.Model):
     detalle = db.Column(db.String(160))  # ej. número de cuenta o celular, se muestra en la tienda
     activo = db.Column(db.Boolean, nullable=False, default=True)
     orden = db.Column(db.Integer, nullable=False, default=10)
+    # medio conectado a Wompi: solo se acepta en una venta con un cobro de Wompi aprobado
+    wompi = db.Column(db.Boolean, nullable=False, default=False)
 
     @property
     def es_efectivo(self):
@@ -1099,7 +1101,14 @@ class Pedido(db.Model):
     estado = db.Column(db.String(12), nullable=False, default="pendiente", index=True)  # pendiente / confirmado / cancelado
     venta_id = db.Column(db.Integer)
     gestion_nota = db.Column(db.String(300))
+    # pago en línea con Wompi (el pedido sigue pendiente hasta que el cajero lo confirma y despacha)
+    pagado_wompi = db.Column(db.Float, nullable=False, default=0)
+    wompi_tx = db.Column(db.String(60))
     items = db.relationship("PedidoItem", backref="pedido", cascade="all, delete-orphan")
+
+    @property
+    def pagado_en_linea(self):
+        return (self.pagado_wompi or 0) > 0
 
     @property
     def folio(self):
@@ -1108,6 +1117,30 @@ class Pedido(db.Model):
     @property
     def es_preventa(self):
         return self.origen == "preventa"
+
+
+class CobroWompi(db.Model):
+    """Cada intento de cobro con Wompi: pago en línea de un pedido de la tienda o cobro con QR desde la caja."""
+    __tablename__ = "ts_cobros_wompi"
+    id = db.Column(db.Integer, primary_key=True)
+    referencia = db.Column(db.String(60), unique=True, nullable=False)   # la que se le manda a Wompi
+    token = db.Column(db.String(40), unique=True, nullable=False)        # enlace público /pagar/<token>
+    tipo = db.Column(db.String(10), nullable=False, default="pos")       # pos / pedido
+    pedido_id = db.Column(db.Integer, db.ForeignKey("ts_pedidos.id"), index=True)
+    pedido = db.relationship("Pedido")
+    monto = db.Column(db.Float, nullable=False)
+    estado = db.Column(db.String(12), nullable=False, default="PENDING", index=True)  # estados de Wompi
+    tx_id = db.Column(db.String(60), index=True)
+    metodo = db.Column(db.String(40))
+    creado = db.Column(db.DateTime, nullable=False, default=ahora, index=True)
+    actualizado = db.Column(db.DateTime)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
+    usuario = db.relationship("Usuario")
+    venta_id = db.Column(db.Integer, index=True)   # venta donde se usó (un cobro aprobado se usa una sola vez)
+
+    @property
+    def aprobado(self):
+        return self.estado == "APPROVED"
 
 
 class PedidoItem(db.Model):
@@ -1408,6 +1441,11 @@ def semilla():
                                          ("Daviplata", "transferencia"), ("Bancolombia", "transferencia"),
                                          ("Datáfono", "tarjeta")]):
             db.session.add(MedioPago(nombre=nom, tipo=tipo, orden=i, activo=nom != "Datáfono"))
+    # Wompi: con las llaves puestas en Render aparece el medio de pago «Wompi» en la caja y en la tienda
+    import wompi
+    if wompi.activo() and not MedioPago.query.filter_by(wompi=True).first():
+        db.session.add(MedioPago(nombre="Wompi", tipo="tarjeta", wompi=True, orden=5,
+                                 detalle="Tarjeta, PSE, Nequi o Bancolombia (pago en línea)"))
     if not Categoria.query.first():
         for nom in ["Frenos", "Transmisión (kit de arrastre)", "Motor", "Eléctrico", "Iluminación",
                     "Suspensión", "Llantas y neumáticos", "Lubricantes", "Filtros", "Carburación e inyección",

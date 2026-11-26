@@ -2,11 +2,25 @@
 {% block title %}Pedido {{ p.folio }} · {{ cfg.nombre }}{% endblock %}
 {% block content %}
 <div class="card" style="max-width:640px;margin:0 auto">
-  {% if p.estado == 'pendiente' %}
+  {% with msgs = get_flashed_messages(with_categories=true) %}{% for cat, m in msgs %}<div class="flash {{ cat }}">{{ m }}</div>{% endfor %}{% endwith %}
+  {% if p.estado == 'pendiente' and p.pagado_en_linea %}
+    <div style="font-size:2.6rem">✔</div>
+    <h1>¡Pedido pagado!</h1>
+    <p>Recibimos el pago en línea de tu pedido <b>{{ p.folio }}</b> por <b>{{ p.pagado_wompi|pesos }}</b>. Ya lo estamos alistando y te escribimos al <b>{{ p.telefono }}</b>.</p>
+    {% if wa %}<a class="btn lg sec" href="{{ wa }}" target="_blank" rel="noopener" style="width:100%">Escríbenos por WhatsApp</a>{% endif %}
+  {% elif p.estado == 'pendiente' %}
     <div style="font-size:2.6rem">✔</div>
     <h1>¡Pedido recibido!</h1>
     <p>Tu pedido <b>{{ p.folio }}</b> quedó registrado{% if not vencido %} y apartamos los repuestos por {{ cfg.reserva_horas }} horas{% endif %}. Te escribimos al <b>{{ p.telefono }}</b> para confirmar.</p>
-    {% if wa %}<a class="btn lg ok" href="{{ wa }}" target="_blank" rel="noopener" style="width:100%">Enviar el pedido por WhatsApp</a>
+    {% if puede_wompi %}
+    <form method="post" action="{{ url_for('tienda_pagar_pedido', token=p.token) }}" style="margin:12px 0">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button class="btn lg ok" style="width:100%">💳 Pagar ahora en línea</button>
+      <p class="hint" style="text-align:center">Tarjeta débito o crédito, PSE, Nequi o Bancolombia · pago seguro con Wompi.</p>
+    </form>
+    {% if cobro and cobro.estado == 'PENDING' and cobro.tx_id %}<div class="flash warn">Tienes un pago en proceso. Si ya pagaste, espera unos minutos antes de intentar de nuevo.</div>{% endif %}
+    {% endif %}
+    {% if wa %}<a class="btn lg {{ 'sec' if puede_wompi else 'ok' }}" href="{{ wa }}" target="_blank" rel="noopener" style="width:100%">Enviar el pedido por WhatsApp</a>
     <p class="hint" style="text-align:center">Así te atendemos más rápido.</p>{% endif %}
   {% elif p.estado == 'confirmado' %}
     <h1>Pedido {{ p.folio }} confirmado ✔</h1><p>¡Gracias por tu compra!</p>
@@ -19,7 +33,7 @@
     <tfoot><tr><td colspan="2">Total</td><td class="num">{{ p.total|pesos }}</td></tr></tfoot>
   </table>
   {% set con_datos = medios|selectattr('detalle')|list %}
-  {% if con_datos and p.estado == 'pendiente' %}
+  {% if con_datos and p.estado == 'pendiente' and not p.pagado_en_linea %}
   <div class="note" style="margin-top:14px"><b>Si vas a pagar por transferencia:</b>
     {% for m in con_datos %}<br>{{ m.nombre }}: <b>{{ m.detalle }}</b>{% endfor %}
     <br>Envía el comprobante por WhatsApp con el número de pedido {{ p.folio }}.</div>

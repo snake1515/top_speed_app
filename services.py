@@ -104,7 +104,8 @@ def reservado_por_producto(excluir_pedido=None):
     cfg = config()
     limite = ahora() - timedelta(hours=cfg.reserva_horas or 48)
     q = (db.session.query(PedidoItem.producto_id, db.func.sum(PedidoItem.cantidad))
-         .join(Pedido).filter(Pedido.estado == "pendiente", Pedido.fecha >= limite))
+         .join(Pedido).filter(Pedido.estado == "pendiente",
+                              or_(Pedido.fecha >= limite, Pedido.pagado_wompi > 0)))  # pagado en línea: no vence
     if excluir_pedido:
         q = q.filter(Pedido.id != excluir_pedido)
     return {pid: float(c or 0) for pid, c in q.group_by(PedidoItem.producto_id).all()}
@@ -477,6 +478,7 @@ def registrar_venta(usuario, items, pagos, cliente=None, cliente_nombre="", clie
     # pagos
     medios = {m.id: m for m in MedioPago.query.all()}
     pagos_ok = []
+    usados_wompi = []
     for pg in pagos or []:
         try:
             mid, val = int(pg["medio_id"]), round(float(pg["valor"]))
@@ -486,7 +488,12 @@ def registrar_venta(usuario, items, pagos, cliente=None, cliente_nombre="", clie
             continue
         if mid not in medios:
             raise ErrorNegocio("Medio de pago desconocido.")
-        pagos_ok.append((medios[mid], val, (pg.get("referencia") or "").strip()[:80] or None))
+        ref = (pg.get("referencia") or "").strip()[:80] or None
+        if medios[mid].wompi:
+            cobro = _cobro_wompi_para_venta(pg.get("wompi_cobro"), val, pedido, usados_wompi)
+            usados_wompi.append(cobro)
+            ref = f"Wompi {cobro.tx_id or cobro.referencia}"[:80]
+        pagos_ok.append((medios[mid], val, ref))
     recibido = sum(v for _, v, _ in pagos_ok)
     no_efectivo = sum(v for m, v, _ in pagos_ok if not m.es_efectivo)
     efectivo_rec = recibido - no_efectivo
@@ -578,6 +585,8 @@ def registrar_venta(usuario, items, pagos, cliente=None, cliente_nombre="", clie
                                  mov_caja_id=mov.id, usuario_id=usuario.id))
     v.pagado = aplicado
     v.cambio = cambio
+    for cobro in usados_wompi:
+        cobro.venta_id = v.id
     if pedido:
         pedido.estado = "confirmado"
         pedido.venta_id = v.id
@@ -585,6 +594,72 @@ def registrar_venta(usuario, items, pagos, cliente=None, cliente_nombre="", clie
         cotizacion.estado = "vendida"
         cotizacion.venta_id = v.id
     return v
+
+
+def _cobro_wompi_para_venta(cobro_id, valor, pedido, usados):
+    """Un pago con el medio Wompi solo vale si hay un cobro aprobado por ese valor que no se haya usado."""
+    from models import CobroWompi
+    try:
+        cobro = db.session.get(CobroWompi, int(cobro_id)) if cobro_id else None
+    except (TypeError, ValueError):
+        cobro = None
+    if cobro is None:
+        raise ErrorNegocio("El pago con Wompi se cobra con el botón «Mostrar QR para pagar»; "
+                           "si lo cobraste en el datáfono o la app de Wompi, usa el medio Tarjeta / datáfono.")
+    if not cobro.aprobado:
+        raise ErrorNegocio("El cobro de Wompi todavía no está aprobado.")
+    if cobro.venta_id or cobro in usados:
+        raise ErrorNegocio("Ese cobro de Wompi ya se usó en otra venta.")
+    if cobro.tipo == "pedido" and (pedido is None or cobro.pedido_id != pedido.id):
+        raise ErrorNegocio("Ese pago en línea es de otro pedido.")
+    if abs((cobro.monto or 0) - valor) > 0.5:
+        raise ErrorNegocio(f"El pago con Wompi debe ser exactamente {pesos(cobro.monto)}, lo que el cliente pagó.")
+    return cobro
+
+
+def wompi_cobro_aprobado_de_pedido(pedido):
+    """Cobro en línea aprobado y sin usar de un pedido (para precargar el pago en la caja)."""
+    from models import CobroWompi
+    return (CobroWompi.query.filter_by(pedido_id=pedido.id, estado="APPROVED", venta_id=None)
+            .order_by(CobroWompi.id.desc()).first())
+
+
+def wompi_procesar(tx):
+    """Aplica el estado de una transacción de Wompi a su cobro. Devuelve el cobro (o None si no es nuestro).
+    Es idempotente: el aviso de eventos y el regreso del cliente pueden llegar los dos."""
+    from models import CobroWompi, Mensaje
+    if not isinstance(tx, dict) or not tx.get("reference"):
+        return None
+    cobro = CobroWompi.query.filter_by(referencia=str(tx["reference"])).with_for_update().first()
+    if cobro is None:
+        return None
+    estado = str(tx.get("status") or "").upper()
+    # el monto y la moneda deben ser los del cobro: si no, alguien alteró el pago
+    if tx.get("currency", "COP") != "COP" or int(tx.get("amount_in_cents") or 0) != int(round(cobro.monto)) * 100:
+        print(f"wompi: monto distinto en {cobro.referencia}: {tx.get('amount_in_cents')}", flush=True)
+        estado = "ERROR"
+    if cobro.aprobado and estado != "VOIDED":   # aprobado ya no cambia (salvo anulación en Wompi)
+        return cobro
+    cobro.tx_id = str(tx.get("id") or cobro.tx_id or "")[:60] or None
+    cobro.metodo = str(tx.get("payment_method_type") or cobro.metodo or "")[:40] or None
+    anterior, cobro.estado = cobro.estado, (estado if estado in ("PENDING", "APPROVED", "DECLINED", "VOIDED", "ERROR")
+                                            else cobro.estado)
+    cobro.actualizado = ahora()
+    if cobro.estado == "APPROVED" and anterior != "APPROVED":
+        import wompi as wp
+        metodo = wp.METODOS.get(cobro.metodo or "", cobro.metodo or "")
+        if cobro.tipo == "pedido" and cobro.pedido:
+            ped = cobro.pedido
+            ped.pagado_wompi = cobro.monto
+            ped.wompi_tx = cobro.tx_id
+            db.session.add(Mensaje(tipo="cambio", para="todos",
+                                   titulo=f"Pedidos · {ped.folio} pagado en línea por {pesos(cobro.monto)}"[:160],
+                                   texto=(f"{ped.nombre} pagó con Wompi ({metodo}). Transacción {cobro.tx_id}.\n"
+                                          "Alista el pedido y confírmalo en la caja para descontar el inventario.")[:600],
+                                   url=f"/pedidos/{ped.id}"))
+    if cobro.estado == "VOIDED" and cobro.tipo == "pedido" and cobro.pedido and cobro.pedido.wompi_tx == cobro.tx_id:
+        cobro.pedido.pagado_wompi = 0
+    return cobro
 
 
 def crear_item_arrastre(usuario, d):
@@ -1270,6 +1345,8 @@ def crear_pedido(datos, items):
 
 def pedido_vencido(ped):
     cfg = config()
+    if ped.pagado_en_linea:   # ya pagó en línea: la reserva no vence
+        return False
     return ped.estado == "pendiente" and ped.fecha < ahora() - timedelta(hours=cfg.reserva_horas or 48)
 
 

@@ -1,0 +1,27 @@
+{% extends "tienda_base.html" %}
+{% block title %}Pago · {{ cfg.nombre }}{% endblock %}
+{% block content %}
+<div class="card" style="max-width:520px;margin:0 auto;text-align:center">
+  {% if c is none %}
+    <h1>No encontramos el pago</h1>
+    <p>Si ya pagaste, muéstrale al cajero el comprobante que te llegó de Wompi.</p>
+  {% elif c.aprobado %}
+    <div style="font-size:3rem">✔</div>
+    <h1>¡Pago aprobado!</h1>
+    <p class="cart-total" style="text-align:center">{{ c.monto|pesos }}</p>
+    <p>{{ cfg.nombre }}{% if c.metodo %} · {{ METODOS.get(c.metodo, c.metodo) }}{% endif %}<br><small class="mono muted">Transacción {{ c.tx_id }}</small></p>
+    <p>Muéstrale esta pantalla al cajero. ¡Gracias por tu compra!</p>
+  {% elif vencido %}
+    <h1>Este cobro venció</h1>
+    <p>Pídele al cajero que genere un QR nuevo.</p>
+  {% elif c.estado == 'PENDING' %}
+    <h1>Pago en proceso…</h1>
+    <p>Wompi todavía no confirma el pago de {{ c.monto|pesos }}. Esta página se actualiza sola.</p>
+    <script>setTimeout(() => location.reload(), 5000);</script>
+  {% else %}
+    <div style="font-size:3rem">✕</div>
+    <h1>Pago {{ ESTADOS.get(c.estado, c.estado)|lower }}</h1>
+    <p>No se cobró nada. Pídele al cajero un QR nuevo o paga de otra forma.</p>
+  {% endif %}
+</div>
+{% endblock %}
