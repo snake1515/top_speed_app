@@ -1132,6 +1132,7 @@ class CobroWompi(db.Model):
     estado = db.Column(db.String(12), nullable=False, default="PENDING", index=True)  # estados de Wompi
     tx_id = db.Column(db.String(60), index=True)
     metodo = db.Column(db.String(40))
+    mensaje = db.Column(db.String(200))   # motivo que da Wompi cuando el pago no se aprueba
     creado = db.Column(db.DateTime, nullable=False, default=ahora, index=True)
     actualizado = db.Column(db.DateTime)
     usuario_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))

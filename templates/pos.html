@@ -480,7 +480,7 @@ async function revisarWompi() {
     $('w-listo').style.display = ''; $('w-listo').focus(); pintarPagos(); return;
   }
   if (j && ['DECLINED', 'VOIDED', 'ERROR'].includes(j.estado)) {
-    $('w-estado').className = 'flash err'; $('w-estado').textContent = `Pago ${j.estado_txt.toLowerCase()}: no se cobró nada. Genera un QR nuevo o usa otro medio.`;
+    $('w-estado').className = 'flash err'; $('w-estado').textContent = `Pago ${j.estado_txt.toLowerCase()}${j.mensaje ? ' (' + j.mensaje + ')' : ''}: no se cobró nada. Cierra esta ventana y toca «Mostrar QR para pagar» para generar uno nuevo, o usa otro medio.`;
     Object.assign(wompiPago, { cobro: null, estado: null, datos: null }); pintarPagos(); return;
   }
   wompiTimer = setTimeout(revisarWompi, 3000);

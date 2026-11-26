@@ -634,10 +634,12 @@ def wompi_procesar(tx):
     if cobro is None:
         return None
     estado = str(tx.get("status") or "").upper()
+    mensaje = str(tx.get("status_message") or "")[:200] or None
     # el monto y la moneda deben ser los del cobro: si no, alguien alteró el pago
     if tx.get("currency", "COP") != "COP" or int(tx.get("amount_in_cents") or 0) != int(round(cobro.monto)) * 100:
         print(f"wompi: monto distinto en {cobro.referencia}: {tx.get('amount_in_cents')}", flush=True)
         estado = "ERROR"
+        mensaje = f"El monto pagado ({int(tx.get('amount_in_cents') or 0) // 100}) no es el del cobro"
     if cobro.aprobado and estado != "VOIDED":   # aprobado ya no cambia (salvo anulación en Wompi)
         return cobro
     cobro.tx_id = str(tx.get("id") or cobro.tx_id or "")[:60] or None
@@ -645,6 +647,7 @@ def wompi_procesar(tx):
     anterior, cobro.estado = cobro.estado, (estado if estado in ("PENDING", "APPROVED", "DECLINED", "VOIDED", "ERROR")
                                             else cobro.estado)
     cobro.actualizado = ahora()
+    cobro.mensaje = mensaje if cobro.estado != "APPROVED" else None
     if cobro.estado == "APPROVED" and anterior != "APPROVED":
         import wompi as wp
         metodo = wp.METODOS.get(cobro.metodo or "", cobro.metodo or "")

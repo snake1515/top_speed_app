@@ -73,7 +73,7 @@ document.getElementById('gps').addEventListener('click', e => { const b = e.targ
       <tbody>{% for c in w.cobros %}<tr><td>{{ c.creado|fh }}</td><td class="mono">{{ c.referencia }}{% if c.tx_id %}<br><small class="muted">{{ c.tx_id }}</small>{% endif %}</td>
         <td>{% if c.tipo == 'pedido' and c.pedido %}<a href="{{ url_for('pedido_detalle', pid=c.pedido_id) }}">Pedido {{ c.pedido.folio }}</a>{% else %}Caja{% if c.usuario %} · {{ c.usuario.nombre }}{% endif %}{% endif %}{% if c.venta_id %} · <a href="{{ url_for('venta_detalle', vid=c.venta_id) }}">venta</a>{% endif %}</td>
         <td class="num">{{ c.monto|pesos }}</td>
-        <td><span class="badge {{ 'ok' if c.estado == 'APPROVED' else 'red' if c.estado in ('DECLINED','ERROR','VOIDED') }}">{{ ESTADOS_WOMPI.get(c.estado, c.estado) }}</span>{% if c.metodo %} <small class="muted">{{ METODOS_WOMPI.get(c.metodo, c.metodo) }}</small>{% endif %}{% if c.aprobado and not c.venta_id %}<br><small class="neg">Aprobado sin venta</small>{% endif %}</td></tr>{% endfor %}</tbody>
+        <td><span class="badge {{ 'ok' if c.estado == 'APPROVED' else 'red' if c.estado in ('DECLINED','ERROR','VOIDED') }}">{{ ESTADOS_WOMPI.get(c.estado, c.estado) }}</span>{% if c.metodo %} <small class="muted">{{ METODOS_WOMPI.get(c.metodo, c.metodo) }}</small>{% endif %}{% if c.mensaje %}<br><small class="neg">{{ c.mensaje }}</small>{% endif %}{% if c.aprobado and not c.venta_id %}<br><small class="neg">Aprobado sin venta</small>{% endif %}</td></tr>{% endfor %}</tbody>
     </table></div>
     {% endif %}
   </div>

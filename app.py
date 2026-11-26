@@ -4065,7 +4065,7 @@ def pos_wompi_estado(cid):
             services.wompi_procesar(tx)
         db.session.commit()
     return jsonify(id=c.id, estado=c.estado, estado_txt=wompi.ESTADOS.get(c.estado, c.estado), valor=c.monto,
-                   tx=c.tx_id or "", metodo=wompi.METODOS.get(c.metodo or "", c.metodo or ""),
+                   tx=c.tx_id or "", metodo=wompi.METODOS.get(c.metodo or "", c.metodo or ""), mensaje=c.mensaje or "",
                    usado=bool(c.venta_id))
 
 
