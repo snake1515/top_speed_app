@@ -40,6 +40,7 @@
       <span class="badge ok">{{ 'Disponible' if disp > 3 else 'Últimas ' ~ (disp|cant) ~ ' unidades' }}</span>
       <div class="s-qty"><label for="qty" style="margin:0">Cantidad</label><input class="input" id="qty" type="number" min="1" max="{{ disp|int }}" value="1"></div>
       <button class="btn lg" type="button" data-qty="qty" data-add='{{ {"id": p.id, "v": var_n, "nombre": nom, "codigo": cod or p.codigo, "precio": p.precio_detal, "img": img, "disp": disp}|tojson|forceescape }}'>Agregar al carrito</button>
+      {% with clase_pagos='mini' %}{% include "_medios_pago.html" %}{% endwith %}
     {% else %}
       <span class="badge dark">Agotado</span>
       <p>Escríbenos y te avisamos cuando llegue.</p>

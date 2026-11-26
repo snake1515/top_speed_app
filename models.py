@@ -138,6 +138,10 @@ class Config(db.Model):
     logo = deferred(db.Column(db.LargeBinary))
     logo_mime = db.Column(db.String(40))
     logo_v = db.Column(db.Integer, default=0)
+    # sello oficial de medios de pago (imagen que Wompi entrega a sus comercios) para la tienda
+    sello_pagos = db.Column(db.LargeBinary)
+    sello_pagos_mime = db.Column(db.String(40))
+    sello_pagos_v = db.Column(db.Integer, default=0)
     ancho_ticket = db.Column(db.Integer, default=80)  # 58 u 80 mm
     lat = db.Column(db.Float)   # ubicación del local: punto de partida de las rutas
     lng = db.Column(db.Float)

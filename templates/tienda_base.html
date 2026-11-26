@@ -47,6 +47,7 @@
       {% if cfg.whatsapp %}<a class="btn ok" href="https://wa.me/{{ '57' ~ cfg.whatsapp if cfg.whatsapp|length == 10 else cfg.whatsapp }}" target="_blank" rel="noopener">WhatsApp</a>{% endif %}
     </div>
   </div>
+  <div class="s-wrap">{% with clase_pagos='oscuro', pie_pagos=true %}{% include "_medios_pago.html" %}{% endwith %}</div>
 </footer>
 
 <!-- carrito -->
@@ -57,6 +58,7 @@
   <div class="s-drawer-f">
     <div class="sum-row big"><span>Total</span><span id="c-total">$ 0</span></div>
     <button class="btn lg" style="width:100%" id="ir-pedido" type="button">Hacer pedido</button>
+    {% with clase_pagos='mini' %}{% include "_medios_pago.html" %}{% endwith %}
     <p class="hint" style="text-align:center">Te confirmamos disponibilidad y forma de pago por WhatsApp.</p>
   </div>
 </aside>

@@ -16,7 +16,7 @@
     <form method="post" action="{{ url_for('tienda_pagar_pedido', token=p.token) }}" style="margin:12px 0">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <button class="btn lg ok" style="width:100%">💳 Pagar ahora en línea</button>
-      <p class="hint" style="text-align:center">Tarjeta débito o crédito, PSE, Nequi o Bancolombia · pago seguro con Wompi.</p>
+      {% with clase_pagos='mini' %}{% include "_medios_pago.html" %}{% endwith %}
     </form>
     {% if cobro and cobro.estado == 'PENDING' and cobro.tx_id %}<div class="flash warn">Tienes un pago en proceso. Si ya pagaste, espera unos minutos antes de intentar de nuevo.</div>{% endif %}
     {% endif %}

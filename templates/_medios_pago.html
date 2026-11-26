@@ -1,0 +1,15 @@
+{# Medios de pago de la tienda: sello oficial de Wompi si se subió en Configuración; si no, etiquetas. #}
+{% if PAGO_EN_LINEA %}
+<div class="s-pagos {{ clase_pagos|default('') }}">
+  <div class="s-pagos-t">🔒 Paga seguro en línea{% if not cfg.sello_pagos %} con Wompi{% endif %}</div>
+  {% if cfg.sello_pagos %}
+    <img class="s-pagos-img" src="{{ url_for('sello_pagos', v=cfg.sello_pagos_v) }}" alt="Medios de pago: tarjetas Visa, Mastercard y American Express, PSE, Nequi y Botón Bancolombia" loading="lazy">
+  {% else %}
+    <div class="s-pagos-chips">
+      <span>💳 Tarjetas crédito y débito: Visa · Mastercard · American Express</span>
+      <span>🏦 PSE</span><span>📱 Nequi</span><span>🟡 Botón Bancolombia</span>
+    </div>
+  {% endif %}
+  {% if pie_pagos|default(false) %}<div class="s-pagos-n">También puedes pagar en el local o contra entrega.</div>{% endif %}
+</div>
+{% endif %}

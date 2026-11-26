@@ -94,7 +94,7 @@ document.getElementById('gps').addEventListener('click', e => { const b = e.targ
     <button class="btn">Guardar</button>
   </form>
 
-  <form class="card" method="post" id="tienda">
+  <form class="card" method="post" id="tienda" enctype="multipart/form-data">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="seccion" value="tienda">
     <h2 style="margin-bottom:12px">Tienda online</h2>
     <label class="check"><input type="checkbox" name="tienda_activa" value="1" {{ 'checked' if cfg.tienda_activa }}> Tienda abierta al público</label>
@@ -102,6 +102,11 @@ document.getElementById('gps').addEventListener('click', e => { const b = e.targ
     <div class="field" style="margin-top:10px"><label>Mensaje de bienvenida</label><input class="input" name="tienda_mensaje" value="{{ cfg.tienda_mensaje or '' }}"></div>
     <div class="field"><label>Información de envíos</label><textarea class="input" name="tienda_envio" rows="2">{{ cfg.tienda_envio or '' }}</textarea></div>
     <div class="field"><label>Horas que se aparta el stock de un pedido</label><input class="input" name="reserva_horas" value="{{ cfg.reserva_horas }}" style="max-width:120px"></div>
+    <div class="field"><label>Sello de medios de pago (logos de las tarjetas)</label>
+      {% if cfg.sello_pagos %}<img src="{{ url_for('sello_pagos', v=cfg.sello_pagos_v) }}" alt="" style="max-width:340px;width:100%;display:block;margin:4px 0 6px;border:1px solid var(--line);border-radius:8px;background:#fff;padding:4px">
+        <label class="check"><input type="checkbox" name="quitar_sello" value="1"> Quitar el sello</label>{% endif %}
+      <input class="input" type="file" name="sello_pagos" accept="image/png,image/jpeg,image/webp,image/svg+xml">
+      <div class="hint">Sube la imagen oficial que da Wompi a sus comercios (Manual de uso digital → «Logotipo + franquicias»: Visa, Mastercard, American Express, PSE, Nequi, Botón Bancolombia). Sale en el pie de la tienda, en cada producto, en el carrito y al pagar el pedido. Mientras no la subas, la tienda muestra los medios en texto. Solo se ve si Wompi está activo.</div></div>
     <h3 style="margin:14px 0 6px">Horario del local</h3>
     <div class="form-row c3">
       <div class="field"><label>Lunes a viernes</label><input class="input" name="horario_lv" value="{{ cfg.horario_lv or '' }}" placeholder="08:00-18:00"></div>

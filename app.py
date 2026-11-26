@@ -334,6 +334,7 @@ def _aviso_cambios(resp):
 def contexto():
     cfg = config()
     extra = {"cfg": cfg, "csrf_token": csrf_token, "STATIC_V": STATIC_V, "pesos": pesos, "cant": cant,
+             "PAGO_EN_LINEA": wompi.activo(),
              "ROLES": ROLES, "LISTAS_PRECIO": LISTAS_PRECIO, "TIPOS_MEDIO": TIPOS_MEDIO}
     if current_user.is_authenticated:
         extra["TURNO"] = turno_abierto()
@@ -429,6 +430,17 @@ def salud():
 
 
 # ================================================================ archivos
+@app.route("/sello-pagos")
+def sello_pagos():
+    """Sello oficial de medios de pago que se subió en Configuración (se muestra en la tienda)."""
+    cfg = config()
+    if not cfg.sello_pagos:
+        abort(404)
+    r = send_file(BytesIO(cfg.sello_pagos), mimetype=cfg.sello_pagos_mime or "image/png")
+    r.headers["Cache-Control"] = "public, max-age=2592000"
+    return r
+
+
 @app.route("/logo")
 def logo():
     cfg = config()
@@ -3298,6 +3310,18 @@ def configuracion():
             cfg.margen_mayor = pct(f.get("margen_mayor"), 20)
             cfg.margen_taller = pct(f.get("margen_taller"), 25)
         elif sec == "tienda":
+            arch = request.files.get("sello_pagos")
+            if f.get("quitar_sello"):
+                cfg.sello_pagos, cfg.sello_pagos_mime = None, None
+                cfg.sello_pagos_v = (cfg.sello_pagos_v or 0) + 1
+            elif arch and arch.filename:
+                datos_img = arch.read()
+                mime = (arch.mimetype or "").lower()
+                if mime not in ("image/png", "image/jpeg", "image/webp", "image/svg+xml") or len(datos_img) > 3_000_000:
+                    flash("El sello de medios de pago debe ser una imagen PNG, JPG, WEBP o SVG de máximo 3 MB.", "err")
+                    return redirect(url_for("configuracion") + "#tienda")
+                cfg.sello_pagos, cfg.sello_pagos_mime = datos_img, mime
+                cfg.sello_pagos_v = (cfg.sello_pagos_v or 0) + 1
             cfg.tienda_activa = bool(f.get("tienda_activa"))
             cfg.tienda_muestra_agotados = bool(f.get("tienda_muestra_agotados"))
             cfg.tienda_mensaje = (f.get("tienda_mensaje") or "").strip()[:300] or None

@@ -163,3 +163,17 @@ html { scroll-behavior: smooth; }
   .s-mapa iframe { height: 230px; }
   .s-cta .btn { flex: 1 1 auto; text-align: center; }
 }
+
+/* medios de pago (sello oficial de Wompi o etiquetas) */
+.s-pagos { margin: 14px 0 4px; text-align: center; }
+.s-pagos-t { font-size: .8rem; font-weight: 700; color: #555; margin-bottom: 6px; }
+.s-pagos-img { max-width: 100%; width: 520px; height: auto; display: block; margin: 0 auto; border-radius: 8px; }
+.s-pagos-chips { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; }
+.s-pagos-chips span { font-size: .76rem; padding: 4px 9px; border-radius: 999px; background: #f2f2ef; border: 1px solid #e3e3df; color: #222; }
+.s-pagos-n { font-size: .74rem; color: #777; margin-top: 6px; }
+.s-pagos.mini { margin-top: 10px; }
+.s-pagos.mini .s-pagos-img { width: 320px; }
+.s-pagos.oscuro { border-top: 1px solid rgba(255,255,255,.12); padding-top: 14px; margin-top: 16px; }
+.s-pagos.oscuro .s-pagos-t, .s-pagos.oscuro .s-pagos-n { color: #bbb; }
+.s-pagos.oscuro .s-pagos-chips span { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.15); color: #eee; }
+.s-pagos.oscuro .s-pagos-img { background: #fff; padding: 6px; }
