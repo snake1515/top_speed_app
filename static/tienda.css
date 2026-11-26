@@ -177,3 +177,4 @@ html { scroll-behavior: smooth; }
 .s-pagos.oscuro .s-pagos-t, .s-pagos.oscuro .s-pagos-n { color: #bbb; }
 .s-pagos.oscuro .s-pagos-chips span { background: rgba(255,255,255,.08); border-color: rgba(255,255,255,.15); color: #eee; }
 .s-pagos.oscuro .s-pagos-img { background: #fff; padding: 6px; }
+.s-pagos-sello { display: block; width: 260px; max-width: 70%; height: auto; margin: 0 auto 10px; opacity: .9; }

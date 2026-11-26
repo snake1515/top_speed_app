@@ -1,14 +1,15 @@
-{# Medios de pago de la tienda: sello oficial de Wompi si se subió en Configuración; si no, etiquetas. #}
+{# Medios de pago de la tienda: sello subido en Configuración o, si no, los sellos oficiales del manual de Wompi. #}
 {% if PAGO_EN_LINEA %}
 <div class="s-pagos {{ clase_pagos|default('') }}">
-  <div class="s-pagos-t">🔒 Paga seguro en línea{% if not cfg.sello_pagos %} con Wompi{% endif %}</div>
+  {% if clase_pagos|default('') == 'oscuro' %}
+    <img class="s-pagos-sello" src="{{ url_for('static', filename='wompi/wompi-sello-blanco.webp') }}" alt="Plataforma de pago Wompi, una idea de Bancolombia" loading="lazy" width="900" height="166">
+  {% else %}
+    <div class="s-pagos-t">🔒 Paga seguro en línea</div>
+  {% endif %}
   {% if cfg.sello_pagos %}
     <img class="s-pagos-img" src="{{ url_for('sello_pagos', v=cfg.sello_pagos_v) }}" alt="Medios de pago: tarjetas Visa, Mastercard y American Express, PSE, Nequi y Botón Bancolombia" loading="lazy">
   {% else %}
-    <div class="s-pagos-chips">
-      <span>💳 Tarjetas crédito y débito: Visa · Mastercard · American Express</span>
-      <span>🏦 PSE</span><span>📱 Nequi</span><span>🟡 Botón Bancolombia</span>
-    </div>
+    <img class="s-pagos-img" src="{{ url_for('static', filename='wompi/wompi-medios.webp') }}" alt="Wompi: recibimos todos los medios de pago — Botón y QR Bancolombia, Nequi, corresponsal bancario, PSE, Daviplata, Visa, Mastercard y American Express" loading="lazy" width="1400" height="442">
   {% endif %}
   {% if pie_pagos|default(false) %}<div class="s-pagos-n">También puedes pagar en el local o contra entrega.</div>{% endif %}
 </div>
