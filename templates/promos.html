@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Promociones{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Promociones</h1><p>Arma una promo, elige a quién va (por moto, por lo que compraron o prospectos) y envíala por WhatsApp uno a uno.</p></div>
+  <div class="actions"><a class="btn" href="{{ url_for('promo_form') }}">＋ Nueva promo</a></div>
+</div>
+{% for p in lista %}
+<div class="card" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+  {% if p.imagen_mime %}<img src="{{ url_for('promo_imagen', token=p.token) }}?v={{ p.imagen_v }}" alt="" style="width:72px;height:72px;object-fit:cover;border-radius:8px">{% endif %}
+  <div style="flex:1;min-width:200px"><h2 style="margin:0"><a href="{{ url_for('promo_detalle', pid=p.id) }}">{{ p.titulo }}</a></h2>
+    <small class="muted">Creada el {{ p.creado|f }}{% if p.usuario %} por {{ p.usuario.nombre }}{% endif %} · {{ enviados.get(p.id, 0) }} enviado(s)</small>
+    <div class="muted" style="margin-top:4px;font-size:.9rem">{{ p.mensaje|truncate(140) }}</div></div>
+  <a class="btn wa" href="{{ url_for('promo_detalle', pid=p.id) }}">Enviar</a>
+</div>
+{% else %}
+<div class="card"><p class="empty">Aún no hay promociones. Crea la primera: por ejemplo «Llantas para GN125 con 10 % de descuento».</p></div>
+{% endfor %}
+{% endblock %}

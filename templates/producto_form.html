@@ -43,6 +43,7 @@
           <div class="field"><label>Ubicación en bodega</label><input class="input" name="ubicacion" value="{{ v('ubicacion') }}" placeholder="ej. E3-C2"></div>
           <div class="field"><label>Unidad</label><select class="input" name="unidad">{% for u in unidades %}<option {{ 'selected' if v('unidad', 'unidad') == u }}>{{ u }}</option>{% endfor %}</select></div>
           <div class="field"><label>Stock mínimo</label><input class="input" name="stock_minimo" value="{{ v('stock_minimo', 0)|replace('.0', '') }}" inputmode="decimal"><div class="hint">Avisa para reponer.</div></div>
+          <div class="field"><label>Recordar al cliente en (días)</label><input class="input" name="recordar_dias" value="{{ v('recordar_dias') or '' }}" inputmode="numeric" placeholder="ej. 25 para aceite"><div class="hint">Al venderlo a alguien con celular, la app avisa en <a href="/recordatorios" target="_blank">Recordatorios</a> cuando toque volver a escribirle. Vacío = no recordar.</div></div>
         </div>
         <div class="field"><label>Descripción (se ve en la tienda)</label><textarea class="input" name="descripcion" rows="3">{{ v('descripcion') }}</textarea></div>
       </div>

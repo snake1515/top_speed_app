@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="es"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{ p.titulo }} · {{ cfg.nombre }}</title>
+<meta property="og:title" content="{{ p.titulo }} · {{ cfg.nombre }}">
+<meta property="og:description" content="{{ cfg.eslogan or 'Repuestos para tu moto' }}">
+{% if p.imagen_mime %}<meta property="og:image" content="{{ url_for('promo_imagen', token=p.token, _external=True) }}?v={{ p.imagen_v }}">
+<meta property="og:image:type" content="image/jpeg">{% endif %}
+<meta property="og:type" content="website">
+<style>
+  body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background: #111; color: #fff; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+  img { max-width: min(100%, 720px); display: block; margin: 0 auto; }
+  .pie { padding: 18px; text-align: center; }
+  a.btn { display: inline-block; background: #25d366; color: #06301a; font-weight: 800; padding: 12px 20px; border-radius: 99px; text-decoration: none; margin: 6px; }
+  a.sec { background: #fff; color: #111; }
+</style></head>
+<body>
+  {% if p.imagen_mime %}<img src="{{ url_for('promo_imagen', token=p.token) }}?v={{ p.imagen_v }}" alt="{{ p.titulo }}">{% endif %}
+  <div class="pie">
+    <h1 style="margin:0 0 6px;font-size:1.3rem">{{ p.titulo }}</h1>
+    <p style="margin:0 0 10px;opacity:.8">{{ cfg.nombre }}{% if cfg.direccion %} · {{ cfg.direccion }}{% endif %}</p>
+    {% if wa %}<a class="btn" href="https://wa.me/{{ wa }}?text={{ ('Hola, vi la promo: ' ~ p.titulo)|urlencode }}">Pedir por WhatsApp</a>{% endif %}
+    <a class="btn sec" href="{{ url_for('tienda') }}">Ver la tienda</a>
+  </div>
+</body></html>

@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}{{ p.titulo }}{% endblock %}
+{% block content %}
+{% set pendientes = lista|rejectattr('enviado')|list %}
+<div class="page-head">
+  <div><h1>{{ p.titulo }}</h1>
+    <p>{{ lista|length }} persona(s) ·
+      {% if f.clientes and f.prospectos %}clientes y prospectos{% elif f.clientes %}solo clientes{% else %}solo prospectos{% endif %}
+      {% if f.motos %} · motos: {{ f.motos|join(', ') }}{% endif %}
+      {% if cat %} · compraron {{ cat.nombre }}{% endif %}{% if f.producto %} · compraron «{{ f.producto }}»{% endif %}
+      {% if f.compro_dias %} · últimos {{ f.compro_dias }} días{% endif %}
+      {% if f.interes %} · interés «{{ f.interes }}»{% endif %}</p></div>
+  <div class="actions">
+    <a class="btn sec sm" href="{{ url_for('promo_form', pid=p.id) }}">Editar</a>
+    <a class="btn sec sm" href="{{ url_for('promo_excel', pid=p.id) }}">⬇ Excel</a>
+    <form method="post" action="{{ url_for('promo_archivar', pid=p.id) }}" onsubmit="return confirm('¿Archivar esta promo?')"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn ghost sm">Archivar</button></form>
+  </div>
+</div>
+
+<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr));align-items:start">
+  <div class="card">
+    <h2>Mensaje</h2>
+    <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px">
+      {% if p.imagen_mime %}<img class="promo-img" id="promo-img" src="{{ url_for('promo_imagen', token=p.token) }}?v={{ p.imagen_v }}" alt="" crossorigin="anonymous">{% endif %}
+      <div class="msg-prev" style="flex:1">{{ p.mensaje }}</div>
+    </div>
+  </div>
+
+  <div class="card cadena" id="cadena">
+    <h2>▶ Enviar en cadena</h2>
+    <div class="barra"><i id="barra"></i></div>
+    <p class="muted" id="avance"></p>
+    <label style="display:flex;gap:6px;align-items:center;font-size:.88rem;margin:4px 0 8px"><input type="checkbox" id="incl-rec"> Incluir a quienes recibieron otra promo hace poco</label>
+    <div id="actual"></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head"><h2>Destinatarios</h2><small class="muted">{{ lista|length - pendientes|length }} enviado(s) de {{ lista|length }}</small></div>
+  {% if lista %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Nombre</th><th>Moto</th><th>Tipo</th><th>Detalle</th><th></th></tr></thead>
+    <tbody>{% for d in lista %}
+      <tr id="d{{ loop.index0 }}" class="{{ 'fila-hecha' if d.enviado }}">
+        <td><b>{{ d.nombre or 'Sin nombre' }}</b><br><small class="muted">{{ d.telefono }}</small></td>
+        <td>{{ d.moto or '—' }}</td>
+        <td>{% if d.tipo == 'cliente' %}<span class="badge blue">Cliente</span>{% else %}<span class="badge yellow">Prospecto</span>{% endif %}
+          {% if d.reciente and not d.enviado %}<br><span class="badge warn">promo reciente</span>{% endif %}</td>
+        <td><small>{{ d.detalle }}</small></td>
+        <td style="white-space:nowrap" class="acc">
+          <button class="btn wa sm" type="button" data-i="{{ loop.index0 }}">WhatsApp</button>
+          {% if d.enviado %}<span class="wa-hecho">✓ enviado</span>{% endif %}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% else %}
+  <p class="empty">Nadie cumple esos filtros. <a href="{{ url_for('promo_form', pid=p.id) }}">Cambia a quién va</a>: por ejemplo, quita la moto o incluye prospectos.</p>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}<script>
+const GENTE = {{ lista|tojson }};
+const URL_ENV = '{{ url_for('promo_enviado', pid=p.id) }}';
+const TIENE_IMG = {{ 'true' if p.imagen_mime else 'false' }};
+let pos = 0;
+
+async function copiarImagen() {
+  if (!TIENE_IMG || !navigator.clipboard || !window.ClipboardItem) return false;
+  try {
+    const img = document.getElementById('promo-img');
+    const cv = document.createElement('canvas'); cv.width = img.naturalWidth; cv.height = img.naturalHeight;
+    cv.getContext('2d').drawImage(img, 0, 0);
+    const blob = await new Promise(r => cv.toBlob(r, 'image/png'));
+    await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+    return true;
+  } catch (e) { return false; }
+}
+async function marcar(i, deshacer) {
+  const d = GENTE[i];
+  const j = await postJSON(URL_ENV, { tel_norm: d.tel_norm, nombre: d.nombre, tipo: d.tipo, ref_id: d.ref_id, deshacer: !!deshacer });
+  if (!j.ok) return;
+  d.enviado = !deshacer;
+  const tr = document.getElementById('d' + i);
+  tr.classList.toggle('fila-hecha', d.enviado);
+  const acc = tr.querySelector('.acc'); acc.querySelector('.wa-hecho')?.remove();
+  if (d.enviado) acc.insertAdjacentHTML('beforeend', '<span class="wa-hecho">✓ enviado</span>');
+  pintar();
+}
+async function abrir(i) {
+  const d = GENTE[i];
+  const copio = await copiarImagen();
+  abrirWA(d.tel_norm, d.mensaje);
+  return copio;
+}
+function cola() {
+  const rec = document.getElementById('incl-rec').checked;
+  return GENTE.map((d, i) => i).filter(i => !GENTE[i].enviado && (rec || !GENTE[i].reciente));
+}
+function pintar(msgExtra) {
+  const q = cola(), total = GENTE.length, hechos = GENTE.filter(d => d.enviado).length;
+  document.getElementById('barra').style.width = (total ? 100 * hechos / total : 0) + '%';
+  document.getElementById('avance').textContent = `${hechos} enviado(s) de ${total} · faltan ${q.length}`;
+  const el = document.getElementById('actual');
+  if (!q.length) { el.innerHTML = total ? '<p><b>¡Listo! 🎉</b> No queda nadie pendiente en esta promo.</p>' : ''; return; }
+  if (!q.includes(pos)) pos = q[0];
+  const d = GENTE[pos];
+  el.innerHTML = `<div class="quien">${esc(d.nombre || 'Sin nombre')}</div>
+    <div class="muted">${esc(d.telefono)}${d.moto ? ' · ' + esc(d.moto) : ''} · ${d.tipo === 'cliente' ? 'Cliente' : 'Prospecto'}</div>
+    <div class="msg" style="margin-top:8px">${esc(d.mensaje)}</div>
+    <div class="pasos">
+      <button class="btn wa" id="c-abrir" type="button">1 · Abrir chat${TIENE_IMG ? ' y copiar imagen' : ''}</button>
+      <button class="btn ok" id="c-ok" type="button">2 · ✓ Enviado, siguiente</button>
+      <button class="btn ghost" id="c-saltar" type="button">Saltar</button>
+    </div>
+    <div class="hint" id="c-hint" style="margin-top:8px">${msgExtra || (TIENE_IMG ? 'En WhatsApp Web: pega la imagen con <b>Ctrl + V</b> y envíala, luego presiona <b>Enter</b> para el texto.' : 'En WhatsApp Web presiona <b>Enter</b> para enviar y vuelve aquí.')}</div>`;
+  document.getElementById('c-abrir').onclick = async () => {
+    const copio = await abrir(pos);
+    if (TIENE_IMG) document.getElementById('c-hint').innerHTML = copio ? '✓ Imagen copiada. En WhatsApp Web: <b>Ctrl + V</b>, envía la imagen y luego <b>Enter</b> para el texto.' : 'No se pudo copiar la imagen; arrástrala desde aquí al chat.';
+  };
+  document.getElementById('c-ok').onclick = async () => { const i = pos; const q2 = cola(); pos = q2[q2.indexOf(i) + 1] ?? q2[0]; await marcar(i); };
+  document.getElementById('c-saltar').onclick = () => { const q2 = cola(); pos = q2[(q2.indexOf(pos) + 1) % q2.length]; pintar(); };
+}
+document.querySelectorAll('[data-i]').forEach(b => b.addEventListener('click', async () => {
+  const i = +b.dataset.i; await abrir(i);
+  if (!GENTE[i].enviado) await marcar(i);
+}));
+document.getElementById('incl-rec').addEventListener('change', () => pintar());
+pintar();
+</script>{% endblock %}

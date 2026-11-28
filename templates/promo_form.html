@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Editar promo' if p.id else 'Nueva promo' }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ p.titulo if p.id else 'Nueva promo' }}</h1><p>Escribe la promo y elige a quién va. Al guardar ves la lista de personas, cada una con su botón de WhatsApp.</p></div></div>
+<form method="post" enctype="multipart/form-data" id="f-promo">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr));align-items:start">
+    <div class="card">
+      <h2>1. La promo</h2>
+      <div class="field"><label>Título (solo para ti)</label><input class="input" name="titulo" value="{{ p.titulo or '' }}" required placeholder="Llantas GN125 noviembre"></div>
+      <div class="field"><label>Mensaje</label>
+        <textarea class="input" name="mensaje" id="mensaje" rows="7" required placeholder="Hola {nombre} 👋 Esta semana en Moto Speed: llantas para tu {moto} con 10 % de descuento…">{{ p.mensaje or '' }}</textarea>
+        <div class="hint"><code>{nombre}</code> = primer nombre · <code>{moto}</code> = su moto («tu moto» si no se sabe). Puedes usar emojis.</div></div>
+      <div class="field"><label>Imagen (opcional)</label>
+        {% if p.imagen_mime %}<img class="promo-img" src="{{ url_for('promo_imagen', token=p.token) }}?v={{ p.imagen_v }}" alt="" style="margin-bottom:6px">
+        <label style="font-weight:400"><input type="checkbox" name="quitar_imagen"> Quitar imagen</label>{% endif %}
+        <input class="input" type="file" name="imagen" accept="image/*">
+        <div class="hint">Al enviar, la app copia la imagen: en WhatsApp Web la pegas con <b>Ctrl + V</b>.</div></div>
+      <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" name="enlace" {{ 'checked' if filtros.enlace }}> Agregar al mensaje un enlace a la imagen (WhatsApp muestra la foto en miniatura)</label>
+      <div style="margin-top:12px"><small class="muted">Vista previa:</small><div class="msg-prev" id="prev"></div></div>
+    </div>
+
+    <div class="card">
+      <h2>2. ¿A quién va?</h2>
+      <div class="chips" style="margin:6px 0 12px">
+        <label><input type="checkbox" name="clientes" {{ 'checked' if filtros.clientes }}> Clientes (los que han comprado)</label>
+        <label><input type="checkbox" name="prospectos" {{ 'checked' if filtros.prospectos }}> Prospectos de redes</label>
+      </div>
+      <div class="field"><label>Motos</label><input class="input" name="motos" value="{{ filtros.motos|join(', ') }}" list="motos-lista" placeholder="GN125, CB125F (vacío = todas)">
+        <datalist id="motos-lista">{% for m in motos %}<option value="{{ m }}">{% endfor %}</datalist>
+        <div class="hint">Separa con comas. «GN» también encuentra «GN125». Quien no tiene moto registrada no sale si escribes alguna.</div></div>
+      <fieldset style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:12px">
+        <legend style="padding:0 6px;font-weight:700">Solo clientes que compraron…</legend>
+        <div class="form-row">
+          <div class="field"><label>De la categoría</label><select class="input" name="categoria_id"><option value="">Cualquiera</option>{% for c in categorias %}<option value="{{ c.id }}" {{ 'selected' if filtros.categoria_id == c.id }}>{{ c.nombre }}</option>{% endfor %}</select></div>
+          <div class="field"><label>Un repuesto que diga</label><input class="input" name="producto" value="{{ filtros.producto or '' }}" placeholder="aceite, llanta, kit…"></div>
+          <div class="field"><label>En los últimos (días)</label><input class="input" name="compro_dias" value="{{ filtros.compro_dias or '' }}" inputmode="numeric" placeholder="todos"></div>
+        </div>
+      </fieldset>
+      <fieldset style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;margin-bottom:12px">
+        <legend style="padding:0 6px;font-weight:700">Prospectos</legend>
+        <div class="field"><label>Interés</label><input class="input" name="interes" value="{{ filtros.interes or '' }}" list="intereses" placeholder="llantas (vacío = todos)"><datalist id="intereses">{% for i in intereses %}<option value="{{ i }}">{% endfor %}</datalist></div>
+        <div class="chips">{% for k, v in estados.items() if k != 'descartado' %}<label><input type="checkbox" name="estados" value="{{ k }}" {{ 'checked' if k in filtros.estados }}> {{ v }}</label>{% endfor %}</div>
+      </fieldset>
+      <div class="field"><label>No repetir a quien recibió una promo en los últimos (días)</label><input class="input" name="excluir_dias" value="{{ filtros.excluir_dias }}" inputmode="numeric" style="max-width:120px">
+        <div class="hint">Así nadie recibe mensajes seguidos. Esas personas igual aparecen en la lista, marcadas.</div></div>
+      <div class="note" id="conteo">Calculando…</div>
+    </div>
+  </div>
+  <button class="btn lg" style="margin-top:4px">Guardar y ver la lista</button>
+  <a class="btn sec" href="{{ url_for('promo_detalle', pid=p.id) if p.id else url_for('promos') }}">Cancelar</a>
+</form>
+{% endblock %}
+{% block scripts %}<script>
+const form = document.getElementById('f-promo');
+function vista() {
+  document.getElementById('prev').textContent = (document.getElementById('mensaje').value || 'Escribe el mensaje…')
+    .replaceAll('{nombre}', 'Juan').replaceAll('{moto}', 'GN125');
+}
+let tc;
+function contar() {
+  clearTimeout(tc);
+  tc = setTimeout(async () => {
+    const fd = new FormData(form); fd.delete('imagen');
+    const r = await fetch('{{ url_for('promo_contar') }}', { method: 'POST', body: fd, headers: { 'X-CSRF-Token': CSRF } });
+    const j = await r.json();
+    document.getElementById('conteo').innerHTML = `<b>${j.total}</b> persona(s): ${j.clientes} cliente(s) y ${j.prospectos} prospecto(s)`
+      + (j.recientes ? ` · ${j.recientes} ya recibieron una promo hace poco` : '');
+  }, 350);
+}
+document.getElementById('mensaje').addEventListener('input', vista);
+form.addEventListener('input', e => { if (e.target.name !== 'mensaje' && e.target.type !== 'file') contar(); });
+form.addEventListener('change', e => { if (e.target.type === 'checkbox' || e.target.tagName === 'SELECT') contar(); });
+vista(); contar();
+</script>{% endblock %}

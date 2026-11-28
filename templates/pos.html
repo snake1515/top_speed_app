@@ -40,7 +40,9 @@
     <div class="form-row" style="grid-template-columns:1fr 1fr;gap:8px;margin-bottom:6px">
       <select class="input" id="lista">{% for k, v in LISTAS_PRECIO.items() %}<option value="{{ k }}">Precio {{ v|lower }}</option>{% endfor %}</select>
       <input class="input" id="cli-tel" placeholder="Celular para el recibo">
-      <input class="input" id="cli-doc" placeholder="Cédula / NIT del cliente" style="grid-column:1 / -1">
+      <input class="input" id="cli-doc" placeholder="Cédula / NIT">
+      <input class="input" id="cli-moto" placeholder="🏍 Moto (ej. CB125F)" list="motos-lista" autocomplete="off">
+      <datalist id="motos-lista">{% for m in motos %}<option value="{{ m }}">{% endfor %}</datalist>
     </div>
     <div id="carrito" class="cart-items"></div>
     <div class="sum-row" style="margin-top:8px"><span>Subtotal</span><b id="subtotal">$ 0</b></div>
@@ -184,7 +186,7 @@ function totales() {
   return { sub, desc, total: Math.round(sub - desc) };
 }
 function guardarBorrador() {
-  try { localStorage.setItem(CLAVE, JSON.stringify({ carrito, cliente, lista: $('lista').value, desc: $('descuento').value, tel: $('cli-tel').value, doc: $('cli-doc').value })); } catch (e) {}
+  try { localStorage.setItem(CLAVE, JSON.stringify({ carrito, cliente, lista: $('lista').value, desc: $('descuento').value, tel: $('cli-tel').value, doc: $('cli-doc').value, moto: $('cli-moto').value })); } catch (e) {}
 }
 function pintarCarrito() {
   const box = $('carrito');
@@ -246,6 +248,7 @@ $('carrito').addEventListener('change', e => {
   pintarCarrito();
 });
 $('descuento').addEventListener('input', () => { const t = totales(); $('total').textContent = COP(t.total); guardarBorrador(); });
+['cli-tel', 'cli-doc', 'cli-moto'].forEach(id => $(id).addEventListener('change', guardarBorrador));
 $('lista').addEventListener('change', () => { carrito.forEach(it => { if (!it.manual) it.precio = precioLista(it.p); }); pintarCarrito(); });
 $('vaciar').addEventListener('click', () => { if (carrito.length && !confirm('¿Vaciar la venta?')) return; limpiar(); });
 
@@ -392,6 +395,7 @@ function usarCliente(c) {
     $('lista').value = c.lista || 'detal'; $('lista').dispatchEvent(new Event('change'));
     if (c.telefono) $('cli-tel').value = c.telefono;
     $('cli-doc').value = c.documento || '';
+    if (c.moto) $('cli-moto').value = c.moto;
   }
   $('cli-res').innerHTML = ''; guardarBorrador();
 }
@@ -412,7 +416,7 @@ $('cli-res').addEventListener('click', e => {
   usarCliente(JSON.parse(el.dataset.c));
 });
 $('nc-guardar').addEventListener('click', async () => {
-  const j = await postJSON('{{ url_for('api_cliente_nuevo') }}', { nombre: $('nc-nombre').value, documento: $('nc-doc').value, telefono: $('nc-tel').value, lista: $('nc-lista').value });
+  const j = await postJSON('{{ url_for('api_cliente_nuevo') }}', { nombre: $('nc-nombre').value, documento: $('nc-doc').value, telefono: $('nc-tel').value, lista: $('nc-lista').value, moto: $('cli-moto').value.trim() });
   if (!j.ok) { $('nc-err').innerHTML = j.errores.map(m => `<div class="flash err">${esc(m)}</div>`).join(''); return; }
   cerrar('m-cli'); usarCliente(j.cliente);
 });
@@ -573,7 +577,7 @@ function datosVenta() {
     items: carrito.map(it => ({ producto_id: it.p.id, cantidad: it.cantidad, precio: it.precio, arrastre: !!it.arrastre, compra: it.compra || null })),
     descuento: t.desc, lista: $('lista').value, cliente_id: cliente ? cliente.id : null,
     cliente_nombre: cliente ? '' : ($('cli-q').value.trim() || (PRECARGA && PRECARGA.cliente_nombre) || ''), cliente_doc: $('cli-doc').value.trim() || (PRECARGA && PRECARGA.cliente_doc) || '',
-    cliente_tel: $('cli-tel').value,
+    cliente_tel: $('cli-tel').value, moto: $('cli-moto').value.trim(),
     pedido_id: PRECARGA && PRECARGA.tipo === 'pedido' ? PRECARGA.id : null,
     cotizacion_id: PRECARGA && PRECARGA.tipo === 'cotizacion' ? PRECARGA.id : null,
   };
@@ -615,7 +619,7 @@ $('btn-cotizar').addEventListener('click', async () => {
   limpiar(true); location.href = j.url;
 });
 function limpiar(silencioso) {
-  carrito = []; cliente = null; usarCliente(null); $('cli-q').value = ''; $('cli-tel').value = ''; $('cli-doc').value = '';
+  carrito = []; cliente = null; usarCliente(null); $('cli-q').value = ''; $('cli-tel').value = ''; $('cli-doc').value = ''; $('cli-moto').value = '';
   $('descuento').value = ''; $('lista').value = 'detal'; $('c-nota').value = '';
   try { localStorage.removeItem(CLAVE); } catch (e) {}
   pintarCarrito();
@@ -642,7 +646,7 @@ document.addEventListener('keydown', e => {
     try {
       const b = JSON.parse(localStorage.getItem(CLAVE) || 'null');
       if (b && b.carrito && b.carrito.length) {
-        carrito = b.carrito; $('lista').value = b.lista || 'detal'; $('descuento').value = b.desc || ''; $('cli-tel').value = b.tel || ''; $('cli-doc').value = b.doc || '';
+        carrito = b.carrito; $('lista').value = b.lista || 'detal'; $('descuento').value = b.desc || ''; $('cli-tel').value = b.tel || ''; $('cli-doc').value = b.doc || ''; $('cli-moto').value = b.moto || '';
         if (b.cliente) usarCliente(b.cliente);
       }
     } catch (e) {}

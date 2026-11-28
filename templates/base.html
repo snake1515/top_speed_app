@@ -52,8 +52,12 @@
       <a href="{{ url_for('cotizaciones') }}" class="{{ 'on' if ep.startswith('cotizacion') }}"><span class="ico">✎</span>Cotizaciones</a>
       <a href="{{ url_for('cartera') }}" class="{{ 'on' if ep == 'cartera' }}"><span class="ico">⏳</span>Cartera (crédito)</a>
       <a href="{{ url_for('cuentas_por_pagar') }}" class="{{ 'on' if ep == 'cuentas_por_pagar' }}"><span class="ico">🧾</span>Cuentas por pagar</a>
-      <a href="{{ url_for('clientes') }}" class="{{ 'on' if ep.startswith('cliente') }}"><span class="ico">☺</span>Clientes</a>
       <a href="{{ url_for('tienda') }}" target="_blank"><span class="ico">↗</span>Tienda online</a>
+      <div class="nav-sep">Clientes y promos</div>
+      <a href="{{ url_for('clientes') }}" class="{{ 'on' if ep.startswith('cliente') }}"><span class="ico">☺</span>Clientes</a>
+      <a href="{{ url_for('recordatorios') }}" class="{{ 'on' if ep.startswith('recordatorio') }}"><span class="ico">⏰</span>Recordatorios{% if RECORDATORIOS_PEND %}<span class="cnt">{{ RECORDATORIOS_PEND }}</span>{% endif %}</a>
+      <a href="{{ url_for('prospectos') }}" class="{{ 'on' if ep.startswith('prospecto') }}"><span class="ico">📣</span>Prospectos de redes</a>
+      <a href="{{ url_for('promos') }}" class="{{ 'on' if ep.startswith('promo') }}"><span class="ico">🎯</span>Promociones</a>
       {% endif %}
       {% if current_user.es_preventista %}
       <a href="{{ url_for('mi_ruta') }}" class="pos-link">▶ Mi ruta de hoy</a>
@@ -116,6 +120,15 @@
     else if (s.includes(',')) s = s.replace(',', '.');
     else if ((s.match(/\./g) || []).length > 1 || /\.\d{3}$/.test(s)) s = s.replace(/\./g, '');
     const x = parseFloat(s); return isNaN(x) ? 0 : x; };
+  // abre el chat de WhatsApp con el mensaje escrito: en el computador en WhatsApp Web (siempre la misma pestaña), en el celular en la app
+  function abrirWA(tel, msg) {
+    const movil = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+    const t = String(tel || '').replace(/\D/g, ''), m = encodeURIComponent(msg || '');
+    const url = movil ? `https://wa.me/${t}?text=${m}` : `https://web.whatsapp.com/send?phone=${t}&text=${m}`;
+    const w = window.open(url, 'whatsapp');
+    if (!w) location.href = url;
+    return w;
+  }
   async function postJSON(url, data) {
     const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': CSRF }, body: JSON.stringify(data) });
     let j = {}; try { j = await r.json(); } catch (e) { j = { ok: false, errores: ['Error de conexión. Intenta de nuevo.'] }; }

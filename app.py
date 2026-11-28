@@ -32,6 +32,7 @@ from models import (CATEGORIAS_CAJA_MENOR, PagoCompra, separar_equivalencias, as
                     Proveedor, Turno, Usuario, Venta, ahora, config, db, semilla)
 import services
 import wompi
+import crm
 from models import CobroWompi
 from services import (ErrorNegocio, abrir_turno, anular_ajuste, anular_compra, anular_mov_caja,
                       anular_venta, cant, cerrar_turno, crear_pedido, devolver, guardar_cotizacion,
@@ -340,6 +341,8 @@ def contexto():
         extra["TURNO"] = turno_abierto()
         extra["PEDIDOS_PEND"] = Pedido.query.filter_by(estado="pendiente").count()
         extra["MENSAJES_PEND"] = mensajes_sin_leer(current_user).count()
+        if current_user.puede("cajero"):
+            extra["RECORDATORIOS_PEND"] = crm.recordatorios_vencidos().count()
         extra["IMPRIMIR_AUTO"] = session.pop("imprimir", None)
         extra["CAJON_AUTO"] = session.pop("abrir_cajon", None)
         if cfg.fe_activa and current_user.puede("cajero"):
@@ -730,6 +733,7 @@ def pos():
                 precarga["wompi"] = {"cobro": cobro.id, "medio_id": medio_w.id, "nombre": medio_w.nombre,
                                      "valor": cobro.monto, "tx": cobro.tx_id or ""}
     return render_template("pos.html", medios=medios, turno=turno_abierto(), precarga=precarga, wompi_activo=wompi.activo(),
+                           motos=crm.motos_conocidas(),
                            categorias=Categoria.query.order_by(Categoria.nombre).all(),
                            proveedores=Proveedor.query.filter_by(activo=True).order_by(Proveedor.nombre).all(),
                            destacados=[producto_json(p, ver_costo=current_user.ve_costos) for p in
@@ -746,7 +750,7 @@ def api_productos():
 
 def cliente_json(c):
     return {"id": c.id, "nombre": c.nombre, "documento": c.documento or "", "telefono": c.telefono or "",
-            "lista": c.lista, "cupo": c.cupo, "saldo": saldo_cliente(c)}
+            "lista": c.lista, "cupo": c.cupo, "saldo": saldo_cliente(c), "moto": c.moto or ""}
 
 
 @app.route("/api/clientes")
@@ -771,6 +775,7 @@ def api_cliente_nuevo():
     if doc and Cliente.query.filter_by(documento=doc).first():
         return jsonify(ok=False, errores=["Ya existe un cliente con ese documento."]), 400
     c = Cliente(nombre=nombre[:140], documento=doc, telefono=(d.get("telefono") or "").strip()[:40] or None,
+                moto=(d.get("moto") or "").strip()[:80] or None,
                 lista=d.get("lista") if d.get("lista") in LISTAS_PRECIO else "detal")
     db.session.add(c)
     db.session.commit()
@@ -791,7 +796,8 @@ def pos_venta():
                             cliente_nombre=d.get("cliente_nombre", ""), cliente_doc=d.get("cliente_doc", ""),
                             cliente_tel=d.get("cliente_tel", ""), lista=d.get("lista", "detal"),
                             descuento=n(d.get("descuento")), credito=bool(d.get("credito")), nota=d.get("nota", ""),
-                            pedido=pedido, cotizacion=cot if cot and cot.estado == "abierta" else None)
+                            pedido=pedido, cotizacion=cot if cot and cot.estado == "abierta" else None,
+                            moto=d.get("moto", ""))
         compras = services.compras_de_arrastre(v, current_user, d.get("items"))
         db.session.commit()
     except ErrorNegocio as e:
@@ -1659,6 +1665,7 @@ def cliente_form(cid=None):
             c.cupo = max(n(f.get("cupo")), 0)
             c.plazo_dias = max(int(n(f.get("plazo_dias"), 30)), 0)
         c.notas = (f.get("notas") or "").strip()[:300] or None
+        c.moto = (f.get("moto") or "").strip()[:80] or None
         if len(c.nombre) < 2:
             flash("Escribe el nombre.", "err")
         elif c.documento and Cliente.query.filter(Cliente.documento == c.documento, Cliente.id != (c.id or 0)).autoflush(False).first():
@@ -1668,7 +1675,8 @@ def cliente_form(cid=None):
             db.session.commit()
             flash("Cliente guardado.", "ok")
             return redirect(url_for("cliente_detalle", cid=c.id))
-    return render_template("cliente_form.html", c=c, rutas=Ruta.query.filter_by(activa=True).order_by(Ruta.nombre).all())
+    return render_template("cliente_form.html", c=c, rutas=Ruta.query.filter_by(activa=True).order_by(Ruta.nombre).all(),
+                           motos=crm.motos_conocidas())
 
 
 @app.route("/clientes/<int:cid>")
@@ -1909,6 +1917,9 @@ def producto_form(pid=None):
         p.unidad = f.get("unidad") if f.get("unidad") in UNIDADES else "unidad"
         p.descripcion = (f.get("descripcion") or "").strip() or None
         p.stock_minimo = max(n(f.get("stock_minimo")), 0)
+        if "recordar_dias" in f:
+            rd = int(n(f.get("recordar_dias")))
+            p.recordar_dias = rd if 0 < rd <= 730 else None
         p.precio_detal = max(round(n(f.get("precio_detal"))), 0)
         p.precio_mayor = max(round(n(f.get("precio_mayor"))), 0)
         p.precio_taller = max(round(n(f.get("precio_taller"))), 0)
@@ -4124,6 +4135,370 @@ def manifest():
 @app.route("/robots.txt")
 def robots():
     return Response("User-agent: *\nDisallow: /panel\nDisallow: /pos\nDisallow: /r/\nAllow: /\n", mimetype="text/plain")
+
+
+# ================================================= clientes y promos: recordatorios, prospectos de redes, promociones
+from models import ESTADOS_PROSPECTO, Promo, PromoEnvio, Prospecto, Recordatorio, tel_wa  # noqa: E402
+
+
+@app.route("/recordatorios")
+@requiere("cajero")
+def recordatorios():
+    ver = request.args.get("ver", "hoy")
+    hoy = ahora().date()
+    q = Recordatorio.query
+    if ver == "proximos":
+        q = q.filter(Recordatorio.estado == "pendiente", Recordatorio.fecha > hoy,
+                     Recordatorio.fecha <= hoy + timedelta(days=7)).order_by(Recordatorio.fecha)
+    elif ver == "avisados":
+        q = q.filter(Recordatorio.estado == "avisado").order_by(Recordatorio.avisado_fecha.desc())
+    elif ver == "todos":
+        q = q.order_by(Recordatorio.fecha.desc())
+    else:
+        ver = "hoy"
+        q = q.filter(Recordatorio.estado == "pendiente", Recordatorio.fecha <= hoy).order_by(Recordatorio.fecha)
+    filas = q.limit(400).all()
+    cfg = config()
+    cuenta = {
+        "hoy": crm.recordatorios_vencidos().count(),
+        "proximos": Recordatorio.query.filter(Recordatorio.estado == "pendiente", Recordatorio.fecha > hoy,
+                                              Recordatorio.fecha <= hoy + timedelta(days=7)).count(),
+        "avisados": Recordatorio.query.filter_by(estado="avisado").count(),
+    }
+    return render_template("recordatorios.html", filas=filas, ver=ver, hoy=hoy, cuenta=cuenta,
+                           textos={r.id: crm.texto_recordatorio(r, cfg) for r in filas},
+                           con_dias=Producto.query.filter(Producto.activo.is_(True), Producto.recordar_dias > 0)
+                           .order_by(Producto.nombre).all())
+
+
+@app.route("/recordatorios/<int:rid>/estado", methods=["POST"])
+@requiere("cajero")
+def recordatorio_estado(rid):
+    r = get_or_404(Recordatorio, rid)
+    estado = (request.get_json(silent=True) or request.form).get("estado")
+    if estado not in ("pendiente", "avisado", "descartado"):
+        return jsonify(ok=False, errores=["Estado inválido."]), 400
+    r.estado = estado
+    r.avisado_fecha = ahora() if estado == "avisado" else r.avisado_fecha
+    r.usuario_id = current_user.id
+    db.session.commit()
+    if request.is_json:
+        return jsonify(ok=True)
+    flash({"avisado": "Marcado como avisado.", "descartado": "Recordatorio descartado.",
+           "pendiente": "El recordatorio volvió a pendientes."}[estado], "ok")
+    return redirect(request.referrer or url_for("recordatorios"))
+
+
+@app.route("/recordatorios/mensaje", methods=["POST"])
+@requiere("admin")
+def recordatorio_mensaje():
+    cfg = config()
+    txt = (request.form.get("msg_recordatorio") or "").strip()[:500]
+    if len(txt) < 10:
+        flash("Escribe el mensaje del recordatorio.", "err")
+    else:
+        cfg.msg_recordatorio = txt
+        db.session.commit()
+        flash("Mensaje del recordatorio guardado.", "ok")
+    return redirect(url_for("recordatorios"))
+
+
+# ---------------------------------------------------------------- prospectos de redes
+def _prospectos_filtrados():
+    a = request.args
+    q = Prospecto.query
+    if a.get("estado") in ESTADOS_PROSPECTO:
+        q = q.filter(Prospecto.estado == a["estado"])
+    if (a.get("q") or "").strip():
+        like = f"%{a['q'].strip()}%"
+        q = q.filter(or_(Prospecto.nombre.ilike(like), Prospecto.telefono.ilike(like), Prospecto.notas.ilike(like)))
+    if (a.get("interes") or "").strip():
+        q = q.filter(Prospecto.interes.ilike(f"%{a['interes'].strip()}%"))
+    if (a.get("campana") or "").strip():
+        q = q.filter(Prospecto.campana == a["campana"])
+    lista = q.order_by(Prospecto.creado.desc()).limit(2000).all()
+    if (a.get("moto") or "").strip():
+        lista = [p for p in lista if crm.moto_coincide(p.moto, [a["moto"]])]
+    return lista
+
+
+@app.route("/prospectos")
+@requiere("cajero")
+def prospectos():
+    lista = _prospectos_filtrados()
+    todos = Prospecto.query.all()
+    por_estado = defaultdict(int)
+    por_moto = defaultdict(int)
+    for p in todos:
+        por_estado[p.estado] += 1
+        if p.moto:
+            por_moto[p.moto.strip().upper().replace(" ", "")] += 1
+    campanas = sorted({p.campana for p in todos if p.campana})
+    intereses = sorted({p.interes for p in todos if p.interes})
+    msg = request.args.get("msg") or ("Hola {nombre} 👋 Te escribimos de " + (config().nombre or "Moto Speed")
+                                      + ". Vimos que te interesan repuestos para tu {moto}. ¿Te podemos ayudar?")
+    return render_template("prospectos.html", lista=lista, total=len(todos), por_estado=por_estado,
+                           por_moto=sorted(por_moto.items(), key=lambda x: -x[1])[:8], campanas=campanas,
+                           intereses=intereses, motos=crm.motos_conocidas(), estados=ESTADOS_PROSPECTO, msg=msg,
+                           mensajes={p.id: crm.personalizar(msg, {"nombre": p.nombre, "moto": p.moto}) for p in lista},
+                           tel_wa=tel_wa)
+
+
+@app.route("/prospectos/importar", methods=["POST"])
+@requiere("cajero")
+def prospectos_importar():
+    f = request.form
+    filas = []
+    arch = request.files.get("archivo")
+    try:
+        if arch and arch.filename:
+            filas = crm.filas_de_excel(arch)
+        if (f.get("texto") or "").strip():
+            filas += crm.filas_de_texto(f.get("texto"))
+    except Exception as e:   # archivo dañado o de otro formato
+        flash(f"No pude leer el archivo: {e}. Súbelo como .xlsx o .csv.", "err")
+        return redirect(url_for("prospectos"))
+    if not filas:
+        flash("No encontré contactos. Sube un Excel con una columna de celular o pega la lista.", "err")
+        return redirect(url_for("prospectos"))
+    nuevos, act, sin_tel = crm.importar_prospectos(filas, campana=(f.get("campana") or "").strip(),
+                                                   interes=(f.get("interes") or "").strip(),
+                                                   moto=(f.get("moto") or "").strip())
+    db.session.commit()
+    flash(f"Prospectos: {nuevos} nuevo(s), {act} ya estaban (se actualizaron)"
+          + (f", {sin_tel} fila(s) sin celular válido se saltaron" if sin_tel else "") + ".", "ok")
+    if nuevos:
+        avisar_cambio("Prospectos", f"{nuevos} prospecto(s) de redes cargados",
+                      f"Campaña: {f.get('campana') or '—'} · Interés: {f.get('interes') or '—'}", url_for("prospectos"))
+        db.session.commit()
+    return redirect(url_for("prospectos"))
+
+
+@app.route("/prospectos/nuevo", methods=["GET", "POST"])
+@app.route("/prospectos/<int:pid>", methods=["GET", "POST"])
+@requiere("cajero")
+def prospecto_form(pid=None):
+    p = get_or_404(Prospecto, pid) if pid else Prospecto(estado="nuevo")
+    if request.method == "POST":
+        f = request.form
+        if f.get("solo_estado"):
+            if f.get("estado") in ESTADOS_PROSPECTO:
+                p.estado = f["estado"]
+                db.session.commit()
+                flash(f"{p.nombre or p.telefono}: {p.estado_nombre}.", "ok")
+            return redirect(request.referrer or url_for("prospectos"))
+        tel = (f.get("telefono") or "").strip()[:40]
+        norm = tel_wa(tel)
+        otro = Prospecto.query.filter(Prospecto.tel_norm == norm, Prospecto.id != (p.id or 0)).first() if norm else None
+        if not norm:
+            flash("Escribe un celular válido (10 dígitos).", "err")
+        elif otro:
+            flash(f"Ese celular ya está en los prospectos ({otro.nombre or otro.telefono}).", "err")
+        else:
+            p.telefono, p.tel_norm = tel, norm
+            for campo, largo in (("nombre", 140), ("moto", 80), ("interes", 120), ("campana", 120), ("notas", 300)):
+                setattr(p, campo, (f.get(campo) or "").strip()[:largo] or None)
+            p.estado = f.get("estado") if f.get("estado") in ESTADOS_PROSPECTO else "nuevo"
+            p.no_contactar = bool(f.get("no_contactar"))
+            db.session.add(p)
+            db.session.commit()
+            flash("Prospecto guardado.", "ok")
+            return redirect(url_for("prospectos"))
+    return render_template("prospecto_form.html", p=p, estados=ESTADOS_PROSPECTO, motos=crm.motos_conocidas())
+
+
+@app.route("/prospectos/<int:pid>/borrar", methods=["POST"])
+@requiere("admin")
+def prospecto_borrar(pid):
+    p = get_or_404(Prospecto, pid)
+    db.session.delete(p)
+    db.session.commit()
+    flash("Prospecto borrado.", "ok")
+    return redirect(url_for("prospectos"))
+
+
+@app.route("/prospectos/<int:pid>/contactado", methods=["POST"])
+@requiere("cajero")
+def prospecto_contactado(pid):
+    p = get_or_404(Prospecto, pid)
+    p.ultimo_envio = ahora()
+    p.envios = (p.envios or 0) + 1
+    if p.estado == "nuevo":
+        p.estado = "contactado"
+    db.session.commit()
+    return jsonify(ok=True, estado=p.estado_nombre)
+
+
+@app.route("/prospectos/excel")
+@requiere("cajero")
+def prospectos_excel():
+    lista = _prospectos_filtrados()
+    buf = crm.excel("Prospectos", ["Nombre", "Celular", "WhatsApp", "Moto", "Interés", "Campaña", "Estado",
+                                   "Mensajes enviados", "Último envío", "Notas", "Cargado"],
+                    [(p.nombre, p.telefono, p.tel_norm, p.moto, p.interes, p.campana, p.estado_nombre, p.envios,
+                      p.ultimo_envio.strftime("%d/%m/%Y") if p.ultimo_envio else "", p.notas,
+                      p.creado.strftime("%d/%m/%Y") if p.creado else "") for p in lista])
+    return send_file(buf, as_attachment=True, download_name="prospectos_redes.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+@app.route("/prospectos/plantilla")
+@requiere("cajero")
+def prospectos_plantilla():
+    buf = crm.excel("Prospectos", ["Nombre", "Celular", "Moto", "Interés", "Campaña", "Notas"],
+                    [("Juan Pérez", "3001234567", "GN125", "Llantas", "Facebook noviembre", "Ejemplo: borra esta fila")])
+    return send_file(buf, as_attachment=True, download_name="plantilla_prospectos.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+# ---------------------------------------------------------------- promociones
+def _filtros_de_form(f):
+    import json as _json
+    motos = [m.strip() for m in re.split(r"[,\n]", f.get("motos") or "") if m.strip()]
+    return _json.dumps({
+        "clientes": bool(f.get("clientes")), "prospectos": bool(f.get("prospectos")), "motos": motos,
+        "categoria_id": int(f["categoria_id"]) if (f.get("categoria_id") or "").isdigit() else None,
+        "producto": (f.get("producto") or "").strip()[:80], "interes": (f.get("interes") or "").strip()[:80],
+        "estados": [e for e in f.getlist("estados") if e in ESTADOS_PROSPECTO],
+        "excluir_dias": max(int(n(f.get("excluir_dias"), 7)), 0), "compro_dias": max(int(n(f.get("compro_dias"))), 0),
+        "enlace": bool(f.get("enlace")),
+    }, ensure_ascii=False)
+
+
+@app.route("/promos")
+@requiere("cajero")
+def promos():
+    lista = Promo.query.filter_by(activa=True).order_by(Promo.creado.desc()).all()
+    enviados = dict(db.session.query(PromoEnvio.promo_id, db.func.count(PromoEnvio.id)).group_by(PromoEnvio.promo_id).all())
+    return render_template("promos.html", lista=lista, enviados=enviados)
+
+
+@app.route("/promos/nueva", methods=["GET", "POST"])
+@app.route("/promos/<int:pid>/editar", methods=["GET", "POST"])
+@requiere("cajero")
+def promo_form(pid=None):
+    p = get_or_404(Promo, pid) if pid else Promo(filtros=None)
+    if request.method == "POST":
+        f = request.form
+        p.titulo = (f.get("titulo") or "").strip()[:140]
+        p.mensaje = (f.get("mensaje") or "").strip()[:2000]
+        p.filtros = _filtros_de_form(f)
+        img = request.files.get("imagen")
+        if img and img.filename:
+            try:
+                datos = procesar_imagen(img, lado=1200)
+            except ErrorNegocio as e:
+                flash(e.errores[0], "err")
+                return render_template("promo_form.html", p=p, filtros=crm.leer_filtros(p), **_datos_promo_form())
+            p.imagen, p.imagen_mime, p.imagen_v = datos, "image/jpeg", (p.imagen_v or 0) + 1
+        if f.get("quitar_imagen"):
+            p.imagen, p.imagen_mime, p.imagen_v = None, None, (p.imagen_v or 0) + 1
+        if len(p.titulo) < 2 or len(p.mensaje) < 5:
+            flash("Escribe el título y el mensaje de la promo.", "err")
+        elif not (crm.leer_filtros(p)["clientes"] or crm.leer_filtros(p)["prospectos"]):
+            flash("Elige si la promo va a clientes, a prospectos o a ambos.", "err")
+        else:
+            if not p.token:
+                p.token = secrets.token_urlsafe(10)
+            if not p.id:
+                p.usuario_id = current_user.id
+            db.session.add(p)
+            db.session.commit()
+            flash("Promo guardada. Abajo está la lista de a quién enviarla.", "ok")
+            return redirect(url_for("promo_detalle", pid=p.id))
+    return render_template("promo_form.html", p=p, filtros=crm.leer_filtros(p), **_datos_promo_form())
+
+
+def _datos_promo_form():
+    return {"categorias": Categoria.query.order_by(Categoria.nombre).all(), "motos": crm.motos_conocidas(),
+            "estados": ESTADOS_PROSPECTO,
+            "intereses": sorted({x for (x,) in db.session.query(Prospecto.interes).filter(Prospecto.interes.isnot(None)).distinct()})}
+
+
+@app.route("/promos/contar", methods=["POST"])
+@requiere("cajero")
+def promo_contar():
+    import json as _json
+    lista = crm.audiencia(_json.loads(_filtros_de_form(request.form)))
+    return jsonify(total=len(lista), clientes=sum(1 for d in lista if d["tipo"] == "cliente"),
+                   prospectos=sum(1 for d in lista if d["tipo"] == "prospecto"),
+                   recientes=sum(1 for d in lista if d.get("reciente")))
+
+
+def _destinatarios(p):
+    f = crm.leer_filtros(p)
+    lista = crm.audiencia(f)
+    ya = {t for (t,) in db.session.query(PromoEnvio.tel_norm).filter(PromoEnvio.promo_id == p.id)}
+    enlace = url_for("promo_publica", token=p.token, _external=True) if p.imagen_v and p.imagen_mime and f.get("enlace") else ""
+    for d in lista:
+        d["enviado"] = d["tel_norm"] in ya
+        d["mensaje"] = crm.personalizar(p.mensaje, d) + (f"\n\n👉 {enlace}" if enlace else "")
+    return lista, f
+
+
+@app.route("/promos/<int:pid>")
+@requiere("cajero")
+def promo_detalle(pid):
+    p = get_or_404(Promo, pid)
+    lista, f = _destinatarios(p)
+    cat = db.session.get(Categoria, f["categoria_id"]) if f.get("categoria_id") else None
+    return render_template("promo_detalle.html", p=p, lista=lista, f=f, cat=cat, estados=ESTADOS_PROSPECTO)
+
+
+@app.route("/promos/<int:pid>/enviado", methods=["POST"])
+@requiere("cajero")
+def promo_enviado(pid):
+    p = get_or_404(Promo, pid)
+    d = request.get_json(silent=True) or {}
+    norm = tel_wa(d.get("tel_norm"))
+    if not norm:
+        return jsonify(ok=False, errores=["Celular inválido."]), 400
+    if d.get("deshacer"):
+        PromoEnvio.query.filter_by(promo_id=p.id, tel_norm=norm).delete()
+    elif not PromoEnvio.query.filter_by(promo_id=p.id, tel_norm=norm).first():
+        crm.registrar_envio(p, {"tel_norm": norm, "nombre": d.get("nombre"), "tipo": d.get("tipo"),
+                                "ref_id": int(d["ref_id"]) if str(d.get("ref_id") or "").isdigit() else None}, current_user)
+    db.session.commit()
+    return jsonify(ok=True)
+
+
+@app.route("/promos/<int:pid>/excel")
+@requiere("cajero")
+def promo_excel(pid):
+    p = get_or_404(Promo, pid)
+    lista, _ = _destinatarios(p)
+    buf = crm.excel("Destinatarios", ["Nombre", "Celular", "WhatsApp", "Moto", "Tipo", "Detalle", "Ya enviado", "Mensaje"],
+                    [(d["nombre"], d["telefono"], d["tel_norm"], d["moto"], d["tipo"], d["detalle"],
+                      "Sí" if d["enviado"] else "", d["mensaje"]) for d in lista])
+    nombre = re.sub(r"[^a-z0-9]+", "_", normalizar(p.titulo))[:40] or "promo"
+    return send_file(buf, as_attachment=True, download_name=f"promo_{nombre}.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+@app.route("/promos/<int:pid>/archivar", methods=["POST"])
+@requiere("cajero")
+def promo_archivar(pid):
+    p = get_or_404(Promo, pid)
+    p.activa = False
+    db.session.commit()
+    flash("Promo archivada.", "ok")
+    return redirect(url_for("promos"))
+
+
+@app.route("/promo/<token>")
+def promo_publica(token):
+    p = Promo.query.filter_by(token=token).first_or_404()
+    return render_template("promo_publica.html", p=p, cfg=config(), wa=tel_wa(config().whatsapp or config().telefono))
+
+
+@app.route("/promo/<token>/imagen.jpg")
+def promo_imagen(token):
+    p = Promo.query.filter_by(token=token).first_or_404()
+    if not p.imagen:
+        abort(404)
+    r = send_file(BytesIO(p.imagen), mimetype=p.imagen_mime or "image/jpeg")
+    r.headers["Cache-Control"] = "public, max-age=86400"
+    return r
 
 
 if __name__ == "__main__":

@@ -425,7 +425,7 @@ def recerrar_turno(t, usuario):
 
 # =================================================================== ventas
 def registrar_venta(usuario, items, pagos, cliente=None, cliente_nombre="", cliente_doc="", cliente_tel="",
-                    lista="detal", descuento=0.0, credito=False, nota="", pedido=None, cotizacion=None):
+                    lista="detal", descuento=0.0, credito=False, nota="", pedido=None, cotizacion=None, moto=""):
     """items: [{producto_id, cantidad, precio}] · pagos: [{medio_id, valor, referencia}]"""
     cfg = config()
     errores = []
@@ -593,6 +593,8 @@ def registrar_venta(usuario, items, pagos, cliente=None, cliente_nombre="", clie
     if cotizacion:
         cotizacion.estado = "vendida"
         cotizacion.venta_id = v.id
+    import crm
+    crm.tras_venta(v, moto, usuario)
     return v
 
 
@@ -839,6 +841,8 @@ def anular_venta(venta, usuario, motivo):
         nom = p.medio.nombre if p.medio else "Pago"
         reemb[nom] = reemb.get(nom, 0) + (p.valor or 0)
     venta.estado = "anulada"
+    import crm
+    crm.anular_recordatorios(venta)
     venta.anulada_fecha = ahora()
     venta.anulada_motivo = motivo.strip()[:255]
     venta.anulada_por_id = usuario.id

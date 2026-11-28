@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Recordatorios{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Recordatorios</h1><p>Clientes a los que les toca volver: cambio de aceite y otros repuestos con «recordar en X días».</p></div>
+</div>
+<div class="tabs">
+  <a class="{{ 'on' if ver == 'hoy' }}" href="{{ url_for('recordatorios') }}">Para avisar hoy ({{ cuenta.hoy }})</a>
+  <a class="{{ 'on' if ver == 'proximos' }}" href="{{ url_for('recordatorios', ver='proximos') }}">Próximos 7 días ({{ cuenta.proximos }})</a>
+  <a class="{{ 'on' if ver == 'avisados' }}" href="{{ url_for('recordatorios', ver='avisados') }}">Ya avisados ({{ cuenta.avisados }})</a>
+  <a class="{{ 'on' if ver == 'todos' }}" href="{{ url_for('recordatorios', ver='todos') }}">Todos</a>
+</div>
+<div class="card">
+  {% if filas %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Cliente</th><th>Moto</th><th>Compró</th><th>Avisar</th><th>Estado</th><th></th></tr></thead>
+    <tbody>{% for r in filas %}{% set dias = (r.fecha - hoy).days %}
+      <tr id="r{{ r.id }}">
+        <td><b>{% if r.cliente_id %}<a href="{{ url_for('cliente_detalle', cid=r.cliente_id) }}">{{ r.nombre or 'Cliente' }}</a>{% else %}{{ r.nombre or 'Cliente sin nombre' }}{% endif %}</b><br><small class="muted">{{ r.telefono }}</small></td>
+        <td>{{ r.moto or '—' }}</td>
+        <td>{{ r.producto_nombre }}<br><small class="muted">{{ r.compra_fecha|f }}{% if r.venta %} · <a href="{{ url_for('venta_detalle', vid=r.venta_id) }}">{{ r.venta.folio }}</a>{% endif %}</small></td>
+        <td>{{ r.fecha|f }}<br>{% if r.estado == 'pendiente' %}{% if dias < 0 %}<span class="badge err">hace {{ -dias }} d</span>{% elif dias == 0 %}<span class="badge warn">hoy</span>{% else %}<small class="muted">en {{ dias }} d</small>{% endif %}{% endif %}</td>
+        <td>{% if r.estado == 'pendiente' %}<span class="badge warn">Pendiente</span>{% elif r.estado == 'avisado' %}<span class="badge ok">Avisado</span><br><small class="muted">{{ r.avisado_fecha|fh }}</small>{% elif r.estado == 'recompro' %}<span class="badge blue">Volvió a comprar</span>{% else %}<span class="badge">Descartado</span>{% endif %}</td>
+        <td style="white-space:nowrap">
+          {% if r.estado in ('pendiente', 'avisado') %}
+          <button class="btn wa sm" type="button" data-wa="{{ r.id }}" data-tel="{{ r.tel_norm }}" data-msg="{{ textos[r.id] }}">WhatsApp</button>
+          {% endif %}
+          {% if r.estado == 'pendiente' %}
+          <form method="post" action="{{ url_for('recordatorio_estado', rid=r.id) }}" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="estado" value="descartado"><button class="btn ghost sm" title="No avisar">Descartar</button></form>
+          {% elif r.estado in ('avisado', 'descartado') %}
+          <form method="post" action="{{ url_for('recordatorio_estado', rid=r.id) }}" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="estado" value="pendiente"><button class="btn ghost sm">Volver a pendiente</button></form>
+          {% endif %}
+        </td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% else %}
+  <p class="empty">{{ {'hoy': 'No hay clientes para avisar hoy. 👌', 'proximos': 'Nadie para avisar en los próximos 7 días.', 'avisados': 'Todavía no se ha avisado a nadie.'}.get(ver, 'Aún no hay recordatorios.') }}</p>
+  {% endif %}
+</div>
+
+<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(320px,1fr))">
+  <div class="card">
+    <h2>¿Cómo funciona?</h2>
+    <p class="muted" style="margin:6px 0">Cuando se vende un repuesto que tiene <b>«Recordar al cliente en X días»</b> a alguien con celular, la app guarda el aviso. El día que se cumple, aparece aquí y en el menú con un número. Le das <b>WhatsApp</b>, se abre el chat con el mensaje escrito y queda marcado como avisado. Si el cliente vuelve a comprar lo mismo antes, el aviso se cierra solo.</p>
+    <p class="muted" style="margin:6px 0">Los aceites quedaron con <b>25 días</b>. Para cambiarlo, o para usarlo en otros repuestos (filtros, llantas…), edita el repuesto en <a href="{{ url_for('productos') }}">Repuestos</a>.</p>
+    {% if con_dias %}<p style="margin-top:8px"><b>Repuestos que generan recordatorio:</b></p>
+    <ul style="margin:4px 0 0 18px;max-height:180px;overflow:auto">{% for p in con_dias %}<li><a href="{{ url_for('producto_form', pid=p.id) }}">{{ p.nombre }}</a> · {{ p.recordar_dias }} días</li>{% endfor %}</ul>{% endif %}
+  </div>
+  {% if current_user.puede('admin') %}
+  <form class="card" method="post" action="{{ url_for('recordatorio_mensaje') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <h2>Mensaje que se envía</h2>
+    <div class="field"><textarea class="input" name="msg_recordatorio" rows="5">{{ cfg.msg_recordatorio or '' }}</textarea>
+      <div class="hint">Se reemplazan solos: <code>{nombre}</code> primer nombre · <code>{producto}</code> lo que compró · <code>{dias}</code> días desde la compra · <code>{moto_txt}</code> «para tu CB125F» · <code>{moto}</code> el modelo · <code>{negocio}</code>.</div></div>
+    <button class="btn sm">Guardar mensaje</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}
+{% block scripts %}<script>
+document.querySelectorAll('[data-wa]').forEach(b => b.addEventListener('click', async () => {
+  abrirWA(b.dataset.tel, b.dataset.msg);
+  const j = await postJSON('{{ url_for('recordatorio_estado', rid=0) }}'.replace('/0/', '/' + b.dataset.wa + '/'), { estado: 'avisado' });
+  if (j.ok) { const tr = document.getElementById('r' + b.dataset.wa); tr.classList.add('fila-hecha');
+    tr.children[4].innerHTML = '<span class="badge ok">Avisado</span>'; }
+}));
+</script>{% endblock %}

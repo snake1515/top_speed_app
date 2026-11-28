@@ -309,3 +309,20 @@ label > .fecha-dmy { display: inline-block; vertical-align: middle; }
 
 /* repuestos de la bodega virtual: etiqueta fucsia con letras negras */
 .badge.virtual { background: #ff2bc2 !important; color: #000 !important; border-color: #ff2bc2 !important; font-weight: 800; }
+
+/* ---------- clientes y promos (WhatsApp) */
+.btn.wa { background: #25d366; color: #06301a; border-color: #1fb457; }
+.btn.wa:hover { background: #1fb457; color: #fff; }
+.wa-hecho { color: var(--ok); font-weight: 700; white-space: nowrap; }
+.fila-hecha td { opacity: .55; }
+.cadena { border: 2px solid #25d366; background: #f2fcf5; }
+.cadena .quien { font-size: 1.25rem; font-weight: 800; }
+.cadena .msg { white-space: pre-wrap; background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: .92rem; max-height: 180px; overflow: auto; }
+.cadena .pasos { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.barra { height: 8px; background: #e4e4de; border-radius: 99px; overflow: hidden; margin: 8px 0; }
+.barra > i { display: block; height: 100%; background: #25d366; width: 0; transition: width .3s; }
+.promo-img { max-width: 220px; border-radius: 10px; border: 1px solid var(--line); display: block; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.chips label { display: inline-flex; align-items: center; gap: 5px; padding: 5px 10px; border: 1px solid var(--line); border-radius: 99px; background: #fff; cursor: pointer; font-size: .88rem; }
+.chips input { margin: 0; }
+.msg-prev { min-width: 220px; white-space: pre-wrap; background: #e7ffdb; border-radius: 10px 10px 10px 2px; padding: 10px 12px; max-width: 420px; font-size: .93rem; box-shadow: 0 1px 1px rgba(0,0,0,.08); }

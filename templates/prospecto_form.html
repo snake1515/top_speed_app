@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Prospecto' if p.id else 'Nuevo prospecto' }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ (p.nombre or p.telefono) if p.id else 'Nuevo prospecto' }}</h1>
+  {% if p.id %}<p>Cargado el {{ p.creado|f }}{% if p.envios %} · {{ p.envios }} mensaje(s), el último el {{ p.ultimo_envio|f }}{% endif %}{% if p.cliente %} · cliente: <a href="{{ url_for('cliente_detalle', cid=p.cliente_id) }}">{{ p.cliente.nombre }}</a>{% endif %}</p>{% endif %}</div></div>
+<form method="post" class="card" style="max-width:720px">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="form-row">
+    <div class="field"><label>Nombre</label><input class="input" name="nombre" value="{{ p.nombre or '' }}"></div>
+    <div class="field"><label>Celular / WhatsApp *</label><input class="input" name="telefono" value="{{ p.telefono or '' }}" required inputmode="tel"></div>
+  </div>
+  <div class="form-row">
+    <div class="field"><label>Moto</label><input class="input" name="moto" value="{{ p.moto or '' }}" list="motos-lista"><datalist id="motos-lista">{% for m in motos %}<option value="{{ m }}">{% endfor %}</datalist></div>
+    <div class="field"><label>Interés</label><input class="input" name="interes" value="{{ p.interes or '' }}" placeholder="Llantas, kit de arrastre…"></div>
+    <div class="field"><label>Campaña</label><input class="input" name="campana" value="{{ p.campana or '' }}"></div>
+  </div>
+  <div class="form-row">
+    <div class="field"><label>Estado</label><select class="input" name="estado">{% for k, v in estados.items() %}<option value="{{ k }}" {{ 'selected' if p.estado == k }}>{{ v }}</option>{% endfor %}</select></div>
+    <div class="field"><label>Notas</label><input class="input" name="notas" value="{{ p.notas or '' }}" placeholder="Ej. preguntó por la llanta 90/90-18"></div>
+  </div>
+  <label style="display:flex;gap:8px;align-items:center;margin:4px 0 14px"><input type="checkbox" name="no_contactar" {{ 'checked' if p.no_contactar }}> Pidió que no le escribieran (no sale en las promociones)</label>
+  <button class="btn">Guardar</button>
+  <a class="btn sec" href="{{ url_for('prospectos') }}">Cancelar</a>
+</form>
+{% if p.id and current_user.puede('admin') %}
+<form method="post" action="{{ url_for('prospecto_borrar', pid=p.id) }}" style="margin-top:10px"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn danger sm">Borrar prospecto</button></form>
+{% endif %}
+{% endblock %}

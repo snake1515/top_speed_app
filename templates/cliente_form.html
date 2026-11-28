@@ -31,6 +31,9 @@ document.getElementById('gps').addEventListener('click', e => { const b = e.targ
     <div class="field"><label>Ruta de preventa</label><select class="input" name="ruta_id"><option value="">— ninguna —</option>{% for r in rutas %}<option value="{{ r.id }}" {{ 'selected' if c.ruta_id == r.id }}>{{ r.nombre }}</option>{% endfor %}</select></div>
     {% endif %}
   </div>
+  <div class="field"><label>Moto del cliente</label><input class="input" name="moto" value="{{ c.moto or '' }}" list="motos-lista" placeholder="CB125F, Gixxer 150, AX100…" style="max-width:320px">
+    <datalist id="motos-lista">{% for m in motos %}<option value="{{ m }}">{% endfor %}</datalist>
+    <div class="hint">Sirve para enviarle promociones de repuestos para su moto. Se llena sola cuando se registra en una venta.</div></div>
   <div class="field"><label>Notas</label><input class="input" name="notas" value="{{ c.notas or '' }}" placeholder="Ej. taller en el barrio X, moto Pulsar 200"></div>
   <button class="btn">Guardar</button>
   <a class="btn sec" href="{{ url_for('cliente_detalle', cid=c.id) if c.id else url_for('clientes') }}">Cancelar</a>

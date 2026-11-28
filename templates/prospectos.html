@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}Prospectos de redes{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Prospectos de redes</h1><p>Personas que escribieron por las campañas de Facebook e Instagram y todavía no han comprado.</p></div>
+  <div class="actions">
+    <a class="btn sec sm" href="{{ url_for('prospectos_excel', **request.args) }}">⬇ Excel</a>
+    <a class="btn sec sm" href="{{ url_for('prospecto_form') }}">＋ Uno a uno</a>
+    <a class="btn sm" href="{{ url_for('promo_form') }}">🎯 Crear promo</a>
+  </div>
+</div>
+<div class="kpis">
+  <div class="kpi hl"><div class="lbl">Prospectos</div><div class="val">{{ total }}</div><div class="sub">{{ por_estado['nuevo'] }} sin contactar</div></div>
+  <div class="kpi"><div class="lbl">Contactados</div><div class="val">{{ por_estado['contactado'] }}</div></div>
+  <div class="kpi"><div class="lbl">Interesados</div><div class="val">{{ por_estado['interesado'] }}</div></div>
+  <div class="kpi"><div class="lbl">Ya compraron</div><div class="val">{{ por_estado['cliente'] }}</div><div class="sub">{% if total %}{{ (100 * por_estado['cliente'] / total)|round|int }} % de conversión{% endif %}</div></div>
+</div>
+{% if por_moto %}<p class="muted" style="margin:-6px 0 12px">Motos más comunes: {% for m, c in por_moto %}<a href="{{ url_for('prospectos', moto=m) }}" class="badge">{{ m }} · {{ c }}</a> {% endfor %}</p>{% endif %}
+
+<details class="card" {{ 'open' if not total }}>
+  <summary style="cursor:pointer"><b>⬆ Cargar prospectos</b> <small class="muted">— desde Excel o pegando la lista</small></summary>
+  <form method="post" action="{{ url_for('prospectos_importar') }}" enctype="multipart/form-data" style="margin-top:12px">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="form-row">
+      <div class="field"><label>Archivo Excel o CSV</label><input class="input" type="file" name="archivo" accept=".xlsx,.csv">
+        <div class="hint">Debe tener una columna de <b>celular</b>. También reconoce nombre, moto, interés, campaña y notas. Sirve el archivo que descargas de los formularios de Facebook. <a href="{{ url_for('prospectos_plantilla') }}">Descargar plantilla</a>.</div></div>
+      <div class="field"><label>…o pega la lista</label><textarea class="input" name="texto" rows="4" placeholder="Juan Pérez, 3001234567, GN125, llantas&#10;María, 3159876543, CB125F"></textarea>
+        <div class="hint">Una persona por línea: nombre, celular, moto, interés.</div></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>Campaña</label><input class="input" name="campana" list="campanas" placeholder="ej. Facebook llantas noviembre"><datalist id="campanas">{% for c in campanas %}<option value="{{ c }}">{% endfor %}</datalist></div>
+      <div class="field"><label>Interés (si no viene en la lista)</label><input class="input" name="interes" list="intereses" placeholder="Llantas, kit de arrastre…"><datalist id="intereses">{% for c in intereses %}<option value="{{ c }}">{% endfor %}<option value="Llantas"><option value="Kit de arrastre"></datalist></div>
+      <div class="field"><label>Moto (si todos tienen la misma)</label><input class="input" name="moto" list="motos-lista" placeholder="GN125"></div>
+    </div>
+    <datalist id="motos-lista">{% for m in motos %}<option value="{{ m }}">{% endfor %}</datalist>
+    <button class="btn">Cargar</button> <small class="muted">Si un celular ya estaba, se actualiza en vez de repetirse. Si ya es cliente, queda como «Ya compró».</small>
+  </form>
+</details>
+
+<form class="card" method="get" style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+  <div class="field" style="margin:0;flex:1;min-width:180px"><label>Buscar</label><input class="input" name="q" value="{{ request.args.q or '' }}" placeholder="Nombre, celular o nota"></div>
+  <div class="field" style="margin:0"><label>Estado</label><select class="input" name="estado"><option value="">Todos</option>{% for k, v in estados.items() %}<option value="{{ k }}" {{ 'selected' if request.args.estado == k }}>{{ v }}</option>{% endfor %}</select></div>
+  <div class="field" style="margin:0"><label>Moto</label><input class="input" name="moto" value="{{ request.args.moto or '' }}" list="motos-lista" style="width:140px"></div>
+  <div class="field" style="margin:0"><label>Interés</label><input class="input" name="interes" value="{{ request.args.interes or '' }}" list="intereses" style="width:140px"></div>
+  {% if campanas %}<div class="field" style="margin:0"><label>Campaña</label><select class="input" name="campana"><option value="">Todas</option>{% for c in campanas %}<option {{ 'selected' if request.args.campana == c }}>{{ c }}</option>{% endfor %}</select></div>{% endif %}
+  <button class="btn sec">Filtrar</button>
+  {% if request.args %}<a class="btn ghost" href="{{ url_for('prospectos') }}">Quitar filtros</a>{% endif %}
+</form>
+
+<div class="card">
+  <div class="card-head"><h2>{{ lista|length }} prospecto(s)</h2>
+    <form method="get" class="actions" style="flex:1;max-width:620px">
+      {% for k, v in request.args.items() if k != 'msg' %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+      <input class="input" name="msg" value="{{ msg }}" title="Mensaje del botón WhatsApp de esta lista. {nombre} y {moto} se reemplazan solos." style="flex:1">
+      <button class="btn sec sm">Usar mensaje</button>
+    </form></div>
+  {% if lista %}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Nombre</th><th>Moto</th><th>Interés</th><th>Campaña</th><th>Estado</th><th>Último mensaje</th><th></th></tr></thead>
+    <tbody>{% for p in lista %}
+      <tr id="p{{ p.id }}" class="{{ 'fila-hecha' if p.no_contactar or p.estado == 'descartado' }}">
+        <td><a href="{{ url_for('prospecto_form', pid=p.id) }}"><b>{{ p.nombre or 'Sin nombre' }}</b></a><br><small class="muted">{{ p.telefono }}</small>{% if p.no_contactar %} <span class="badge err">no contactar</span>{% endif %}</td>
+        <td>{{ p.moto or '—' }}</td><td>{{ p.interes or '—' }}</td><td><small>{{ p.campana or '—' }}</small></td>
+        <td><form method="post" action="{{ url_for('prospecto_form', pid=p.id) }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="solo_estado" value="1">
+          <select class="input" name="estado" onchange="this.form.submit()" style="padding:4px 6px;font-size:.85rem">{% for k, v in estados.items() %}<option value="{{ k }}" {{ 'selected' if p.estado == k }}>{{ v }}</option>{% endfor %}</select></form></td>
+        <td class="ult">{% if p.ultimo_envio %}{{ p.ultimo_envio|f }}<br><small class="muted">{{ p.envios }} mensaje(s)</small>{% else %}<small class="muted">nunca</small>{% endif %}</td>
+        <td>{% if not p.no_contactar %}<button class="btn wa sm" type="button" data-p="{{ p.id }}" data-tel="{{ p.tel_norm or tel_wa(p.telefono) }}" data-msg="{{ mensajes[p.id] }}">WhatsApp</button>{% endif %}</td></tr>
+    {% endfor %}</tbody>
+  </table></div>
+  {% else %}<p class="empty">{{ 'No hay prospectos con esos filtros.' if request.args else 'Todavía no hay prospectos. Cárgalos arriba desde Excel o pegando la lista.' }}</p>{% endif %}
+</div>
+{% endblock %}
+{% block scripts %}<script>
+document.querySelectorAll('[data-p]').forEach(b => b.addEventListener('click', async () => {
+  abrirWA(b.dataset.tel, b.dataset.msg);
+  const j = await postJSON('{{ url_for('prospecto_contactado', pid=0) }}'.replace('/0/', '/' + b.dataset.p + '/'), {});
+  if (j.ok) { const tr = document.getElementById('p' + b.dataset.p);
+    tr.querySelector('.ult').innerHTML = 'hoy'; const s = tr.querySelector('select'); if (s.value === 'nuevo') s.value = 'contactado'; }
+}));
+</script>{% endblock %}

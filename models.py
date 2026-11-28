@@ -198,6 +198,11 @@ class Config(db.Model):
     fe_tope_uvt = db.Column(db.Float, nullable=False, default=3500)  # tope de ingresos para no estar obligado
     fe_aviso_pct = db.Column(db.Float, nullable=False, default=80)   # avisar desde este % del tope
     fecha_apertura = db.Column(db.Date)                 # día en que el negocio abrió al público
+    # recordatorios a clientes (cambio de aceite, etc.) y promociones por WhatsApp
+    msg_recordatorio = db.Column(db.String(500), default="Hola {nombre} 👋 Te saluda Moto Speed. Ya van {dias} días desde que "
+                                 "compraste {producto}{moto_txt}. Es buen momento para el cambio 🛢️. Te esperamos en la "
+                                 "Calle 9 # 13-02, Local 2 (La Novena) o pídelo por aquí.")
+    recordar_semilla = db.Column(db.Boolean, default=False)   # ya se pusieron los 25 días a los aceites
 
 
 class MedioPago(db.Model):
@@ -288,6 +293,8 @@ class Producto(db.Model):
     origen = db.Column(db.String(12))
     imagen_lote = db.Column(db.String(80))   # foto de catálogo puesta automáticamente (fotos_catalogo.py)
     donde_comprar = db.Column(db.String(120))  # proveedor / almacén donde se consigue
+    # días después de la venta para recordarle al cliente que vuelva (aceite: 25). Vacío o 0 = no recordar
+    recordar_dias = db.Column(db.Integer)
 
     def texto_base(self):
         """Texto de búsqueda sin las equivalencias (para filtrar las variantes de la tienda)."""
@@ -405,6 +412,7 @@ class Cliente(db.Model):
     cupo = db.Column(db.Float, nullable=False, default=0)
     plazo_dias = db.Column(db.Integer, nullable=False, default=30)
     notas = db.Column(db.String(300))
+    moto = db.Column(db.String(80))   # modelo de moto (CB125F, Gixxer, AX100…)
     activo = db.Column(db.Boolean, nullable=False, default=True)
     creado = db.Column(db.DateTime, default=ahora)
 
@@ -914,6 +922,7 @@ class Venta(db.Model):
     origen = db.Column(db.String(12), nullable=False, default="pos")  # pos / tienda
     # venta de arrastre: incluye repuestos que no se tenían; se compran afuera para entregarlos
     arrastre = db.Column(db.Boolean, nullable=False, default=False)
+    moto = db.Column(db.String(80))   # modelo de la moto del cliente en esta venta
     pedido_id = db.Column(db.Integer)
     estado = db.Column(db.String(10), nullable=False, default="pagada")  # pagada / credito / anulada
     nota = db.Column(db.String(300))
@@ -1425,6 +1434,107 @@ def asignar_codigo_interno(p):
     return p.codigo_interno
 
 
+
+# ============================================================ CRM: prospectos, recordatorios y promociones
+MOTOS_COMUNES = ["AKT NKD 125", "AKT CR4 125", "AKT TT 125", "AX100", "Boxer CT100", "Boxer S", "CB110", "CB125F",
+                 "CB190R", "Discover 125", "Gixxer 150", "GN125", "Hunk 160R", "NKD 125", "Platino 110", "Pulsar NS 125",
+                 "Pulsar NS 160", "Pulsar NS 200", "Pulsar 180", "Splendor", "Suzuki Best 125", "TVS Apache 160",
+                 "TVS Sport 100", "Viva R", "XTZ 125", "XTZ 150", "FZ 2.0", "YBR 125", "DT 125", "Libero 125",
+                 "Crypton FI", "BWS", "NMAX", "Dio 110", "Wave 110", "XR 150L", "XR 190L", "Eco Deluxe", "Advance R 110"]
+
+ESTADOS_PROSPECTO = {"nuevo": "Nuevo", "contactado": "Contactado", "interesado": "Interesado",
+                     "cliente": "Ya compró", "descartado": "Descartado"}
+
+
+def tel_wa(numero):
+    """Teléfono normalizado para WhatsApp (57 + 10 dígitos en Colombia). Vacío si no sirve."""
+    d = "".join(ch for ch in (numero or "") if ch.isdigit())
+    if len(d) == 10 and d.startswith("3"):
+        d = "57" + d
+    elif len(d) == 12 and d.startswith("57"):
+        pass
+    elif len(d) < 10:
+        return ""
+    return d
+
+
+class Prospecto(db.Model):
+    """Contactos que llegaron por las campañas de redes (Facebook/Instagram) y aún no son clientes."""
+    __tablename__ = "ts_prospectos"
+    id = db.Column(db.Integer, primary_key=True)
+    nombre = db.Column(db.String(140))
+    telefono = db.Column(db.String(40), nullable=False)
+    tel_norm = db.Column(db.String(20), index=True)
+    moto = db.Column(db.String(80))
+    interes = db.Column(db.String(120))      # llantas, kit de arrastre…
+    campana = db.Column(db.String(120))      # de qué campaña llegó
+    estado = db.Column(db.String(12), nullable=False, default="nuevo")
+    notas = db.Column(db.String(300))
+    no_contactar = db.Column(db.Boolean, nullable=False, default=False)   # pidió que no le escribieran
+    cliente_id = db.Column(db.Integer, db.ForeignKey("ts_clientes.id"))
+    cliente = db.relationship("Cliente")
+    ultimo_envio = db.Column(db.DateTime)
+    envios = db.Column(db.Integer, nullable=False, default=0)
+    creado = db.Column(db.DateTime, nullable=False, default=ahora)
+
+    @property
+    def estado_nombre(self):
+        return ESTADOS_PROSPECTO.get(self.estado, self.estado)
+
+
+class Recordatorio(db.Model):
+    """Aviso para escribirle a un cliente N días después de una compra (ej. cambio de aceite)."""
+    __tablename__ = "ts_recordatorios"
+    id = db.Column(db.Integer, primary_key=True)
+    fecha = db.Column(db.Date, nullable=False, index=True)     # cuándo avisar
+    estado = db.Column(db.String(12), nullable=False, default="pendiente")  # pendiente / avisado / recompro / descartado
+    cliente_id = db.Column(db.Integer, db.ForeignKey("ts_clientes.id"), index=True)
+    cliente = db.relationship("Cliente")
+    venta_id = db.Column(db.Integer, db.ForeignKey("ts_ventas.id"), index=True)
+    venta = db.relationship("Venta")
+    producto_id = db.Column(db.Integer, db.ForeignKey("ts_productos.id"), index=True)
+    producto = db.relationship("Producto")
+    producto_nombre = db.Column(db.String(200))
+    nombre = db.Column(db.String(140))
+    telefono = db.Column(db.String(40))
+    tel_norm = db.Column(db.String(20), index=True)
+    moto = db.Column(db.String(80))
+    dias = db.Column(db.Integer)
+    compra_fecha = db.Column(db.Date)
+    avisado_fecha = db.Column(db.DateTime)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
+    usuario = db.relationship("Usuario")
+
+
+class Promo(db.Model):
+    """Promoción para enviar por WhatsApp a un grupo de clientes y/o prospectos."""
+    __tablename__ = "ts_promos"
+    id = db.Column(db.Integer, primary_key=True)
+    titulo = db.Column(db.String(140), nullable=False)
+    mensaje = db.Column(db.Text, nullable=False)
+    imagen = deferred(db.Column(db.LargeBinary))
+    imagen_mime = db.Column(db.String(40))
+    imagen_v = db.Column(db.Integer, nullable=False, default=0)
+    token = db.Column(db.String(40), unique=True)   # enlace público con la imagen (vista previa en WhatsApp)
+    filtros = db.Column(db.Text)                    # JSON con a quién va
+    creado = db.Column(db.DateTime, nullable=False, default=ahora)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
+    usuario = db.relationship("Usuario")
+    activa = db.Column(db.Boolean, nullable=False, default=True)
+
+
+class PromoEnvio(db.Model):
+    __tablename__ = "ts_promo_envios"
+    id = db.Column(db.Integer, primary_key=True)
+    promo_id = db.Column(db.Integer, db.ForeignKey("ts_promos.id"), nullable=False, index=True)
+    tel_norm = db.Column(db.String(20), nullable=False, index=True)
+    nombre = db.Column(db.String(140))
+    tipo = db.Column(db.String(10))     # cliente / prospecto
+    ref_id = db.Column(db.Integer)
+    fecha = db.Column(db.DateTime, nullable=False, default=ahora)
+    usuario_id = db.Column(db.Integer, db.ForeignKey("ts_usuarios.id"))
+
+
 def semilla():
     """Datos mínimos al instalar: configuración, efectivo y transferencias comunes, categorías."""
     cfg = config()
@@ -1486,6 +1596,13 @@ def semilla():
                 .order_by(Producto.id).all():
             asignar_codigo_interno(p)
             db.session.flush()
+    # recordatorios: los aceites quedan en 25 días (una sola vez; después se cambia en cada repuesto)
+    if not cfg.recordar_semilla:
+        for p in Producto.query.all():
+            texto = normalizar(p.nombre or "")
+            if p.recordar_dias is None and "aceite" in normalizar(p.nombre or "") and "filtro" not in texto:
+                p.recordar_dias = 25
+        cfg.recordar_semilla = True
     db.session.commit()
 
 
